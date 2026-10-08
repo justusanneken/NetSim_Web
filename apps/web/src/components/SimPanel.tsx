@@ -44,7 +44,7 @@ export function SimPanel() {
   const size = useSize(bodyRef);
 
   const rows = useMemo(
-    () => log.filter((l) => filters[l.proto as ProtoFilter] !== false),
+    () => log.filter((l) => filters[l.proto as ProtoFilter] !== false && l.msg.key !== 'rt.debug'),
     [log, filters],
   );
 

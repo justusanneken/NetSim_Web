@@ -40,7 +40,7 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Traceroute (Engine)                                                                                                                  | 2     | fertig                                               | `engine › Traceroute über zwei Router…`                               |
 | Abnahme: falsches Gateway → korrekte ICMP-Meldung                                                                                    | 2     | fertig                                               | `engine › kein Gateway → noRoute…`, `cli › shell › falsches Gateway…` |
 | Router-Schnittstellen default down, Überlappungsprüfung                                                                              | 2     | fertig                                               | `engine › Validierung…`                                               |
-| ECMP, Redistribution                                                                                                                 | 4     | offen                                                | –                                                                     |
+| ECMP                                                                                                                                 | –     | nicht geplant                                        | –                                                                     |
 | CLI-Framework: Modi, Abkürzungen, `?`, Tab, `no`/`default`, `do`, Pipes                                                              | 2     | fertig                                               | `cli › Parser › *`, `Modi und Konfiguration › *`                      |
 | IOS-Fehlermeldungen (Caret, Incomplete, Ambiguous)                                                                                   | 2     | fertig                                               | `cli › Parser › Fehlermeldungen…`                                     |
 | Basisbefehle + `show` (version, run/startup, ip int brief, ip route, ip arp, interfaces [status], mac address-table, history, clock) | 2     | fertig                                               | `cli › Abnahme Phase 2: CLI-Golden-Tests`                             |
@@ -51,7 +51,8 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Desktop: IP-Konfiguration, Command Prompt (`ping`, `tracert`, `ipconfig [/all]`, `arp -a`)                                           | 2     | teilweise (kein DHCP/DNS/Web)                        | `cli › shell › Host-Eingabeaufforderung`, `web e2e › phase2`          |
 | Geräte-Dialog (Config / CLI / Desktop), xterm.js                                                                                     | 2     | teilweise (Physical/Attributes folgen)               | `web e2e › phase2`                                                    |
 | Simulationsmodus mit Animation (Umschläge), PDU-Inspektor (OSI-Schichten, Felder)                                                    | 2     | teilweise (Inbound-Ansicht, kein Outbound/Challenge) | `web e2e › phase2` (Inspektor), manuell (Animation)                   |
-| Debug-Befehle, `show ip protocols`, Mehrfach-Sessions, `clock set`                                                                   | 4     | offen                                                | –                                                                     |
+| Debug-Befehle, `show ip protocols`                                                                                                   | 4     | fertig                                               | `cli › Phase 4 › *`                                                   |
+| Mehrfach-Sessions, `clock set`                                                                                                       | –     | offen                                                | –                                                                     |
 
 ## Phase 3 – Switching, Dienste, Filter
 
@@ -75,6 +76,24 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | GUI: VLAN-/Switchport-Panel, SVI/Subinterface, Server-Dienste, DHCP/DNS am Host, Browser, STP-Linklicht orange                                                      | 3         | fertig                                     | `web e2e › phase3`                               |
 | SPAN, Storm-Control, DHCP-Snooping, DAI, UDLD, MST                                                                                                                  | –         | nicht geplant                              | –                                                |
 
+## Phase 4 – Routing-Protokolle und IPv6
+
+| Feature                                                                                                                                                                    | Phase | Status                                                              | Test                                         |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------------------------------------------------------------------- | -------------------------------------------- |
+| RIPv2 (Updates 30 s, Triggered Updates, Split Horizon, Auto-Summary, Invalid/Flush, `timers basic`, Redistribution)                                                        | 4     | fertig (kein RIPv1, keine Authentifizierung)                        | `engine › rip › *`                           |
+| OSPFv2 Einzel- und Multi-Area (Hello/DBD/LSR/LSU/LSAck, DR/BDR, LSA 1–5, SPF, ABR-Summaries, `area range`, Kosten/Referenzbandbreite)                                      | 4     | fertig (keine Stub/NSSA-Areas, keine Virtual Links, kein ECMP)      | `engine › ospf › *`                          |
+| Abnahme: OSPF konvergiert im 4-Router-Ring, Linkausfall führt zum Umschalten                                                                                               | 4     | fertig                                                              | `engine › ospf › Abnahme…`                   |
+| EIGRP (Hello/Hold, Update/Query/Reply mit Ack/Retransmit, DUAL mit Feasible Successor, klassische Metrik, Auto-Summary)                                                    | 4     | fertig (kein Variance-Load-Balancing, keine SIA)                    | `engine › eigrp › *`                         |
+| HSRP v1 (Active/Standby/Preempt, virtuelle MAC, Tracking, Failover)                                                                                                        | 4     | fertig (kein HSRPv2/Auth/IPv6)                                      | `engine › hsrp_gre › HSRP`                   |
+| GRE-Tunnel (Loopback als Quelle, OSPF über Tunnel)                                                                                                                         | 4     | fertig                                                              | `engine › hsrp_gre › GRE…`                   |
+| Redistribution (connected/static/RIP/OSPF/EIGRP/BGP → RIP/OSPF/EIGRP/BGP), `default-information originate`                                                                 | 4     | fertig (keine Route-Maps)                                           | `engine › redistribute › *`                  |
+| BGP (eBGP/iBGP, Sitzungs-FSM, Pfadattribute, Bestpath-Auswahl, next-hop-self, update-source, Multihop)                                                                     | 4     | fertig (kein Route-Reflector, keine Policies/Communities, nur IPv4) | `engine › bgp › *`                           |
+| IPv6: Link-Local, Neighbor Discovery, ICMPv6-Ping, statische Routen, Router Advertisements + SLAAC, Hop Limit                                                              | 4     | fertig (kein DAD, kein DHCPv6, kein Traceroute)                     | `engine › ipv6 › *`                          |
+| OSPFv3 (IPv6)                                                                                                                                                              | 4     | fertig (einfachere LSA-Struktur, keine Redistribution)              | `engine › ipv6 › OSPFv3`                     |
+| `debug`-Ausgaben mit asynchroner Terminalausgabe (RIP, OSPF, EIGRP, HSRP, BGP, Routing, Tunnel)                                                                            | 4     | fertig                                                              | `cli › Phase 4 › debug…`, `web e2e › phase4` |
+| CLI: `router …`, `network`, `redistribute`, `neighbor`, `standby`, `ip ospf`, `tunnel`, `ipv6 …`, `show ip protocols/ospf/eigrp/bgp/standby/ipv6 …`; running-config-Replay | 4     | fertig                                                              | `cli › Phase 4 › *`                          |
+| GUI: Routing-Übersicht, Loopback, IPv6 an Router/Host, SLAAC, Protokollfilter                                                                                              | 4     | fertig                                                              | `web e2e › phase4`                           |
+
 ## Spätere Phasen (Auszug)
 
 | Feature                                                                     | Phase | Status | Test |
@@ -82,6 +101,5 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | IPv4-Routing, Router, statische Routen, TTL, Fragmentierung                 | 2     | offen  | –    |
 | CLI-Framework (Modi, `?`, Tab, Abkürzungen), `running-config`-Renderer      | 2     | offen  | –    |
 | Desktop (IP-Config, Command Prompt), Animation, PDU-Inspektor (voll)        | 2     | offen  | –    |
-| RIP/OSPF/EIGRP/BGP/HSRP/GRE/IPv6                                            | 4     | offen  | –    |
 | Wireless, Server-Dienste, Firewall, IoT, Physical View                      | 5     | offen  | –    |
 | `.nsim`, Autosave, Undo/Redo, Vorlagen, Scripting, Aufgabenmodus, Multiuser | 6     | offen  | –    |

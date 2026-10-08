@@ -177,6 +177,38 @@ export class EngineService {
     this.ctl.markDirty();
     return r;
   }
+  // ---- Phase 4: IPv6
+  setIpv6Routing(id: string, on: boolean): Result<true> {
+    const r = this.ctl.engine.setIpv6Routing(id, on);
+    this.ctl.markDirty();
+    return r;
+  }
+  setInterfaceIp6(
+    id: string,
+    ifaceId: string,
+    addr: string,
+    plen: number,
+    opts?: { eui64?: boolean; remove?: boolean },
+  ): Result<true> {
+    const r = this.ctl.engine.setInterfaceIp6(id, ifaceId, addr, plen, opts);
+    this.ctl.markDirty();
+    return r;
+  }
+  setHostIpv6(id: string, patch: Parameters<Engine['setHostIpv6']>[1]): Result<true> {
+    const r = this.ctl.engine.setHostIpv6(id, patch);
+    this.ctl.markDirty();
+    return r;
+  }
+  addStaticRoute6(id: string, r: Parameters<Engine['addStaticRoute6']>[1]): Result<true> {
+    const res = this.ctl.engine.addStaticRoute6(id, r);
+    this.ctl.markDirty();
+    return res;
+  }
+  removeStaticRoute6(id: string, r: Parameters<Engine['removeStaticRoute6']>[1]): Result<true> {
+    const res = this.ctl.engine.removeStaticRoute6(id, r);
+    this.ctl.markDirty();
+    return res;
+  }
   trace(id: string, dst: string): Result<number> {
     const r = this.ctl.engine.trace(id, dst);
     this.ctl.markDirty();

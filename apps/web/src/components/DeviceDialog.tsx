@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DeviceView } from '@netsim/engine';
 import { DeviceConfig, HostIpConfig } from './DevicePanel';
+import { HostIpv6 } from './PanelRouting';
 import { Browser } from './PanelServices';
 import { TerminalView } from './TerminalView';
 import { useStore } from '../store';
@@ -94,6 +95,7 @@ export function DeviceDialog() {
               ) : (
                 <div className="scroll pad">
                   <HostIpConfig dev={dev} />
+                  <HostIpv6 dev={dev} />
                 </div>
               )}
             </div>

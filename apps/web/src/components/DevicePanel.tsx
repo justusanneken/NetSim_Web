@@ -4,6 +4,7 @@ import type { DeviceView } from '@netsim/engine';
 import { api } from '../engine/client';
 import { formatTime } from '../format';
 import { selectedDeviceView, useStore } from '../store';
+import { HostIpv6, RoutingPanel } from './PanelRouting';
 import { ServicesConfig } from './PanelServices';
 import { SwitchConfig } from './PanelSwitch';
 
@@ -56,6 +57,8 @@ export function DeviceConfig({ dev }: { dev: DeviceView }) {
 
       {isHost(dev) && <HostIpConfig dev={dev} />}
       {(dev.type === 'router' || dev.type === 'switch-l3') && <RouterConfig dev={dev} />}
+      {(dev.type === 'router' || dev.type === 'switch-l3') && <RoutingPanel dev={dev} />}
+      {isHost(dev) && <HostIpv6 dev={dev} />}
       {(dev.type === 'switch-l2' || dev.type === 'switch-l3') && <SwitchConfig dev={dev} />}
       {dev.type === 'server' && <ServicesConfig dev={dev} />}
 

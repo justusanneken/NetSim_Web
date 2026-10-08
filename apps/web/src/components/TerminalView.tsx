@@ -39,11 +39,18 @@ export function TerminalView({ deviceId, label }: { deviceId: string; label: str
         if (!disposed && o) term.write(o);
       });
     });
+    // debug-Ausgaben kommen asynchron
+    const poll = window.setInterval(() => {
+      void api.termPoll(deviceId).then((o) => {
+        if (!disposed && o) term.write(o);
+      });
+    }, 300);
     const ro = new ResizeObserver(doFit);
     ro.observe(el);
     term.focus();
     return () => {
       disposed = true;
+      window.clearInterval(poll);
       sub.dispose();
       ro.disconnect();
       term.dispose();

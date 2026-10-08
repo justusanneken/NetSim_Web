@@ -66,6 +66,16 @@ class WorkerService extends EngineService {
     return '\x1bc' + entry.transcript + entry.term.redraw();
   }
 
+  /** Asynchrone Terminalausgaben (z. B. `debug`-Meldungen) seit dem letzten Abruf. */
+  termPoll(id: string): string {
+    const entry = this.terms.get(id);
+    const dev = this.engine.getDevice(id);
+    if (!entry || !dev?.powered) return '';
+    const out = entry.term.poll();
+    if (out) entry.transcript = (entry.transcript + out).slice(-MAX_TRANSCRIPT);
+    return out;
+  }
+
   /** Verarbeitet Tastatureingaben; liefert die auszugebenden Terminal-Daten. */
   termData(id: string, data: string): string {
     const entry = this.terms.get(id);

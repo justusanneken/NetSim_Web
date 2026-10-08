@@ -1,5 +1,7 @@
 import type { Engine } from './engine';
 import { ifaceName } from './ifaces';
+import { listIfaces6 } from './l3v6';
+import { linkLocalFromMac } from '@netsim/protocols';
 import type { RibEntry } from './rib';
 import type {
   CableType,
@@ -12,8 +14,11 @@ import type {
   DeviceType,
   PingResult,
   PortKind,
+  Device,
   PortRef,
+  RouterConfig,
   StaticRoute,
+  SwitchConfig,
   TraceSession,
 } from './types';
 
@@ -31,6 +36,33 @@ export interface PortView {
   operDuplex: 'half' | 'full';
   mtu: number;
   counters: Counters;
+}
+
+/** Zusammenfassung der dynamischen Routing-Protokolle (nur lesend, für das Panel). */
+export interface RoutingInfo {
+  rip: boolean;
+  ospf: {
+    pid: number;
+    v6: boolean;
+    rid?: string;
+    neighbors: { rid: string; ip: string; iface: string; state: string }[];
+  }[];
+  eigrp: { asn: number; neighbors: { ip: string; iface: string }[] }[];
+  bgp?: {
+    asn: number;
+    neighbors: { ip: string; asn: number; state: string; prefixes: number }[];
+  };
+  hsrp: { iface: string; group: number; state: string; vip?: string; priority: number }[];
+}
+
+export interface HostV6View {
+  enabled: boolean;
+  linkLocal: string;
+  addrs: { addr: string; plen: number }[];
+  slaac: { addr: string; plen: number }[];
+  gateway?: string;
+  raGateway?: string;
+  autoconfig: boolean;
 }
 
 export interface DeviceView {
@@ -61,7 +93,14 @@ export interface DeviceView {
     kind: 'phys' | 'sub' | 'svi' | 'loop' | 'tunnel';
     ip?: string;
     mask?: string;
+    /** IPv6-Adressen (global/ULA, inkl. SLAAC). */
+    v6?: string[];
   }[];
+  /** Router/L3-Switch: IPv6-Routing aktiv, IPv6-Routen. */
+  ipv6Routing?: boolean;
+  routes6?: RibEntry[];
+  routingInfo?: RoutingInfo;
+  hostV6?: HostV6View;
   /** Hosts: DHCP-Client, DNS, Dienste, HTTP-Abrufe. */
   dhcp?: DhcpClient['state'];
   dnsServers?: string[];
@@ -111,6 +150,75 @@ export interface ViewModel {
   domains: { hubs: string[]; endpoints: PortRef[] }[];
 }
 
+type L3Conf = RouterConfig | SwitchConfig;
+
+function ifaceListOf(d: Device, cfg: L3Conf): NonNullable<DeviceView['ifaceList']> {
+  const v6 = new Map(
+    listIfaces6(d, cfg).map((i) => [i.id, i.addrs.map((a) => `${a.addr}/${a.plen}`)]),
+  );
+  return Object.entries(cfg.ifaces).map(([id, c]) => ({
+    id,
+    name: ifaceName(d, id, c),
+    kind: c.kind,
+    ip: c.ip,
+    mask: c.mask,
+    v6: v6.get(id),
+  }));
+}
+
+function addRoutingView(engine: Engine, d: Device, cfg: L3Conf, v: DeviceView): void {
+  v.ipv6Routing = cfg.ipv6Routing;
+  v.routes6 = engine.routingTable6(d.id);
+  const r = cfg.routing;
+  const name = (id: string): string => ifaceName(d, id);
+  const info: RoutingInfo = { rip: !!r.rip, ospf: [], eigrp: [], hsrp: [] };
+  for (const [v6, map] of [
+    [false, r.ospf],
+    [true, r.ospf6],
+  ] as const) {
+    for (const c of Object.values(map)) {
+      info.ospf.push({
+        pid: c.pid,
+        v6,
+        rid: c.rid ?? c.routerId,
+        neighbors: Object.entries(c.ifs).flatMap(([id, ifs]) =>
+          Object.values(ifs.neighbors).map((n) => ({
+            rid: n.rid,
+            ip: n.ip,
+            iface: name(id),
+            state: n.state,
+          })),
+        ),
+      });
+    }
+  }
+  for (const c of Object.values(r.eigrp))
+    info.eigrp.push({
+      asn: c.asn,
+      neighbors: Object.values(c.neighbors).map((n) => ({ ip: n.ip, iface: name(n.ifaceId) })),
+    });
+  if (r.bgp)
+    info.bgp = {
+      asn: r.bgp.asn,
+      neighbors: Object.values(r.bgp.neighbors).map((n) => ({
+        ip: n.ip,
+        asn: n.asn,
+        state: n.state,
+        prefixes: n.prefixesRx,
+      })),
+    };
+  for (const [id, ic] of Object.entries(cfg.ifaces))
+    for (const g of Object.values(ic.hsrp ?? {}))
+      info.hsrp.push({
+        iface: name(id),
+        group: g.group,
+        state: g.state,
+        vip: g.vip,
+        priority: g.priority,
+      });
+  v.routingInfo = info;
+}
+
 export function buildDevices(engine: Engine): DeviceView[] {
   return Object.values(engine.state.devices).map((d) => {
     const v: DeviceView = {
@@ -148,34 +256,34 @@ export function buildDevices(engine: Engine): DeviceView[] {
       v.dnsServers = [...d.config.dnsServers];
       v.services = structuredClone(d.config.services);
       v.requests = d.config.requests.slice(-5);
+      const port = d.ports[0];
+      v.hostV6 = {
+        enabled: d.config.v6.enabled,
+        linkLocal: port ? linkLocalFromMac(port.mac) : '',
+        addrs: d.config.v6.addrs.map((a) => ({ addr: a.addr, plen: a.plen })),
+        slaac: d.config.v6.slaac.map((a) => ({ addr: a.addr, plen: a.plen })),
+        gateway: d.config.v6.gateway,
+        raGateway: d.config.v6.raGateway?.addr,
+        autoconfig: d.config.v6.autoconfig,
+      };
     } else if (d.config.kind === 'router') {
       v.hostname = d.config.sys.hostname;
       v.ifaces = structuredClone(d.config.ifaces);
-      v.ifaceList = Object.entries(d.config.ifaces).map(([id, c]) => ({
-        id,
-        name: ifaceName(d, id, c),
-        kind: c.kind,
-        ip: c.ip,
-        mask: c.mask,
-      }));
+      v.ifaceList = ifaceListOf(d, d.config);
       v.staticRoutes = structuredClone(d.config.staticRoutes);
       v.routes = engine.routingTable(d.id);
       v.pings = d.config.pings.slice(-20);
       v.traces = d.config.traces.slice(-3);
       v.arpTable = engine.arpTable(d.id);
+      addRoutingView(engine, d, d.config, v);
     } else if (d.config.kind === 'switch') {
       v.hostname = d.config.sys.hostname;
       v.macTable = engine.macTable(d.id);
       v.ifaces = structuredClone(d.config.ifaces);
-      v.ifaceList = Object.entries(d.config.ifaces).map(([id, c]) => ({
-        id,
-        name: ifaceName(d, id, c),
-        kind: c.kind,
-        ip: c.ip,
-        mask: c.mask,
-      }));
+      v.ifaceList = ifaceListOf(d, d.config);
       v.staticRoutes = structuredClone(d.config.staticRoutes);
       v.routes = d.type === 'switch-l3' ? engine.routingTable(d.id) : undefined;
+      if (d.type === 'switch-l3') addRoutingView(engine, d, d.config, v);
       v.vlans = Object.entries(d.config.vlans).map(([id, x]) => ({ id: Number(id), name: x.name }));
       v.vtp = { ...d.config.vtp };
       v.stpMode = d.config.stp.mode;

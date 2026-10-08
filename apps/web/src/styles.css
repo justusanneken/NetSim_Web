@@ -797,3 +797,36 @@ button.link {
   white-space: pre-wrap;
   margin: 0;
 }
+
+.event.proto-RIP {
+  border-left-color: #8250df;
+  background: color-mix(in srgb, #8250df 8%, transparent);
+}
+.event.proto-OSPF {
+  border-left-color: #1a7f37;
+  background: color-mix(in srgb, #1a7f37 8%, transparent);
+}
+.event.proto-EIGRP {
+  border-left-color: #bf3989;
+  background: color-mix(in srgb, #bf3989 8%, transparent);
+}
+.event.proto-BGP {
+  border-left-color: #cf222e;
+  background: color-mix(in srgb, #cf222e 8%, transparent);
+}
+.event.proto-HSRP {
+  border-left-color: #bc4c00;
+  background: color-mix(in srgb, #bc4c00 8%, transparent);
+}
+.event.proto-GRE {
+  border-left-color: #0969da;
+  background: color-mix(in srgb, #0969da 8%, transparent);
+}
+.event.proto-ICMP6 {
+  border-left-color: #1a7f37;
+  background: color-mix(in srgb, #1a7f37 8%, transparent);
+}
+.event.proto-ND {
+  border-left-color: #0a7e8c;
+  background: color-mix(in srgb, #0a7e8c 8%, transparent);
+}

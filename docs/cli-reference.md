@@ -82,3 +82,20 @@ sticky|mac-address MAC]`, `spanning-tree portfast|bpduguard enable|guard root`, 
 **Show:** `vlan [brief|id N]`, `interfaces trunk|switchport|status`, `spanning-tree [vlan N|summary]`,
 `etherchannel summary`, `port-security [interface X]`, `vtp status`, `ip dhcp binding|pool|conflict`,
 `access-lists [NAME]`, `ip nat translations|statistics`, `ip interface [brief]`, `ip route`. `clear ip nat translation *`.
+
+## Phase 4 – Routing, HSRP, GRE, IPv6, Debug
+
+**Prozesse:** `router rip|ospf N|eigrp N|bgp N`, `ipv6 router ospf N` (Untermodi mit `(config-router)#`).
+
+- RIP: `version 2`, `network A`, `passive-interface IF|default`, `[no] auto-summary`, `default-information originate`, `default-metric N`, `timers basic u i h f`, `redistribute SRC [ID] [metric M]`.
+- OSPF: `router-id`, `network A WILDCARD area N`, `passive-interface`, `auto-cost reference-bandwidth M`, `default-information originate [always] [metric M] [metric-type T]`, `redistribute … [metric M] [metric-type T] [subnets]`, `area N range A MASK [not-advertise]`.
+- EIGRP: `network A [WILDCARD]`, `eigrp router-id`, `passive-interface`, `[no] auto-summary`, `variance`, `redistribute … metric BW DLY REL LOAD MTU`.
+- BGP: `bgp router-id`, `neighbor A remote-as N|update-source IF|ebgp-multihop [N]|next-hop-self|shutdown|description|weight`, `network A mask M`, `redistribute …`, `bgp default local-preference`.
+
+**Schnittstelle:** `interface loopback N`, `interface tunnel N` (`tunnel source|destination|mode gre ip`), `bandwidth`, `delay`, `ip ospf PID area A`, `ip ospf cost|priority|hello-interval|dead-interval|network`, `ipv6 ospf …`, `standby G ip|priority|preempt|timers|track|name`, `ipv6 enable|address X/L [eui-64]|address autoconfig|nd ra suppress`.
+**Global:** `ipv6 unicast-routing`, `ipv6 route PREFIX/L NEXTHOP|IF [IF] [AD]`.
+
+**Show:** `ip protocols`, `ip route [rip|ospf|eigrp|bgp|static|connected]`, `ip rip database`, `ip ospf [neighbor|interface [brief]|database [router|network|summary|asbr-summary|external]]`, `ip eigrp neighbors|topology|interfaces`, `standby [brief]`, `ip bgp [summary|neighbors]`, `ipv6 route|interface [brief]|neighbors|protocols|ospf …`, `debugging`.
+**Clear:** `clear ip ospf process`, `clear ip bgp *`, `clear ip route *`.
+**Debug:** `debug ip rip`, `debug ip ospf events|adj|hello|packet|spf|lsa-generation`, `debug eigrp packets|fsm|neighbors`, `debug standby`, `debug ip bgp`, `debug ip routing`, `debug tunnel`, `debug all`, `undebug all`, `no debug …`. Ausgaben erscheinen asynchron im Terminal.
+**Ping:** `ping ipv6 X`, `ping X` mit IPv6-Adresse; Host-Shell: `ping <IPv6>`, `ipconfig` zeigt Link-Local und IPv6.

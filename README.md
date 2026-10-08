@@ -4,7 +4,7 @@ Browserbasierter **Netzwerksimulator** (Simulation, kein Emulator): Geräte plat
 konfigurieren, Pakete senden und Hop für Hop beobachten. Zielgruppe: Auszubildende/Studierende (CCNA-Niveau).
 UI: Deutsch (Default) und Englisch. Eigene Icons, keine Cisco-Marken.
 
-> **Stand: Phase 3 – Switching, Dienste, Filter** (Phase 2: Layer 3 + CLI-Grundlage). Siehe [docs/phase-1-plan.md](docs/phase-1-plan.md),
+> **Stand: Phase 4 – Routing-Protokolle und IPv6** (Phase 3: Switching/Dienste, Phase 2: Layer 3 + CLI). Siehe [docs/phase-1-plan.md](docs/phase-1-plan.md),
 > [docs/phase-2-plan.md](docs/phase-2-plan.md), [docs/coverage-matrix.md](docs/coverage-matrix.md) und
 > [docs/cli-reference.md](docs/cli-reference.md).
 
@@ -29,6 +29,13 @@ Voraussetzungen: Node ≥ 20, pnpm ≥ 10.
 | `packages/cli`       | CLI-Framework (ab Phase 2)                                                           |
 | `apps/web`           | React-UI (Konva, Zustand, i18next), Engine-Worker (Comlink)                          |
 | `docs/`              | Architektur, Entscheidungen, Vereinfachungen, Coverage-Matrix, Erweiterungsanleitung |
+
+## Bedienung (Phase 4)
+
+- Routing per CLI (`router ospf 1`, `network … area 0` …). Zeit beschleunigen (Geschwindigkeit bis 20×): OSPF braucht ca. 40–60 s virtuelle Zeit bis FULL.
+- `debug ip ospf adj` o. ä. im Router-CLI: Meldungen erscheinen asynchron; `undebug all` beendet sie.
+- Ereignisfilter: Hello-/Update-Protokolle (RIP, OSPF, EIGRP, BGP, HSRP) sind standardmäßig ausgeblendet.
+- Hosts: IPv6 im Panel (statisch oder SLAAC); Router: IPv6-Adressen, Loopbacks und Routing-Übersicht im Konfigurations-Panel.
 
 ## Bedienung (Phase 3)
 

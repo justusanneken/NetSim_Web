@@ -104,3 +104,16 @@
   (HTTPS ist nur ein Port-/Schemaflag). Seiten sind kurze Texte.
 - **NAT:** Timeouts per `ip nat translation timeout` für UDP/TCP/IP gemeinsam (ICMP fest 60 s); ALG/FTP fehlt.
 - **ACL:** `log`-Schlüsselwort wird akzeptiert, aber nicht gezählt; kein `object-group`, keine Zeitbereiche.
+
+## Phase 4
+
+- **Routing-Protokolle nutzen eigene PDU-Typen** (`RoutingPdu`); IP-Protokollnummern 89 (OSPF) und 88 (EIGRP) sind echt,
+  **BGP läuft ohne TCP** direkt in IP-Paketen (Protokoll 6/Port 179 nur zur Anzeige) mit Keepalive/Hold-Timer und Retry alle 5 s.
+- **Hintergrund-Timer:** Hello/Update/Keepalive laufen als `bg:`-Timer. Ohne Zeitfortschritt konvergiert nichts; die CLI wartet nur auf Vordergrundereignisse.
+- **RIP:** nur v2, Metrik der Redistribution Default 1 (IOS: unendlich), Hold-down wird nicht erzwungen (nur Invalid/Flush).
+- **OSPF:** DBD in einem Paket je Richtung; DR/BDR werden über Router-IDs statt Schnittstellenadressen angezeigt; Network-LSA-ID = DR-Schnittstellenadresse; LSA-Alterung mit 30-min-Refresh; kein ECMP, keine Stub/NSSA-Areas, keine Authentifizierung. SPF-Verzögerung ≈ 1 ms.
+- **EIGRP:** Successor-Wahl mit Feasibility Condition; Reliable Transport mit einem unbestätigten Paket je Nachbar (RTO 2 s, 16 Versuche); `variance` wird gespeichert, aber nicht ausgewertet.
+- **HSRP:** vereinfachte Zustandsmaschine (Listen → Speak → Standby/Active), Hello 3 s/Hold 10 s, keine Coup/Resign-Pakete.
+- **BGP:** Bestpath ohne Weight-/Community-Politik, keine Route-Maps/Filter, iBGP nur Full Mesh; eBGP ohne Multihop nur direkt verbunden (Fast-External-Fallover).
+- **IPv6:** keine Duplicate Address Detection, kein DHCPv6, keine Fragmentierung (zu große Pakete werden verworfen), kein Traceroute; Redistribution und EIGRP/RIPng/BGP für IPv6 fehlen. OSPFv3 nutzt dieselbe LSDB-Struktur wie v2 (Präfixe in Router-LSAs).
+- **Debug-Ausgabe:** Zeitstempel aus virtueller Zeit (`*Mar  1 …`); Meldungstexte sind englisch, nicht übersetzt.

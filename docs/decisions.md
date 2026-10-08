@@ -65,3 +65,7 @@ festgelegt. Jede Entscheidung ist umkehrbar und wird bei Bedarf in der jeweilige
 19. **Hintergrund-Timer (`bg:`)** (STP-Hello, VTP) zählen nicht als „Vordergrundarbeit“; `waitFor` der CLI endet damit
     sinnvoll, obwohl STP dauerhaft Ereignisse erzeugt.
 20. **Neue Engine-Meldungen** nur als i18n-Schlüssel mit Parametern; `apps/web/test/i18n.test.ts` erzwingt Vollständigkeit.
+21. **Routing-Zustand lebt im Konfigurationsbaum** (`L3Cfg.routing`, `dynRoutes`/`dynRoutes6`): Nachbarn, LSDB, Topologie sind JSON-serialisierbar (Snapshots/Schritt-zurück funktionieren). Pro Prozess `src` (`ospf:1`, `eigrp:100`, `rip`, `bgp`) für Neuberechnung und Redistribution.
+22. **Zentrale Neuberechnung** (`rt:recompute`, 1 ms): SPF, Redistribution, BGP-Bestpath laufen gebündelt bis zum Fixpunkt (max. 5 Durchläufe).
+23. **`debug`-Meldungen** sind Log-Einträge mit `debug`-Feld, nur bei aktivem Schalter erzeugt; die CLI-Sitzung holt sie per `poll()`, der Worker pusht sie per Polling an xterm. Periodische Routing-Protokolle sind im Ereignisfilter standardmäßig aus.
+24. **IPv6 als paralleler Stack** (`l3v6.ts`) neben IPv4; Router/Host-Knoten tragen optional `v6`. Protokolle (OSPFv3) nutzen Pseudo-Schnittstellen mit Link-Local-Adresse.
