@@ -1,6 +1,6 @@
 import { maskToPrefix } from '@netsim/protocols';
 import type { Port } from '@netsim/engine';
-import { networkOf } from '@netsim/engine';
+import { mgmtOf, networkOf } from '@netsim/engine';
 import { IFM, SUBMODES, resolveIface, resolveRange } from './ifnames';
 import { waitFor } from './util';
 import { K, P, R, Registry, choice, opt, type ModeId } from './parser';
@@ -11,6 +11,7 @@ import { addPhase3 } from './commands3';
 import { addPhase4 } from './commands4';
 import { addGaps } from './commandsGaps';
 import * as show from './show';
+import { addPhase5 } from './commands5';
 
 const U: ModeId[] = ['user', 'priv'];
 const PR: ModeId[] = ['priv'];
@@ -48,6 +49,10 @@ function saveStartup(s: CliSession): void {
 const confirm = (a: string): boolean => a.trim() === '' || /^y/i.test(a.trim());
 
 function logout(s: CliSession): void {
+  if (s.remote) {
+    s.closed = true;
+    return;
+  }
   s.out('');
   s.out('');
   s.out('');
@@ -395,7 +400,10 @@ export function buildRegistry(): Registry<CliSession> {
       K('terminal', 'Set terminal line parameters'),
       K('monitor', 'Copy debug output to the current terminal line'),
     ],
-    run: () => undefined,
+    run: (s) => {
+      s.monitor = !s.negated;
+    },
+    negatable: true,
   });
 
   // --- show
@@ -850,6 +858,7 @@ export function buildRegistry(): Registry<CliSession> {
     ],
     run: (s, a) => {
       s.lineTarget = a.target === 'console' ? 'con' : 'vty';
+      if (s.lineTarget === 'vty') mgmtOf(s.sys).vty.lines = Number(a.last ?? a.first) + 1;
       s.mode = 'config-line';
     },
   });
@@ -1021,6 +1030,7 @@ export function buildRegistry(): Registry<CliSession> {
 
   addPhase3(r);
   addPhase4(r);
+  addPhase5(r);
   addGaps(r);
   return r;
 }

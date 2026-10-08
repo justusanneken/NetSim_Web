@@ -9,10 +9,12 @@ import type {
   ViewModel,
 } from '@netsim/engine';
 import { api, proxy } from './engine/client';
+import { isEndDevice } from './deviceKinds';
 
 export type Tool = 'select' | 'hand' | 'cable' | 'delete' | 'pdu';
 export type CableChoice = CableType | 'auto';
 export type Theme = 'light' | 'dark';
+export type ViewMode = 'logical' | 'physical';
 
 export const ALL_PROTOS = [
   'ETH',
@@ -38,6 +40,20 @@ export const ALL_PROTOS = [
   'LINK',
   'CSMA',
   'SYS',
+  'TFTP',
+  'FTP',
+  'SMTP',
+  'POP3',
+  'NTP',
+  'SYSLOG',
+  'SNMP',
+  'RADIUS',
+  'TELNET',
+  'SSH',
+  'IOT',
+  'WIFI',
+  'FW',
+  'CAPWAP',
 ] as const;
 export type ProtoFilter = (typeof ALL_PROTOS)[number];
 
@@ -74,6 +90,7 @@ interface UiState {
   showPortLabels: boolean;
   colorblind: boolean;
   theme: Theme;
+  viewMode: ViewMode;
   toast: { key: string; params?: Record<string, string | number>; kind: 'ok' | 'error' } | null;
   stageView: { x: number; y: number; scale: number };
   dialog: { deviceId: string; tab: string } | null;
@@ -93,6 +110,7 @@ interface UiState {
   togglePortLabels(): void;
   toggleColorblind(): void;
   setTheme(t: Theme): void;
+  setViewMode(m: ViewMode): void;
   setStageView(v: { x: number; y: number; scale: number }): void;
   showToast(key: string, params?: Record<string, string | number>, kind?: 'ok' | 'error'): void;
   removeAnimations(ids: number[]): void;
@@ -142,11 +160,15 @@ export const useStore = create<UiState>((set, get) => ({
   portPicker: null,
   // Periodische Routing-Protokolle (Hello/Updates) standardmäßig ausgeblendet – sonst flutet das die Liste
   filters: Object.fromEntries(
-    ALL_PROTOS.map((p) => [p, !['RIP', 'OSPF', 'EIGRP', 'BGP', 'HSRP'].includes(p)]),
+    ALL_PROTOS.map((p) => [
+      p,
+      !['RIP', 'OSPF', 'EIGRP', 'BGP', 'HSRP', 'IOT', 'CAPWAP'].includes(p),
+    ]),
   ) as Record<ProtoFilter, boolean>,
   showPortLabels: false,
   colorblind: loadPref('netsim.cb', ['0', '1'], '0') === '1',
   theme: loadPref('netsim.theme', ['light', 'dark'], 'light'),
+  viewMode: 'logical',
   toast: null,
   stageView: { x: 0, y: 0, scale: 1 },
   dialog: null,
@@ -155,7 +177,7 @@ export const useStore = create<UiState>((set, get) => ({
   openDialog(deviceId, tab) {
     const dev = get().view?.devices.find((d) => d.id === deviceId);
     if (!dev || dev.type === 'hub') return;
-    const host = dev.type === 'pc' || dev.type === 'laptop' || dev.type === 'server';
+    const host = isEndDevice(dev);
     set({
       dialog: { deviceId, tab: tab ?? (host ? 'desktop' : 'config') },
       selectedDevice: deviceId,
@@ -205,6 +227,9 @@ export const useStore = create<UiState>((set, get) => ({
   setTheme(theme) {
     savePref('netsim.theme', theme);
     set({ theme });
+  },
+  setViewMode(viewMode) {
+    set({ viewMode });
   },
   setStageView(stageView) {
     set({ stageView });

@@ -29,7 +29,9 @@ import { natHasInbound, natInside2Outside, natOutside2Inside } from './nat';
 import type { Node6 } from './l3v6';
 import { routingRx } from './routing';
 import { tcpRx } from './svc/tcp';
-import type { Device, HostConfig, IpCore, L3Cfg, Port } from './types';
+import { fwPermit } from './p5/fw';
+import { svcTcpRx, svcUdpRx } from './p5/dispatch';
+import type { Device, HostConfig, IpCore, L3Cfg, Port, RouterConfig } from './types';
 
 export const ARP_RETRY_US = 1_000_000;
 export const ARP_MAX_ATTEMPTS = 3;
@@ -340,7 +342,13 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
       return;
     }
     const vip = node.vips?.find((v) => v.ifaceId === iface.id && v.ip === a.targetIp);
-    if (a.targetIp !== iface.ip && !vip) {
+    // Static NAT: Der Router antwortet per Proxy-ARP für die globale Adresse (Outside-Schnittstelle)
+    const proxy =
+      !vip &&
+      a.targetIp !== iface.ip &&
+      iface.cfg.natSide === 'outside' &&
+      (node.l3?.nat.rules.some((r) => r.kind === 'static' && r.global === a.targetIp) ?? false);
+    if (a.targetIp !== iface.ip && !vip && !proxy) {
       ctx.log({
         ...base,
         kind: 'drop',
@@ -369,7 +377,7 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
       kind: 'arp',
       op: 'reply',
       senderMac: vip?.mac ?? iface.mac,
-      senderIp: vip?.ip ?? iface.ip,
+      senderIp: vip?.ip ?? (proxy ? a.targetIp : iface.ip),
       targetMac: a.senderMac,
       targetIp: a.senderIp,
     };
@@ -492,9 +500,17 @@ function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn:
     sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.net, ip, ifaceIn.ip);
     return;
   }
+  // 2b) Firewall (Phase 5): Zustandsverfolgung, Security-Levels, ACL der Eingangsschnittstelle
+  let fwReturn = false;
+  if (l3 && (l3 as RouterConfig).fw) {
+    const v = fwPermit(ctx, node, ifaceIn, hop.iface, ip, base);
+    if (!v) return;
+    // Rückverkehr einer von außen aufgebauten Verbindung wird (außer bei Static NAT) nicht dynamisch übersetzt
+    fwReturn = v === 'ret' && !l3.nat.rules.some((r) => r.kind === 'static' && r.local === ip.src);
+  }
   let out: Ipv4Pdu = { ...structuredClone(ip), ttl: ip.ttl - 1 };
   // 3) NAT inside → outside (nach dem Routing)
-  if (l3 && ifaceIn.cfg.natSide === 'inside' && hop.iface.cfg.natSide === 'outside') {
+  if (l3 && !fwReturn && ifaceIn.cfg.natSide === 'inside' && hop.iface.cfg.natSide === 'outside') {
     const r = natInside2Outside(l3, out, hop.iface, ctx.now);
     if (r.blocked) {
       ctx.log({
@@ -626,6 +642,7 @@ function deliverLocal(
     return;
   }
   if (l4.kind === 'tcp') {
+    if (!broadcast && svcTcpRx(ctx, node, iface, base, ip, l4)) return;
     if (node.host && !broadcast) tcpRx(ctx, node, node.host, iface, base, ip, l4);
     else
       ctx.log({
@@ -643,6 +660,16 @@ function deliverLocal(
         kind: 'drop',
         status: 'drop',
         msg: { key: 'host.icmp.broadcastIgnored' },
+      });
+      return;
+    }
+    if (node.host?.firewallOn) {
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        proto: 'FW',
+        status: 'drop',
+        msg: { key: 'host.fw.blockedPing', params: { src: ip.src } },
       });
       return;
     }
@@ -698,6 +725,7 @@ function udpIn(
     if (node.l3) routingRx(ctx, node, iface, base, ip);
     return;
   }
+  if (app?.kind === 'svc' && svcUdpRx(ctx, node, iface, base, ip, udp, app)) return;
   if (app?.kind === 'dhcp' && dhcpRx(ctx, node, iface, base, ip, udp, app, frame)) return;
   if (app?.kind === 'dns' && dnsRx(ctx, node, iface, base, ip, udp, app)) return;
   ctx.log({

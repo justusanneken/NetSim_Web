@@ -1,3 +1,6 @@
+import { hostPort } from './p5/hostport';
+import { buildP5View, type DeviceP5View } from './p5/view';
+import type { PhysicalTree } from './p5types';
 import type { Engine } from './engine';
 import { ifaceName } from './ifaces';
 import { listIfaces6 } from './l3v6';
@@ -95,6 +98,8 @@ export interface HostV6View {
 }
 
 export interface DeviceView {
+  /** Phase 5: WLAN, Dienste, Management, Firewall, IoT, Module, Standort. */
+  p5?: DeviceP5View;
   id: string;
   type: DeviceType;
   model: string;
@@ -177,6 +182,8 @@ export interface ViewModel {
   queueLength: number;
   canStepBack: boolean;
   domains: { hubs: string[]; endpoints: PortRef[] }[];
+  /** Phase 5: Physical View (Stadt → Gebäude → Raum → Rack). */
+  physical?: PhysicalTree;
 }
 
 type L3Conf = RouterConfig | SwitchConfig;
@@ -314,7 +321,7 @@ export function buildDevices(engine: Engine): DeviceView[] {
       v.dnsServers = [...d.config.dnsServers];
       v.services = structuredClone(d.config.services);
       v.requests = d.config.requests.slice(-5);
-      const port = d.ports[0];
+      const port = hostPort(d);
       v.hostV6 = {
         enabled: d.config.v6.enabled,
         linkLocal: port ? linkLocalFromMac(port.mac) : '',
@@ -369,6 +376,7 @@ export function buildDevices(engine: Engine): DeviceView[] {
         };
       }
     }
+    v.p5 = buildP5View(engine, d);
     return v;
   });
 }

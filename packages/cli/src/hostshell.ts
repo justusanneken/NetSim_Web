@@ -1,10 +1,13 @@
 import { isValidIpv4, isValidIpv6, linkLocalFromMac, normalizeIpv6 } from '@netsim/protocols';
 import type { Device, Engine, HostConfig, PingResult } from '@netsim/engine';
 import { winMac } from './format';
-import type { Shell } from './shell';
+import type { Shell, ShellNest } from './shell';
+import { FtpShell } from './ftpshell';
+import { openRemote } from './remote';
+import { clockOf, formatClock } from '@netsim/engine';
 import { waitFor } from './util';
 
-const NOT_YET = ['netstat', 'telnet', 'ssh', 'ftp', 'tftp'];
+const NOT_YET = ['netstat'];
 
 const ms = (us: number): string => (us < 1000 ? '<1ms' : `${Math.round(us / 1000)}ms`);
 
@@ -12,6 +15,8 @@ const ms = (us: number): string => (us < 1000 ? '<1ms' : `${Math.round(us / 1000
 export class HostShell implements Shell {
   readonly history: string[] = [];
   readonly terminalLength = 0;
+  /** Terminal-Schicht für `telnet`/`ssh`/`ftp`-Sitzungen. */
+  nest?: ShellNest;
 
   constructor(
     private readonly engine: Engine,
@@ -57,12 +62,48 @@ export class HostShell implements Shell {
       case 'nslookup':
         this.nslookup(args, out);
         break;
+      case 'telnet':
+        out.push(this.remote(args, 'telnet'));
+        break;
+      case 'ssh':
+        out.push(this.remote(args, 'ssh'));
+        break;
+      case 'ftp':
+        out.push(this.ftp(args));
+        break;
+      case 'tftp':
+        out.push(this.tftp(args));
+        break;
+      case 'time':
+      case 'date':
+        out.push(this.time());
+        break;
+      case 'w32tm':
+        out.push(this.w32tm(args));
+        break;
+      case 'dir':
+        out.push(this.dirFiles());
+        break;
+      case 'type': {
+        const f = this.dev.config.files?.[args[0] ?? ''];
+        out.push(f ?? 'The system cannot find the file specified.');
+        break;
+      }
+      case 'del':
+        if (args[0] && this.dev.config.files) delete this.dev.config.files[args[0]];
+        break;
+      case 'echo': {
+        const m = /^echo\s+(.*?)\s*>\s*(\S+)\s*$/i.exec(line);
+        if (m) (this.dev.config.files ??= {})[m[2] as string] = m[1] as string;
+        else out.push(line.slice(5));
+        break;
+      }
       case 'cls':
         return '\x1b[2J\x1b[H';
       case 'help':
       case '?':
         out.push(
-          'Available commands: ping, tracert, ipconfig [/all|/release|/renew], nslookup, arp -a, cls, help',
+          'Available commands: ping, tracert, ipconfig [/all|/release|/renew], nslookup, arp -a, telnet, ssh -l user host, ftp, tftp, time, w32tm /resync, echo text > file, type, dir, del, cls, help',
         );
         break;
       default:
@@ -74,6 +115,111 @@ export class HostShell implements Shell {
           );
     }
     return out.length ? out.join('\n') + '\n' : '';
+  }
+
+  private remote(args: string[], proto: 'telnet' | 'ssh'): string {
+    let user: string | undefined;
+    let host: string | undefined;
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i] as string;
+      if (a === '-l') user = args[++i];
+      else if (!a.startsWith('-')) host = a;
+    }
+    if (!host) return `Usage: ${proto === 'ssh' ? 'ssh -l user ' : 'telnet '}host`;
+    const dst = this.resolve(host);
+    if (!dst)
+      return `Could not open connection to the host, on port ${proto === 'ssh' ? 22 : 23}: Connect failed`;
+    return openRemote({
+      engine: this.engine,
+      fromId: this.deviceId,
+      nest: this.nest,
+      dst,
+      proto,
+      user,
+      deferred: this.deferred,
+      style: 'win',
+    }).replace(/\n$/, '');
+  }
+
+  private ftp(args: string[]): string {
+    const host = args[0];
+    if (!host) return 'Usage: ftp host';
+    const dst = this.resolve(host);
+    if (!dst) return `Unknown host ${host}.`;
+    if (this.deferred()) return 'Simulation mode: FTP is not available while stepping.';
+    const r = this.engine.p5.open(this.deviceId, dst, 'ftp');
+    if (!r.ok) return `> ftp: connect :Network is unreachable`;
+    const key = r.value;
+    waitFor(this.engine, () => this.engine.p5.connState(this.deviceId, key)?.state !== 'syn-sent');
+    const c = this.engine.p5.connState(this.deviceId, key);
+    if (c?.state !== 'open') {
+      this.engine.p5.close(this.deviceId, key);
+      return '> ftp: connect :Connection timed out';
+    }
+    this.nest?.push(
+      new FtpShell(this.engine, this.deviceId, key, dst, String(c.banner?.args.text ?? '220')),
+      () => '',
+    );
+    return '';
+  }
+
+  private tftp(args: string[]): string {
+    const a = args.filter((x) => x.toLowerCase() !== '-i');
+    const [host, op, file, remote] = a;
+    if (!host || !file || !/^(get|put)$/i.test(op ?? ''))
+      return 'Usage: tftp [-i] host [GET | PUT] source [destination]';
+    const dst = this.resolve(host);
+    if (!dst) return 'Transfer timed out.';
+    const files = (this.dev.config.files ??= {});
+    const put = (op as string).toLowerCase() === 'put';
+    if (put && files[file] === undefined) return `Error: File ${file} not found.`;
+    const r = this.engine.p5.request(
+      this.deviceId,
+      dst,
+      'tftp',
+      put ? 'wrq' : 'rrq',
+      { file: put ? (remote ?? file) : file },
+      put ? files[file] : undefined,
+    );
+    if (!r.ok) return 'Transfer timed out.';
+    waitFor(
+      this.engine,
+      () => this.engine.p5.reqStatus(this.deviceId, r.value)?.status !== 'pending',
+    );
+    const st = this.engine.p5.reqStatus(this.deviceId, r.value);
+    if (st?.status !== 'done') return 'Transfer timed out.';
+    if (st.reply?.op === 'error') return `Error on server : ${String(st.reply.args.text)}`;
+    if (!put) files[remote ?? file] = st.reply?.body ?? '';
+    const n = put ? (files[file] ?? '').length : (st.reply?.body ?? '').length;
+    return `Transfer successful: ${n} bytes in 1 second, ${n} bytes/s`;
+  }
+
+  private time(): string {
+    const ms = this.engine.p5.clockMs(this.deviceId) ?? 0;
+    return `The current time is: ${formatClock(ms, true).split(' ')[0]?.replace(/^\*/, '')}\n${formatClock(ms, true).split(' ').slice(2).join(' ')}`;
+  }
+
+  private w32tm(args: string[]): string {
+    if ((args[0] ?? '').toLowerCase() !== '/resync') return 'Usage: w32tm /resync';
+    const cfg = this.dev.config;
+    if (!cfg.ntpServer) return 'The computer did not resync because no time data was available.';
+    const before = clockOf(this.dev)?.lastSyncUs;
+    this.engine.p5.ntpNow(this.deviceId);
+    waitFor(this.engine, () => clockOf(this.dev)?.lastSyncUs !== before);
+    return clockOf(this.dev)?.lastSyncUs !== before
+      ? 'Sending resync command to local computer\nThe command completed successfully.'
+      : 'The computer did not resync because no time data was available.';
+  }
+
+  private dirFiles(): string {
+    const f = Object.entries(this.dev.config.files ?? {});
+    return f.length
+      ? [
+          ' Directory of C:\\',
+          '',
+          ...f.map(([n, c]) => `${String(c.length).padStart(10)} ${n}`),
+        ].join('\n')
+      : 'File Not Found';
   }
 
   private flagValue(args: string[], flag: string): number | undefined {

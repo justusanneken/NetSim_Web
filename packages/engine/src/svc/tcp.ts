@@ -176,6 +176,7 @@ export function tcpRx(
 ): void {
   const k = key(t.dstPort, ip.src, t.srcPort);
   const c = h.tcp[k];
+  const ta = t.app?.kind === 'http' ? t.app : undefined;
   const log = (
     kk: string,
     status: 'ok' | 'drop' | 'info' = 'ok',
@@ -227,15 +228,15 @@ export function tcpRx(
     }
   }
   if (c?.state === 'established') {
-    if (t.app && t.app.status !== undefined && !t.app.method) {
+    if (ta && ta.status !== undefined && !ta.method) {
       const req = reqOf(h, c.pending?.reqId);
-      finish(h, req, { status: 'done', code: t.app.status, body: t.app.body ?? '' });
-      log('http.response', 'ok', { code: t.app.status });
+      finish(h, req, { status: 'done', code: ta.status, body: ta.body ?? '' });
+      log('http.response', 'ok', { code: ta.status });
       reply({ ack: true, fin: true }, t.ack, t.seq + 1);
       delete h.tcp[k];
       return;
     }
-    if (t.app?.method === 'GET' && c.pending === undefined) {
+    if (ta?.method === 'GET' && c.pending === undefined) {
       serveHttp(ctx, node, h, iface, ip, t, c, log);
       return;
     }
@@ -287,7 +288,7 @@ function serveHttp(
   c: TcpConn,
   log: (k: string, s?: 'ok' | 'drop' | 'info', p?: Record<string, string | number>) => void,
 ): void {
-  const path = t.app?.path ?? '/';
+  const path = (t.app?.kind === 'http' ? t.app.path : undefined) ?? '/';
   const page =
     h.services.http.pages[path] ??
     (path === '/index.html' ? h.services.http.pages['/'] : undefined);

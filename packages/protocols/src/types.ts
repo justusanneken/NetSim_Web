@@ -100,7 +100,7 @@ export interface Ipv4Pdu {
 
 export type IpPayload = IcmpPdu | UdpPdu | TcpPdu | RoutingPdu | GrePdu;
 
-export type AppPdu = DhcpPdu | Dhcp6Pdu | DnsPdu | RipPdu | HsrpPdu;
+export type AppPdu = DhcpPdu | Dhcp6Pdu | DnsPdu | RipPdu | HsrpPdu | SvcPdu;
 
 export interface UdpPdu {
   kind: 'udp';
@@ -128,7 +128,7 @@ export interface TcpPdu {
   ack: number;
   window: number;
   dataSize: number;
-  app?: HttpPdu;
+  app?: HttpPdu | SvcPdu;
 }
 
 export interface HttpPdu {
@@ -138,6 +138,33 @@ export interface HttpPdu {
   path?: string;
   host?: string;
   status?: number;
+  body?: string;
+}
+
+/** Dienste der Phase 5 (vereinfachte Anwendungsnachrichten, strukturiert statt Bytes). */
+export type SvcProto =
+  | 'tftp'
+  | 'ftp'
+  | 'smtp'
+  | 'pop3'
+  | 'ntp'
+  | 'syslog'
+  | 'snmp'
+  | 'radius'
+  | 'telnet'
+  | 'ssh'
+  | 'iot'
+  | 'capwap';
+
+/**
+ * Generische Anwendungsnachricht (Phase 5): `op` benennt die Operation, `args` die Felder,
+ * `body` optionale Nutzdaten (Dateiinhalt, Mailtext …). Größe = Nutzdaten + Kopf.
+ */
+export interface SvcPdu {
+  kind: 'svc';
+  proto: SvcProto;
+  op: string;
+  args: Record<string, string | number | boolean>;
   body?: string;
 }
 
@@ -485,6 +512,7 @@ export type Pdu =
   | Dhcp6Pdu
   | DnsPdu
   | HttpPdu
+  | SvcPdu
   | BpduPdu
   | VtpPdu
   | Ipv6Pdu
@@ -531,5 +559,19 @@ export type ProtoTag =
   | 'ICMP6'
   | 'ND'
   | 'LINK'
+  | 'TFTP'
+  | 'FTP'
+  | 'SMTP'
+  | 'POP3'
+  | 'NTP'
+  | 'SYSLOG'
+  | 'SNMP'
+  | 'RADIUS'
+  | 'TELNET'
+  | 'SSH'
+  | 'IOT'
+  | 'WIFI'
+  | 'FW'
+  | 'CAPWAP'
   | 'CSMA'
   | 'SYS';

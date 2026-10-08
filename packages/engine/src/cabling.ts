@@ -33,6 +33,17 @@ export function validateCable(
   const down = (problemKey: string): CableCheck => ({ allowed: true, operUp: false, problemKey });
   const up: CableCheck = { allowed: true, operUp: true };
 
+  // Phase 5: WLAN (nur von der Engine gelegt), Telefon-/Koaxkabel
+  if (cable === 'wireless')
+    return portA.kind === 'wifi' && portB.kind === 'wifi' ? up : reject('cable.reject.plug');
+  if (portA.kind === 'wifi' || portB.kind === 'wifi') return reject('cable.reject.plug');
+  if (cable === 'phone' || cable === 'coax') {
+    const plug = cable === 'phone' ? 'dsl' : 'coax';
+    return portA.kind === plug && portB.kind === plug ? up : reject('cable.reject.plug');
+  }
+  const wan = (k: Port['kind']): boolean => k === 'dsl' || k === 'coax';
+  if (wan(portA.kind) || wan(portB.kind)) return reject('cable.reject.plug');
+
   // Console / Rollover
   if (cable === 'rollover') {
     const ok =
@@ -84,6 +95,8 @@ export function validateCable(
 
 /** Wählt für zwei Geräte automatisch den passenden Kabeltyp („Automatisch wählen“). */
 export function pickCable(devA: Device, portA: Port, devB: Device, portB: Port): CableType {
+  if (portA.kind === 'dsl' && portB.kind === 'dsl') return 'phone';
+  if (portA.kind === 'coax' && portB.kind === 'coax') return 'coax';
   if (portA.kind === 'console' || portB.kind === 'console') return 'rollover';
   if (portA.kind === 'serial' && portB.kind === 'serial') return 'serial-dce';
   if (portA.kind === 'fiber-sfp' && portB.kind === 'fiber-sfp') return 'fiber';

@@ -1,5 +1,20 @@
 import type { HsrpCfg, OspfIfCfg, RoutingCfg, TunnelCfg } from './routing/types';
 import type {
+  ApCfg,
+  AppCore,
+  BridgeCfg,
+  ClockCfg,
+  FwCfg,
+  HostMailCfg,
+  IotCfg,
+  MgmtCfg,
+  PhysicalLoc,
+  PhysicalTree,
+  ServerSvc5,
+  WifiClientCfg,
+  WlcCfg,
+} from './p5types';
+import type {
   DnsRecord,
   Frame,
   Ipv4Addr,
@@ -33,7 +48,17 @@ export type DeviceType =
   | 'note';
 
 export type PortKind =
-  'fe' | 'ge' | 'tengig' | 'serial' | 'console' | 'aux' | 'usb' | 'wifi' | 'fiber-sfp';
+  | 'fe'
+  | 'ge'
+  | 'tengig'
+  | 'serial'
+  | 'console'
+  | 'aux'
+  | 'usb'
+  | 'wifi'
+  | 'fiber-sfp'
+  | 'dsl'
+  | 'coax';
 
 export type CableType =
   | 'straight'
@@ -217,6 +242,8 @@ export interface IpCore {
   nextIpId: number;
   traces: TraceSession[];
   nextTraceId: number;
+  /** Phase 5: Verbindungen/Anfragen der Anwendungsdienste (Telnet, SSH, FTP, TFTP, SNMP …). */
+  appc?: AppCore;
   /** IPv6 Duplicate Address Detection: Zustand je Adresse (Laufzeit, wird bei Bedarf angelegt). */
   dad?: Record<Ipv6Addr, DadEntry>;
 }
@@ -386,7 +413,7 @@ export interface DhcpClient {
   leaseSec: number;
 }
 
-export interface HostServices {
+export interface HostServices extends ServerSvc5 {
   http: { enabled: boolean; https: boolean; pages: Record<string, string> };
   dns: { enabled: boolean; records: DnsRecord[] };
   dhcp: DhcpServerCfg;
@@ -442,6 +469,18 @@ export interface HostConfig extends IpCore {
   requests: HttpRequest[];
   nextReqId: number;
   services: HostServices;
+  /** Phase 5: Uhr, NTP-Server, WLAN-Client, AP/WLC, IoT, Mail-Client, Host-Firewall. */
+  clock?: ClockCfg;
+  ntpServer?: Ipv4Addr;
+  wifi?: WifiClientCfg;
+  ap?: ApCfg;
+  wlc?: WlcCfg;
+  iot?: IotCfg;
+  mail?: HostMailCfg;
+  /** Windows-Firewall: blockiert eingehendes Ping. */
+  firewallOn?: boolean;
+  /** Phase 5: lokale Dateien des Hosts (FTP-/TFTP-Client, Texteditor). */
+  files?: Record<string, string>;
 }
 
 export interface LineConfig {
@@ -466,6 +505,8 @@ export interface SysConfig {
   startupConfig?: string;
   /** Initial-Konfigurationsdialog beantwortet/übersprungen. */
   setupDone: boolean;
+  /** Phase 5: Benutzer, SSH/vty, NTP, Syslog, SNMP, AAA, Uhr. */
+  mgmt?: MgmtCfg;
   /** `clock set`: Uhrzeit (ms seit Epoche) zum Zeitpunkt `atUs` der virtuellen Zeit. */
   clock?: { baseMs: number; atUs: number };
 }
@@ -586,6 +627,8 @@ export interface L3Cfg extends IpCore {
 export interface RouterConfig extends L3Cfg {
   kind: 'router';
   sys: SysConfig;
+  /** Nur Firewall-Modelle: ASA-ähnliche Zustandsverfolgung. */
+  fw?: FwCfg;
 }
 
 export interface MacEntry {
@@ -695,7 +738,8 @@ export interface UnsupportedConfig {
   kind: 'none';
 }
 
-export type DeviceState = HostConfig | RouterConfig | SwitchConfig | HubConfig | UnsupportedConfig;
+export type DeviceState =
+  HostConfig | RouterConfig | SwitchConfig | HubConfig | BridgeCfg | UnsupportedConfig;
 
 export interface Device {
   id: string;
@@ -707,7 +751,7 @@ export interface Device {
   modules: ModuleSlot[];
   powered: boolean;
   config: DeviceState;
-  physical: { rackPos?: number; location?: string };
+  physical: PhysicalLoc;
   /** Gesetzt, wenn ein Handler eine Exception geworfen hat. */
   crashed?: { message: string; t: number };
 }
@@ -820,6 +864,8 @@ export interface EngineState {
   /** Min-Heap, geordnet nach (t, seq). */
   queue: SimEvent[];
   transmissions: Transmission[];
+  /** Phase 5: Physical View (Stadt → Gebäude → Raum → Rack). */
+  physical?: PhysicalTree;
 }
 
 export interface EngineSnapshot {

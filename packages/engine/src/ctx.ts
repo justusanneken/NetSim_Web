@@ -30,6 +30,8 @@ export interface DeviceCtx {
   deviceIfaceName(ifaceId: string): string;
   /** Port-/Link-Status neu berechnen (nach dem aktuellen Ereignis). */
   requestRefresh(): void;
+  /** Phase 5: WLAN-Assoziationen nach diesem Ereignis neu berechnen (z. B. AP hat WLC-Konfiguration erhalten). */
+  requestWifiSync(): void;
   send(portId: string, frame: Frame, delayUs?: number, origin?: number): void;
   log(entry: LogInput): void;
   setTimer(name: string, delayUs: number, repeatUs?: number): void;

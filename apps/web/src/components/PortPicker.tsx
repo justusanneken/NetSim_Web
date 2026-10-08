@@ -26,15 +26,17 @@ export function PortPicker() {
         </button>
       </div>
       <ul>
-        {dev.ports.map((p) => (
-          <li key={p.id}>
-            <button disabled={!!p.linkId} onClick={() => void pickPort(p.id)}>
-              <span className={p.linkId ? (p.operUp ? 'dot up' : 'dot down') : 'dot free'} />
-              {p.name}
-              <span className="muted">{p.linkId ? t('picker.used') : t('picker.free')}</span>
-            </button>
-          </li>
-        ))}
+        {dev.ports
+          .filter((p) => p.kind !== 'wifi')
+          .map((p) => (
+            <li key={p.id}>
+              <button disabled={!!p.linkId} onClick={() => void pickPort(p.id)}>
+                <span className={p.linkId ? (p.operUp ? 'dot up' : 'dot down') : 'dot free'} />
+                {p.name}
+                <span className="muted">{p.linkId ? t('picker.used') : t('picker.free')}</span>
+              </button>
+            </li>
+          ))}
       </ul>
     </div>
   );

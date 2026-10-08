@@ -39,3 +39,17 @@ export {
   newBgpNbr,
 } from './routing';
 export { listIfaces6, type Iface6 } from './l3v6';
+export { WIFI_RANGE, apBss } from './p5/wifi';
+export { MODULES, AP_SLOTS } from './catalog';
+export { Phase5 } from './p5/api';
+export { formatClock, parseClockSet, deviceTimeMs, setDeviceTime, clockOf } from './p5/clock';
+export { mgmtOf, newMgmt, newFw, CHANNELS } from './p5defaults';
+export { fwApplyNat, idleText } from './p5/fw';
+export { vtyAuthMode, sshReady } from './p5/remote';
+export { SEVERITY_NAMES, syslogEmit } from './p5/syslog';
+export { buildMib, oidName, oidFromName, MIB_NAMES } from './p5/snmp';
+export { iotValue } from './p5/iot';
+export { parseLocation, formatLocation } from './p5/physical';
+export type { DeviceP5View } from './p5/view';
+export * from './p5types';
+export { EngineService5 } from './service5';

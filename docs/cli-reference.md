@@ -100,6 +100,26 @@ sticky|mac-address MAC]`, `spanning-tree portfast|bpduguard enable|guard root`, 
 **Debug:** `debug ip rip`, `debug ip ospf events|adj|hello|packet|spf|lsa-generation`, `debug eigrp packets|fsm|neighbors`, `debug standby`, `debug ip bgp`, `debug ip routing`, `debug tunnel`, `debug all`, `undebug all`, `no debug …`. Ausgaben erscheinen asynchron im Terminal.
 **Ping:** `ping ipv6 X`, `ping X` mit IPv6-Adresse; Host-Shell: `ping <IPv6>`, `ipconfig` zeigt Link-Local und IPv6.
 
+## Phase 5 – Management, Fernzugriff, Firewall
+
+**Global:** `username N [privilege L] (secret|password) PW`, `ip domain-name D`, `crypto key generate rsa [modulus B]` /
+`crypto key zeroize rsa`, `ip ssh version 1|2`, `ntp server A`, `ntp master [N]`, `logging host A`, `logging trap LEVEL`,
+`logging buffered`, `snmp-server community C ro|rw`, `snmp-server location|contact TEXT`, `aaa new-model`,
+`aaa authentication login LIST group radius [local] | local`, `radius-server host A key K`, `line vty 0 N` (Anzahl der Leitungen).
+**Line (vty):** `transport input all|none|ssh|telnet [ssh|telnet]`, `login local`, `login authentication LIST`, `login`, `password`.
+**Exec:** `telnet A`, `ssh -l USER A` (öffnet eine Remote-CLI-Sitzung, `exit` kehrt zurück), `clock set hh:mm:ss D Mon YYYY`,
+`terminal monitor` (Debug-Ausgabe auch auf vty), `copy running-config|startup-config tftp:[//HOST/DATEI]`,
+`copy tftp:[//HOST/DATEI] running-config|startup-config`.
+**Show:** `clock`, `ntp status|associations`, `users`, `ssh`, `ip ssh`, `logging`, `snmp`, `aaa`, `crypto key mypubkey rsa`.
+**Host-Shell:** `telnet H`, `ssh -l U H`, `ftp H` (`dir`, `get`, `put`, `delete`, `quit`), `tftp -i H GET|PUT DATEI`, `time`, `w32tm /resync`,
+`echo TEXT > DATEI`, `type`, `dir`, `del`.
+
+**Firewall (nur Gerätetyp Firewall):** Schnittstelle: `nameif NAME`, `security-level N`. Global:
+`access-list NAME extended permit|deny PROTO SRC [PORT] DST [PORT]` (`any`, `host A`, `A MASK`, `eq|neq|lt|gt|range`),
+`access-group NAME in interface NAMEIF`, `same-security-traffic permit inter-interface`,
+`object network NAME` → `subnet A M` | `host A`, `nat (A,B) dynamic interface | static MAPPED`.
+**Show:** `conn`, `xlate`, `nameif`.
+
 ## Lücken-Erweiterungen (Phasen 1–4)
 
 **ECMP:** `maximum-paths N` in `router rip|ospf|eigrp|bgp` (IGPs Default 4, BGP 1); `show ip route` zeigt gleichwertige Pfade als weitere `via`-Zeilen, `show ip route A.B.C.D` mehrere Descriptor Blocks mit `traffic share count`.

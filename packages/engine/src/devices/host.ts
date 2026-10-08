@@ -1,3 +1,5 @@
+import { apRx, apXmit } from '../p5/ap';
+import { hostPort } from '../p5/hostport';
 import { sameSubnet, summarizeFrame, type Frame, type Ipv4Addr } from '@netsim/protocols';
 import type { DeviceCtx } from '../ctx';
 import { diagTimer, startPing, startTrace, type PingOptions } from '../diag';
@@ -18,7 +20,7 @@ export { newIpCore } from '../defaults';
 /** IP-Sicht auf einen Host: eine Schnittstelle, Default-Gateway, kein Forwarding. */
 export function hostNode(ctx: DeviceCtx, cfg: HostConfig): IpNode {
   const dev = ctx.device;
-  const port = dev.ports[0];
+  const port = hostPort(dev);
   const ifaces: Iface[] =
     port && cfg.ip && cfg.mask
       ? [
@@ -50,11 +52,26 @@ export function hostNode(ctx: DeviceCtx, cfg: HostConfig): IpNode {
       if (sameSubnet(dst, iface.ip, iface.mask)) return { nextHop: dst, iface };
       return cfg.gateway ? { nextHop: cfg.gateway, iface } : undefined;
     },
-    xmit: (c, i, frame) => c.send(i.portId, frame, c.processingUs),
+    xmit: (c, i, frame) =>
+      cfg.ap ? apXmit(c, cfg, frame) : c.send(i.portId, frame, c.processingUs),
   };
 }
 
 export function hostRx(
+  ctx: DeviceCtx,
+  cfg: HostConfig,
+  portId: string,
+  frame: Frame,
+  fromId: string,
+): void {
+  if (cfg.ap) {
+    apRx(ctx, cfg, portId, frame, fromId, () => hostRxLocal(ctx, cfg, portId, frame, fromId));
+    return;
+  }
+  hostRxLocal(ctx, cfg, portId, frame, fromId);
+}
+
+function hostRxLocal(
   ctx: DeviceCtx,
   cfg: HostConfig,
   portId: string,

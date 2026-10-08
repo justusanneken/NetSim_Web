@@ -151,6 +151,7 @@ export class SimController {
       queueLength: e.queueLength,
       canStepBack: this.history.length > 0,
       domains: e.collisionDomains(),
+      physical: structuredClone(e.state.physical),
     };
   }
 }

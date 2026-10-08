@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import * as Comlink from 'comlink';
-import { CliSession, HostShell, Terminal, type Shell } from '@netsim/cli';
-import { EngineService, type ViewModel } from '@netsim/engine';
+import { CliSession, HostShell, ShellStack, Terminal, type Shell } from '@netsim/cli';
+import { EngineService5, type ViewModel } from '@netsim/engine';
 
 type Subscriber = (v: ViewModel) => void;
 
@@ -12,7 +12,7 @@ interface TermEntry {
 const MAX_TRANSCRIPT = 60_000;
 
 /** Fester Default-Seed ⇒ reproduzierbare Läufe (siehe docs/decisions.md). */
-class WorkerService extends EngineService {
+class WorkerService extends EngineService5 {
   private subscriber: Subscriber | undefined;
   private readonly terms = new Map<string, TermEntry>();
 
@@ -46,10 +46,30 @@ class WorkerService extends EngineService {
     const d = this.engine.getDevice(id);
     if (!d) return undefined;
     if (d.config.kind === 'host')
-      return new HostShell(this.engine, id, () => this.inSimulationMode);
+      return new ShellStack(new HostShell(this.engine, id, () => this.inSimulationMode));
     if (d.config.kind === 'router' || d.config.kind === 'switch')
-      return new CliSession(this.engine, id, () => this.inSimulationMode);
+      return new ShellStack(new CliSession(this.engine, id, () => this.inSimulationMode));
     return undefined;
+  }
+
+  /**
+   * Führt IOS-Konfigurationszeilen im globalen Konfigurationsmodus aus (GUI → „Equivalent IOS Commands“) und
+   * liefert die Ausgabe (Fehlermeldungen, falls ein Befehl abgelehnt wurde).
+   */
+  cliExec(id: string, lines: string[]): string {
+    const d = this.engine.getDevice(id);
+    if (!d || (d.config.kind !== 'router' && d.config.kind !== 'switch')) return '';
+    const s = new CliSession(this.engine, id, () => false);
+    s.silent = false;
+    s.mode = 'config';
+    (s as unknown as { started: boolean }).started = true;
+    let out = '';
+    for (const l of lines) {
+      if (!l.startsWith(' ') && !/^(exit|end)$/.test(l)) s.mode = 'config';
+      out += s.input(l.trim());
+    }
+    this.touch();
+    return out;
   }
 
   /** Öffnet (oder verbindet erneut mit) dem Terminal des Geräts; liefert Terminal-Daten. */

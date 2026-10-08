@@ -62,6 +62,10 @@ test('Phase 1: platzieren, verkabeln, pingen, Event-Liste', async ({ page }) => 
   }).toPass({ timeout: 55_000 });
 
   // Event-Liste: ARP-Flooding sichtbar, MAC-Tabelle des Switches gefüllt
+  // Filter auf ARP beschränken (die Liste ist virtualisiert und folgt dem neuesten Ereignis)
+  const filters = page.getByRole('group', { name: 'Protokollfilter' });
+  await filters.getByRole('button', { name: 'Keine' }).click();
+  await filters.locator('label.chip.proto-ARP').click();
   await expect(page.locator('.event.proto-ARP').first()).toBeVisible();
   await page.locator('.event.proto-ARP').last().click();
   await expect(page.locator('.inspector table.osi')).toBeVisible();

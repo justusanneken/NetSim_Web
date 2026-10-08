@@ -1,0 +1,185 @@
+/* Phase 5: WLAN, Dienste, Firewall, Physical View */
+.svc5 {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin: 4px 0;
+  background: var(--panel);
+}
+.svc5 > summary {
+  cursor: pointer;
+  padding: 2px 0;
+}
+.radio-box {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 6px 0;
+}
+.radio-box legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+.wifi-status {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+.wifi-status.connected {
+  color: var(--ok);
+}
+.wifi-status.auth-failed {
+  color: var(--bad);
+}
+.equiv pre,
+.logbuf {
+  background: var(--panel-2);
+  border-radius: 6px;
+  padding: 6px;
+  font-size: 12px;
+  overflow: auto;
+  max-height: 160px;
+  white-space: pre-wrap;
+}
+.ok {
+  color: var(--ok);
+}
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Gehäuse (Physical-Tab) */
+.case {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+  padding: 10px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--panel-2),
+    var(--panel-2) 8px,
+    var(--panel) 8px,
+    var(--panel) 16px
+  );
+}
+.case-ports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 320px;
+}
+.case-port {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+.case-port.up {
+  background: var(--ok);
+}
+.case-port.down {
+  background: var(--bad);
+}
+.case-slots {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.case-slot {
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+.case-slot.used {
+  border-style: solid;
+  background: var(--row-sel);
+}
+
+/* Physical View */
+.physical-view {
+  height: 100%;
+  overflow: auto;
+  padding: 10px;
+  background: var(--bg);
+}
+.phys-city,
+.phys-building {
+  border-left: 3px solid var(--border);
+  margin: 6px 0 6px 6px;
+  padding-left: 8px;
+}
+.phys-rooms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.phys-room {
+  min-width: 180px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 6px;
+}
+.phys-rack {
+  margin-top: 4px;
+  padding: 3px;
+  border: 2px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel-2);
+}
+.phys-devs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.phys-dev {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.phys-unplaced {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Palette mit sieben Kategorien: Tabs umbrechen statt in die Simulationsleiste zu ragen */
+.palette > .tabs {
+  flex-wrap: wrap;
+}
+.palette > .tabs button {
+  flex: 1 0 auto;
+  padding: 3px 6px;
+}
+.event.proto-WIFI,
+.event.proto-CAPWAP {
+  border-left-color: #1c7ed6;
+  background: color-mix(in srgb, #1c7ed6 8%, transparent);
+}
+.event.proto-FW {
+  border-left-color: #c92a2a;
+  background: color-mix(in srgb, #c92a2a 8%, transparent);
+}
+.event.proto-TFTP,
+.event.proto-FTP,
+.event.proto-SMTP,
+.event.proto-POP3,
+.event.proto-NTP,
+.event.proto-SYSLOG,
+.event.proto-SNMP,
+.event.proto-RADIUS,
+.event.proto-TELNET,
+.event.proto-SSH,
+.event.proto-IOT {
+  border-left-color: #7048e8;
+  background: color-mix(in srgb, #7048e8 8%, transparent);
+}

@@ -21,13 +21,14 @@ export type ModeId =
   | 'config-ospf6'
   | 'config-eigrp'
   | 'config-bgp'
+  | 'config-obj-net'
   | 'config-route-map'
   | 'config-bgp-af6'
   | 'config-dhcp6'
   | 'config-rip6';
 export type ParamType =
   'word' | 'int' | 'ip' | 'mask' | 'iface' | 'vlans' | 'mac' | 'wildcard' | 'ipv6' | 'prefix6';
-export type Family = 'router' | 'switch' | 'switch-l3';
+export type Family = 'router' | 'switch' | 'switch-l3' | 'firewall';
 export type Args = Record<string, string>;
 
 export interface KwSlot {
@@ -64,7 +65,7 @@ export interface CommandDef<C> {
   /** Zusätzlich als `no …` und `default …` verfügbar; Handler bekommt `cx.negated`. */
   negatable?: boolean;
   /** Nur für diese Gerätefamilie sichtbar (`switch` umfasst L2- und L3-Switches). */
-  only?: 'router' | 'switch' | 'switch-l3' | 'l3';
+  only?: 'router' | 'switch' | 'switch-l3' | 'l3' | 'firewall';
 }
 
 // ---------------------------------------------------------------- Builder (DSL)
@@ -168,8 +169,9 @@ function validParam(s: ParamSlot, tok: string, env: Env): boolean {
 
 export function familyOk(only: CommandDef<never>['only'], family: Family): boolean {
   if (!only) return true;
-  if (only === 'router') return family === 'router';
-  if (only === 'switch') return family !== 'router';
+  if (only === 'firewall') return family === 'firewall';
+  if (only === 'router') return family === 'router' || family === 'firewall';
+  if (only === 'switch') return family !== 'router' && family !== 'firewall';
   if (only === 'switch-l3') return family === 'switch-l3';
   return family !== 'switch'; // 'l3': Router oder L3-Switch
 }
@@ -194,7 +196,12 @@ export class Registry<C> {
 
   private compiled(mode: ModeId, env: Env): Compiled<C>[] {
     const out: Compiled<C>[] = [];
-    for (const d of this.defs) {
+    // Firewall-Befehle haben Vorrang vor gleich lautenden Router-Befehlen (z. B. `access-list NAME extended …`)
+    const defs = [
+      ...this.defs.filter((d) => d.only === 'firewall'),
+      ...this.defs.filter((d) => d.only !== 'firewall'),
+    ];
+    for (const d of defs) {
       if (!d.modes.includes(mode) || !familyOk(d.only, env.family)) continue;
       out.push({ ...d, negated: false });
       if (d.negatable) {

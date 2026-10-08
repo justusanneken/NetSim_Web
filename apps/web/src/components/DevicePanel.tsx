@@ -8,6 +8,11 @@ import { selectedDeviceView, useStore } from '../store';
 import { HostIpv6, RoutingPanel } from './PanelRouting';
 import { ServicesConfig } from './PanelServices';
 import { SwitchConfig } from './PanelSwitch';
+import { hasCli, hasHostStack, isEndDevice, isL3Device } from '../deviceKinds';
+import { FirewallPanel, MgmtPanel } from './PanelMgmt';
+import { BridgePanel } from './PanelPhysical';
+import { HostTime, IotDeviceForm, Services5Config } from './PanelServices5';
+import { ApPanel, WifiClient, WlcPanel } from './PanelWireless';
 
 export function DevicePanel() {
   const dev = useStore(selectedDeviceView);
@@ -56,12 +61,21 @@ export function DeviceConfig({ dev }: { dev: DeviceView }) {
         </div>
       )}
 
-      {isHost(dev) && <HostIpConfig dev={dev} />}
-      {(dev.type === 'router' || dev.type === 'switch-l3') && <RouterConfig dev={dev} />}
+      {hasHostStack(dev) && <HostIpConfig dev={dev} />}
+      {isL3Device(dev) && <RouterConfig dev={dev} />}
       {(dev.type === 'router' || dev.type === 'switch-l3') && <RoutingPanel dev={dev} />}
       {isHost(dev) && <HostIpv6 dev={dev} />}
       {(dev.type === 'switch-l2' || dev.type === 'switch-l3') && <SwitchConfig dev={dev} />}
       {dev.type === 'server' && <ServicesConfig dev={dev} />}
+      {dev.type === 'server' && <Services5Config dev={dev} />}
+      {isEndDevice(dev) && <HostTime dev={dev} />}
+      {dev.p5?.wifi && <WifiClient dev={dev} />}
+      {dev.type === 'ap' && <ApPanel dev={dev} />}
+      {dev.type === 'wlc' && <WlcPanel dev={dev} />}
+      {dev.p5?.iot && <IotDeviceForm dev={dev} />}
+      {dev.p5?.bridge && <BridgePanel dev={dev} />}
+      {hasCli(dev) && <MgmtPanel dev={dev} />}
+      {dev.type === 'firewall' && <FirewallPanel dev={dev} />}
 
       <h4>{t('panel.ports')}</h4>
       <table className="grid">
@@ -133,8 +147,7 @@ export function DeviceConfig({ dev }: { dev: DeviceView }) {
   );
 }
 
-const isHost = (d: DeviceView): boolean =>
-  d.type === 'pc' || d.type === 'laptop' || d.type === 'server';
+const isHost = isEndDevice;
 
 export function HostIpConfig({ dev }: { dev: DeviceView }) {
   const { t } = useTranslation();

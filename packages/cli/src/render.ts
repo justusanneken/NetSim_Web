@@ -18,6 +18,7 @@ import type {
 import { ciscoMac } from './format';
 import { compressVlans, ifDisplay } from './ifnames';
 import { type7Encrypt } from './secrets';
+import { fwGlobalLines, fwIfaceLines, mgmtGlobalLines, vtyExtraLines, vtyLast } from './render5';
 
 type CliConfig = RouterConfig | SwitchConfig;
 
@@ -80,9 +81,8 @@ function l3Lines(cfg: L3Cfg, c: IfaceCfg | undefined, out: string[]): void {
   for (const h of c?.helpers ?? []) out.push(` ip helper-address ${h}`);
   if (c?.aclIn) out.push(` ip access-group ${c.aclIn} in`);
   if (c?.aclOut) out.push(` ip access-group ${c.aclOut} out`);
-  if (c?.natSide) out.push(` ip nat ${c.natSide}`);
+  if (c?.natSide && !(cfg as RouterConfig).fw) out.push(` ip nat ${c.natSide}`);
   if (c) routingIfaceLines(c, out);
-  void cfg;
 }
 
 const area = (a: string): string => a;
@@ -220,6 +220,7 @@ function renderInterfaces(d: Device & { config: CliConfig }, L: string[]): void 
       if (p.speed !== 'auto') out.push(` speed ${p.speed}`);
     } else {
       if (p.mtu !== 1500) out.push(` ip mtu ${p.mtu}`);
+      if (cfg.kind === 'router') out.push(...fwIfaceLines(cfg, p.id));
       l3Lines(cfg, cfg.ifaces[p.id], out);
       out.push(` duplex ${p.duplex}`, ` speed ${p.speed}`);
     }
@@ -319,6 +320,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     L.push('!');
   }
   if (sys.domainName) L.push(`ip domain-name ${sys.domainName}`, '!');
+  L.push(...mgmtGlobalLines(cfg));
   if (cfg.kind === 'switch') {
     if (cfg.vtp.mode !== 'server') L.push(`vtp mode ${cfg.vtp.mode}`);
     if (cfg.vtp.domain) L.push(`vtp domain ${cfg.vtp.domain}`);
@@ -349,7 +351,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     L.push(`ip nat pool ${name} ${p.start} ${p.end} netmask ${p.mask}`);
   }
   if (cfg.nat.timeoutSec !== undefined) L.push(`ip nat translation timeout ${cfg.nat.timeoutSec}`);
-  for (const rule of cfg.nat.rules) {
+  for (const rule of cfg.kind === 'router' && cfg.fw ? [] : cfg.nat.rules) {
     if (rule.kind === 'static') {
       L.push(
         rule.proto
@@ -388,7 +390,9 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
       .join(' ');
     L.push(`ipv6 route ${r.prefix.toUpperCase()}/${r.plen} ${via}${r.ad !== 1 ? ` ${r.ad}` : ''}`);
   }
-  const acls = Object.values(cfg.acls).sort((a, b) =>
+  const isFw = cfg.kind === 'router' && cfg.fw !== undefined;
+  if (cfg.kind === 'router') L.push(...fwGlobalLines(cfg));
+  const acls = (isFw ? [] : Object.values(cfg.acls)).sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { numeric: true }),
   );
   for (const acl of acls) {
@@ -406,11 +410,15 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
   if (sys.bannerMotd !== undefined) L.push(`banner motd ^C${sys.bannerMotd}^C`, '!');
   renderLine(L, 'line con 0', sys.lineCon, enc);
   L.push('!');
-  if (cfg.kind === 'switch') {
+  if (cfg.kind === 'switch' && vtyLast(cfg) === 4) {
     renderLine(L, 'line vty 0 4', sys.lineVty, enc);
-    L.push('!');
+    L.push(...vtyExtraLines(cfg), '!');
     renderLine(L, 'line vty 5 15', sys.lineVty, enc);
-  } else renderLine(L, 'line vty 0 4', sys.lineVty, enc);
+    L.push(...vtyExtraLines(cfg));
+  } else {
+    renderLine(L, `line vty 0 ${vtyLast(cfg)}`, sys.lineVty, enc);
+    L.push(...vtyExtraLines(cfg));
+  }
   L.push('!', 'end');
   return L;
 }
