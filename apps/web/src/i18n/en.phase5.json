@@ -99,7 +99,7 @@
   "desktop.iot": "IoT monitor",
   "desktop.files": "Files",
   "desktop.firewall": "Firewall",
-  "svc5.title": "Server services (phase 5)",
+  "svc5.title": "Application servers (phase 5)",
   "svc5.mail": "Mail (SMTP/POP3)",
   "svc5.mailDomain": "Mail domain",
   "svc5.iot": "IoT registration",
@@ -232,5 +232,6 @@
   "device.cable-modem": "Cable modem",
   "device.iot-sensor": "IoT sensor",
   "device.iot-actuator": "IoT actuator",
-  "device.sbc": "Single-board computer"
+  "device.sbc": "Single-board computer",
+  "time.ntpApply": "Set"
 }

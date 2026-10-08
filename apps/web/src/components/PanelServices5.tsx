@@ -828,7 +828,7 @@ export function HostTime({ dev }: { dev: DeviceView }) {
           onChange={(e) => setNtp(e.target.value)}
         />
         <button onClick={() => void call(api.setHostNtp(dev.id, ntp.trim()))}>
-          {t('common.apply')}
+          {t('time.ntpApply')}
         </button>
       </div>
     </>

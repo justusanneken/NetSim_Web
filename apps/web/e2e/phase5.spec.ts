@@ -116,6 +116,9 @@ test('Phase 5: Laptop verbindet sich per WPA2 mit dem Access Point und pingt den
   await closeDialog(page);
 
   // Ereignisliste zeigt Authentifizierung und Assoziation
+  const filters = page.getByRole('group', { name: 'Protokollfilter' });
+  await filters.getByRole('button', { name: 'Keine' }).click();
+  await filters.locator('label.chip.proto-WIFI').click();
   await expect(page.locator('.event', { hasText: 'assoziiert' }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -301,6 +304,7 @@ test('Phase 5: Physical View und Geräte-Dialog Physical-Tab', async ({ page }) 
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await place(page, 'Netzwerk', 'Router', 300, 200);
+  await page.waitForTimeout(500);
   await click(page, 300, 200, 2);
   const dlg = page.getByRole('dialog');
   await page.getByRole('tab', { name: 'Physical' }).click();
