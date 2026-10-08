@@ -20,6 +20,7 @@ import {
 } from './stp';
 import { vtpRx, vtpTimer } from './vtp';
 import { l3Node } from './l3dev';
+import { ip6FrameRx } from '../l3v6';
 import type { Device, MacEntry, SwitchConfig, SwitchPortCfg } from '../types';
 
 export type SwitchDev = Device & { config: SwitchConfig };
@@ -258,14 +259,29 @@ export function switchRx(
   // 6) L3-Anbindung (SVI)
   const sviCfg = cfg.ifaces[`vlan${vlan}`];
   if (
-    sviCfg?.ip &&
+    (sviCfg?.ip || sviCfg?.v6) &&
     (frame.dst === dev.ports[0]?.mac || isBroadcastMac(frame.dst) || isMulticastMac(frame.dst))
   ) {
     const node = l3Node(ctx, dev);
-    const svi = node.ifaces.find((i) => i.kind === 'svi' && i.vlan === vlan);
-    if (svi) {
-      ifaceFrameRx(ctx, node, svi, { ...frame, vlan: undefined }, fromId, port);
-      if (frame.dst === svi.mac) return;
+    if (frame.payload.kind === 'ipv6') {
+      const svi6 = node.v6?.ifaces.find((i) => i.kind === 'svi' && i.vlan === vlan);
+      if (node.v6 && svi6) {
+        ip6FrameRx(
+          ctx,
+          { dev, cfg: node.cfg, v6: node.v6, xmit: node.xmit },
+          svi6,
+          { ...frame, vlan: undefined },
+          fromId,
+          port,
+        );
+        if (frame.dst === svi6.mac) return;
+      }
+    } else {
+      const svi = node.ifaces.find((i) => i.kind === 'svi' && i.vlan === vlan);
+      if (svi) {
+        ifaceFrameRx(ctx, node, svi, { ...frame, vlan: undefined }, fromId, port);
+        if (frame.dst === svi.mac) return;
+      }
     }
   }
 

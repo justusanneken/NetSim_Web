@@ -326,13 +326,15 @@ export interface TunnelCfg {
 export interface RoutingCfg {
   rip?: RipCfg;
   ospf: Record<number, OspfCfg>;
+  /** OSPFv3 (IPv6). */
+  ospf6: Record<number, OspfCfg>;
   eigrp: Record<number, EigrpCfg>;
   bgp?: BgpCfg;
   /** Aktive `debug`-Schalter (z. B. `ospf.adj`). */
   debug: string[];
 }
 
-export const newRouting = (): RoutingCfg => ({ ospf: {}, eigrp: {}, debug: [] });
+export const newRouting = (): RoutingCfg => ({ ospf: {}, ospf6: {}, eigrp: {}, debug: [] });
 
 export const isPassive = (
   c: { passive: string[]; unpassive: string[]; passiveDefault: boolean },

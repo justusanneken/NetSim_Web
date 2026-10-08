@@ -1,5 +1,14 @@
 import type { HsrpCfg, OspfIfCfg, RoutingCfg, TunnelCfg } from './routing/types';
-import type { DnsRecord, Frame, Ipv4Addr, Ipv4Pdu, Mac, ProtoTag } from '@netsim/protocols';
+import type {
+  DnsRecord,
+  Frame,
+  Ipv4Addr,
+  Ipv4Pdu,
+  Ipv6Addr,
+  Ipv6Pdu,
+  Mac,
+  ProtoTag,
+} from '@netsim/protocols';
 
 export type DeviceType =
   | 'pc'
@@ -181,9 +190,26 @@ export interface ReasmEntry {
 }
 
 /** Gemeinsamer Zustand jedes Geräts mit IPv4-Stack (Host und Router). */
+/** IPv6-Adresse mit Präfixlänge. */
+export interface V6Addr {
+  addr: Ipv6Addr;
+  plen: number;
+  /** Aus Präfix + EUI-64 gebildet (`ipv6 address … eui-64`). */
+  eui64?: boolean;
+}
+
+export interface NdPending {
+  attempts: number;
+  ifaceId: string;
+  queue: Ipv6Pdu[];
+}
+
 export interface IpCore {
   arpCache: Record<Ipv4Addr, ArpEntry>;
   arpPending: Record<Ipv4Addr, ArpPending>;
+  /** IPv6: Neighbor Cache und ausstehende Auflösungen. */
+  nd: Record<Ipv6Addr, ArpEntry>;
+  ndPending: Record<Ipv6Addr, NdPending>;
   reasm: Record<string, ReasmEntry>;
   pingSessions: PingSession[];
   pings: PingResult[];
@@ -343,8 +369,23 @@ export interface HostServices {
   dhcp: DhcpServerCfg;
 }
 
+/** IPv6-Stack eines Hosts. */
+export interface HostV6 {
+  enabled: boolean;
+  addrs: V6Addr[];
+  autoconfig: boolean;
+  /** Laufzeit: SLAAC-Adressen. */
+  slaac: V6Addr[];
+  /** Statisches Default-Gateway (meist Link-Local des Routers). */
+  gateway?: Ipv6Addr;
+  /** Per RA gelernter Default-Router. */
+  raGateway?: { addr: Ipv6Addr; expiresAt: number };
+  rsSent: number;
+}
+
 export interface HostConfig extends IpCore {
   kind: 'host';
+  v6: HostV6;
   ip?: Ipv4Addr;
   mask?: string;
   gateway?: Ipv4Addr;
@@ -405,6 +446,8 @@ export interface IfaceCfg {
   aclOut?: string;
   natSide?: 'inside' | 'outside';
   helpers?: Ipv4Addr[];
+  /** IPv6-Konfiguration der Schnittstelle. */
+  v6?: V6IfCfg;
   /** Bandbreite (kbit/s) für OSPF-Kosten/EIGRP; sonst aus der Linkgeschwindigkeit. */
   bandwidth?: number;
   /** EIGRP-Delay in Einheiten von 10 µs. */
@@ -415,7 +458,29 @@ export interface IfaceCfg {
   /** RIP: Split Horizon an dieser Schnittstelle (Default an). */
   ripSplitHorizon?: boolean;
 }
+export interface V6IfCfg {
+  /** `ipv6 enable`: Link-Local ohne globale Adresse. */
+  enabled: boolean;
+  addrs: V6Addr[];
+  /** `ipv6 address autoconfig` (SLAAC). */
+  autoconfig: boolean;
+  /** `ipv6 nd ra suppress`. */
+  raSuppress?: boolean;
+  /** OSPFv3 (`ipv6 ospf PID area A`). */
+  ospf?: OspfIfCfg;
+  /** Laufzeit: per SLAAC gelernte Adressen. */
+  slaac: V6Addr[];
+}
+
 export type RouterIface = IfaceCfg;
+
+export interface StaticRoute6 {
+  prefix: Ipv6Addr;
+  plen: number;
+  nextHop?: Ipv6Addr;
+  outIfaceId?: string;
+  ad: number;
+}
 
 export interface StaticRoute {
   prefix: Ipv4Addr;
@@ -448,6 +513,12 @@ export interface DynRoute {
 export interface L3Cfg extends IpCore {
   dynRoutes: DynRoute[];
   routing: RoutingCfg;
+  /** `ipv6 unicast-routing`. */
+  ipv6Routing: boolean;
+  staticRoutes6: StaticRoute6[];
+  dynRoutes6: DynRoute[];
+  /** Schnittstellen mit laufendem Router-Advertisement-Timer. */
+  raIfs: string[];
   ifaces: Record<string, IfaceCfg>;
   staticRoutes: StaticRoute[];
   acls: Record<string, Acl>;

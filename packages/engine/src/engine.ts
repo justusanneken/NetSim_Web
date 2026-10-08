@@ -1,5 +1,9 @@
 import {
+  ipv6Network,
+  isLinkLocalIpv6,
   isValidIpv4,
+  isValidIpv6,
+  normalizeIpv6,
   macFromCounter,
   parseIpv4,
   maskToPrefix,
@@ -24,6 +28,8 @@ import {
 } from './devices/host';
 import { l3Ping, l3Timer, l3Trace, routerRx, type L3Dev } from './devices/l3dev';
 import { routingResetRuntime, routingSync } from './routing';
+import { buildRib6, listIfaces6 } from './l3v6';
+import { hostV6 } from './devices/host';
 import { ifaceName, listIfaces, sviId, subId } from './ifaces';
 import { buildRib, networkOf, type RibEntry } from './rib';
 import { hubRx } from './devices/hub';
@@ -41,6 +47,7 @@ import { heapPop, heapPush, heapRemove } from './heap';
 import { mulberry32 } from './rng';
 import type {
   HostConfig,
+  V6IfCfg,
   SwitchPortCfg,
   CableType,
   CollisionPayload,
@@ -183,6 +190,10 @@ export class Engine {
     }
     if ((dev.config.kind === 'router' || dev.config.kind === 'switch') && dev.powered) {
       this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
+    }
+    if (dev.config.kind === 'host' && dev.powered) {
+      const h = dev.config;
+      this.withCtx(dev, (ctx) => hostV6(ctx, h));
     }
   }
 
@@ -375,6 +386,8 @@ export class Engine {
       if (dev.config.kind === 'router' || dev.config.kind === 'switch')
         routingResetRuntime(dev.config);
       if (dev.config.kind === 'host') {
+        dev.config.v6.slaac = [];
+        dev.config.v6.raGateway = undefined;
         dev.config.tcp = {};
         dev.config.dnsPending = {};
         if (dev.config.dhcpClient.enabled) dev.config.dhcpClient.state = 'init';
@@ -441,10 +454,14 @@ export class Engine {
     if (!dev || dev.config.kind === 'hub' || dev.config.kind === 'none')
       return { ok: false, error: 'ip.notAHost' };
     if (!dev.powered || dev.crashed) return { ok: false, error: 'dev.off' };
-    if (!isValidIpv4(dst)) return { ok: false, error: 'ip.invalidIp' };
+    const v6 = isValidIpv6(dst);
+    if (!v6 && !isValidIpv4(dst)) return { ok: false, error: 'ip.invalidIp' };
+    const target = v6 ? (normalizeIpv6(dst) as string) : dst;
     const cfg = dev.config;
     return this.withCtx(dev, (ctx) =>
-      cfg.kind === 'host' ? hostPing(ctx, cfg, dst, opts) : l3Ping(ctx, dev as L3Dev, dst, opts),
+      cfg.kind === 'host'
+        ? hostPing(ctx, cfg, target, opts)
+        : l3Ping(ctx, dev as L3Dev, target, opts),
     );
   }
 
@@ -595,6 +612,202 @@ export class Engine {
     );
     if (i >= 0) routes.splice(i, 1);
     return { ok: true, value: true };
+  }
+
+  // ------------------------------------------------------------ IPv6
+
+  setIpv6Routing(deviceId: string, on: boolean): Result<true> {
+    const dev = this.l3(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notARouter' };
+    dev.config.ipv6Routing = on;
+    this.routingChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  private v6cfg(deviceId: string, ifaceId: string): Result<V6IfCfg> {
+    const dev = this.l3(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notARouter' };
+    const made = this.ensureIface(deviceId, ifaceId);
+    if (!made.ok) return made;
+    const ic = dev.config.ifaces[ifaceId];
+    if (!ic) return { ok: false, error: 'ip.notARouter' };
+    ic.v6 ??= { enabled: false, addrs: [], autoconfig: false, slaac: [] };
+    return { ok: true, value: ic.v6 };
+  }
+
+  /** `ipv6 enable` (Link-Local ohne globale Adresse). */
+  enableIpv6(deviceId: string, ifaceId: string, on: boolean): Result<true> {
+    const v = this.v6cfg(deviceId, ifaceId);
+    if (!v.ok) return v;
+    v.value.enabled = on;
+    this.routingChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  setIpv6Autoconfig(deviceId: string, ifaceId: string, on: boolean): Result<true> {
+    const v = this.v6cfg(deviceId, ifaceId);
+    if (!v.ok) return v;
+    v.value.autoconfig = on;
+    if (!on) v.value.slaac = [];
+    this.routingChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  /** IPv6-Adresse an einer Router-/L3-Switch-Schnittstelle setzen (`eui64`: `addr` ist das Präfix). */
+  setInterfaceIp6(
+    deviceId: string,
+    ifaceId: string,
+    addr: string,
+    plen: number,
+    opts: { eui64?: boolean; remove?: boolean } = {},
+  ): Result<true> {
+    const v = this.v6cfg(deviceId, ifaceId);
+    if (!v.ok) return v;
+    const norm = normalizeIpv6(addr);
+    if (!norm) return { ok: false, error: 'ip6.invalidAddress' };
+    if (!Number.isInteger(plen) || plen < 1 || plen > 128)
+      return { ok: false, error: 'ip6.invalidPrefix' };
+    const cfg = v.value;
+    if (opts.remove) {
+      cfg.addrs = cfg.addrs.filter((a) => a.addr !== norm);
+    } else {
+      const dev = this.l3(deviceId) as L3Dev;
+      for (const [oid, o] of Object.entries(dev.config.ifaces)) {
+        if (oid === ifaceId) continue;
+        for (const a of o.v6?.addrs ?? []) {
+          const common = Math.min(plen, a.plen);
+          if (ipv6Network(norm, common) === ipv6Network(a.addr, common))
+            return {
+              ok: false,
+              error: 'ip6.overlap',
+              params: { net: ipv6Network(norm, plen), port: ifaceName(dev, oid, o) },
+            };
+        }
+      }
+      cfg.addrs = cfg.addrs.filter((a) => a.addr !== norm);
+      cfg.addrs.push({ addr: norm, plen, eui64: opts.eui64 });
+    }
+    this.routingChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  addStaticRoute6(
+    deviceId: string,
+    r: { prefix: string; plen: number; nextHop?: string; outIfaceId?: string; ad?: number },
+  ): Result<true> {
+    const dev = this.l3(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notARouter' };
+    const prefix = normalizeIpv6(r.prefix);
+    if (!prefix) return { ok: false, error: 'ip6.invalidAddress' };
+    if (!Number.isInteger(r.plen) || r.plen < 0 || r.plen > 128)
+      return { ok: false, error: 'ip6.invalidPrefix' };
+    const nextHop = r.nextHop ? normalizeIpv6(r.nextHop) : undefined;
+    if (r.nextHop && !nextHop) return { ok: false, error: 'ip6.invalidAddress' };
+    if (!nextHop && !r.outIfaceId) return { ok: false, error: 'ip.routeNeedsTarget' };
+    if (nextHop && isLinkLocalIpv6(nextHop) && !r.outIfaceId)
+      return { ok: false, error: 'ip6.linkLocalNeedsIface' };
+    const n = ipv6Network(prefix, r.plen);
+    const list = dev.config.staticRoutes6;
+    if (
+      !list.some(
+        (x) =>
+          x.prefix === n &&
+          x.plen === r.plen &&
+          x.nextHop === nextHop &&
+          x.outIfaceId === r.outIfaceId,
+      )
+    )
+      list.push({ prefix: n, plen: r.plen, nextHop, outIfaceId: r.outIfaceId, ad: r.ad ?? 1 });
+    this.routingChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  removeStaticRoute6(
+    deviceId: string,
+    r: { prefix: string; plen: number; nextHop?: string; outIfaceId?: string },
+  ): Result<true> {
+    const dev = this.l3(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notARouter' };
+    const prefix = ipv6Network(r.prefix, r.plen);
+    const nextHop = r.nextHop ? normalizeIpv6(r.nextHop) : undefined;
+    const list = dev.config.staticRoutes6;
+    const i = list.findIndex(
+      (x) =>
+        x.prefix === prefix &&
+        x.plen === r.plen &&
+        x.nextHop === nextHop &&
+        x.outIfaceId === r.outIfaceId,
+    );
+    if (i >= 0) list.splice(i, 1);
+    this.routingChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  /** Host: IPv6-Adresse/Gateway/SLAAC setzen. `addr: ''` entfernt die statische Adresse. */
+  setHostIpv6(
+    deviceId: string,
+    patch: {
+      enabled?: boolean;
+      addr?: string;
+      plen?: number;
+      gateway?: string;
+      autoconfig?: boolean;
+    },
+  ): Result<true> {
+    const dev = this.state.devices[deviceId];
+    if (!dev || dev.config.kind !== 'host') return { ok: false, error: 'ip.notAHost' };
+    const h = dev.config;
+    if (patch.enabled !== undefined) h.v6.enabled = patch.enabled;
+    if (patch.addr !== undefined) {
+      if (patch.addr === '') h.v6.addrs = [];
+      else {
+        const a = normalizeIpv6(patch.addr);
+        if (!a) return { ok: false, error: 'ip6.invalidAddress' };
+        const plen = patch.plen ?? 64;
+        if (!Number.isInteger(plen) || plen < 1 || plen > 128)
+          return { ok: false, error: 'ip6.invalidPrefix' };
+        h.v6.addrs = [{ addr: a, plen }];
+      }
+    }
+    if (patch.gateway !== undefined) {
+      if (patch.gateway === '') h.v6.gateway = undefined;
+      else {
+        const g = normalizeIpv6(patch.gateway);
+        if (!g) return { ok: false, error: 'ip6.invalidAddress' };
+        h.v6.gateway = g;
+      }
+    }
+    if (patch.autoconfig !== undefined) {
+      h.v6.autoconfig = patch.autoconfig;
+      if (!patch.autoconfig) {
+        h.v6.slaac = [];
+        h.v6.raGateway = undefined;
+      }
+    }
+    h.nd = {};
+    h.ndPending = {};
+    if (dev.powered && !dev.crashed) this.withCtx(dev, (ctx) => hostV6(ctx, h));
+    return { ok: true, value: true };
+  }
+
+  /** IPv6-Routing-Tabelle (Router/L3-Switch). */
+  routingTable6(deviceId: string): RibEntry[] {
+    const dev = this.l3(deviceId);
+    if (!dev) return [];
+    return buildRib6(dev.config, listIfaces6(dev, dev.config)).filter((e) => e.type !== 'L');
+  }
+
+  /** IPv6-Nachbar-Cache. */
+  ndTable(deviceId: string): { ip: string; mac: string }[] {
+    const dev = this.state.devices[deviceId];
+    if (
+      !dev ||
+      !(dev.config.kind === 'host' || dev.config.kind === 'router' || dev.config.kind === 'switch')
+    )
+      return [];
+    return Object.entries(dev.config.nd)
+      .filter(([, e]) => e.expiresAt > this.state.now)
+      .map(([ip, e]) => ({ ip, mac: e.mac }));
   }
 
   setPortMtu(deviceId: string, portId: string, mtu: number): Result<true> {
@@ -942,6 +1155,10 @@ export class Engine {
     }
     if ((dev.config.kind === 'router' || dev.config.kind === 'switch') && dev.powered)
       this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
+    if (dev.config.kind === 'host' && dev.powered && up) {
+      const h = dev.config;
+      this.withCtx(dev, (ctx) => hostV6(ctx, h));
+    }
     this.addLog(dev, {
       kind: 'info',
       proto: 'LINK',
@@ -1208,7 +1425,7 @@ export class Engine {
     else if (cfg.kind === 'router') this.withCtx(dev, (ctx) => l3Timer(ctx, dev as L3Dev, name));
     else if (cfg.kind === 'switch') {
       this.withCtx(dev, (ctx) => {
-        if (/^(arp|ping|ping-timeout|trace-timeout|rt):/.test(name))
+        if (/^(arp|ping|ping-timeout|trace-timeout|rt|nd|ra):/.test(name))
           l3Timer(ctx, dev as L3Dev, name);
         else switchTimer(ctx, dev as SwitchDev, name);
       });

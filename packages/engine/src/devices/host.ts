@@ -3,6 +3,7 @@ import type { DeviceCtx } from '../ctx';
 import { diagTimer, startPing, startTrace, type PingOptions } from '../diag';
 import type { Iface } from '../ifaces';
 import { ifaceFrameRx, ipTimer, sendArpRequest, type IpNode } from '../l3';
+import { hostIfaces6, hostNode6, ip6FrameRx, ip6Timer, hostV6Start } from '../l3v6';
 import { dhcpProbeReply, dhcpStart, dhcpStop, dhcpTimer } from '../svc/dhcpclient';
 import { dnsResolve, dnsTimer } from '../svc/dns';
 import { httpGet, tcpTimer } from '../svc/tcp';
@@ -34,7 +35,9 @@ export function hostNode(ctx: DeviceCtx, cfg: HostConfig): IpNode {
         ]
       : [];
   const iface = ifaces[0];
+  const ifaces6 = hostIfaces6(dev, cfg);
   return {
+    v6: ifaces6.length > 0 ? hostNode6(ifaces6, cfg, ctx.now) : undefined,
     dev,
     cfg,
     host: cfg,
@@ -61,6 +64,12 @@ export function hostRx(
   const node = hostNode(ctx, cfg);
   const port = ctx.port(portId);
   if (frame.vlan) return; // NIC ignoriert getaggte Frames
+  if (frame.payload.kind === 'ipv6') {
+    const i6 = node.v6?.ifaces[0];
+    if (node.v6 && i6)
+      ip6FrameRx(ctx, { cfg, v6: node.v6, host: cfg, xmit: node.xmit }, i6, frame, fromId, port);
+    return;
+  }
   const iface = node.ifaces[0];
   if (!iface) {
     // Ohne IP: DHCP-Antworten und ARP-Probe-Antworten trotzdem verarbeiten
@@ -118,6 +127,7 @@ function ifaceFrameRxNoIp(
 
 export function hostTimer(ctx: DeviceCtx, cfg: HostConfig, name: string): void {
   const node = hostNode(ctx, cfg);
+  if (node.v6 && ip6Timer(ctx, { cfg, v6: node.v6, host: cfg, xmit: node.xmit }, name)) return;
   if (ipTimer(ctx, node, name)) return;
   if (diagTimer(ctx, node, name)) return;
   if (dhcpTimer(ctx, node, cfg, name)) return;
@@ -163,9 +173,16 @@ export function announce(ctx: DeviceCtx, cfg: HostConfig): void {
 export function resetIpRuntime(cfg: IpCore): void {
   cfg.arpCache = {};
   cfg.arpPending = {};
+  cfg.nd = {};
+  cfg.ndPending = {};
   cfg.reasm = {};
   cfg.pingSessions = [];
 }
 
 export const isHostDevice = (d: Device): d is Device & { config: HostConfig } =>
   d.config.kind === 'host';
+
+/** IPv6-Start eines Hosts: Router Solicitation für SLAAC. */
+export function hostV6(ctx: DeviceCtx, cfg: HostConfig): void {
+  hostV6Start(ctx, cfg);
+}

@@ -26,6 +26,7 @@ import { dhcpRx } from './svc/dhcp';
 import { dnsRx } from './svc/dns';
 import type { Iface } from './ifaces';
 import { natHasInbound, natInside2Outside, natOutside2Inside } from './nat';
+import type { Node6 } from './l3v6';
 import { routingRx } from './routing';
 import { tcpRx } from './svc/tcp';
 import type { Device, HostConfig, IpCore, L3Cfg, Port } from './types';
@@ -56,9 +57,14 @@ export interface IpNode {
   /** Alle konfigurierten virtuellen MACs (HSRP): Frames daran werden als Nicht-Active still verworfen. */
   silentMacs?: { mac: string; ifaceId: string }[];
   lookup(dst: Ipv4Addr): NextHop | undefined;
+  /** IPv6-Sicht (Schnittstellen, Routing); fehlt, solange kein IPv6 konfiguriert ist. */
+  v6?: Node6;
   /** Sendet einen fertigen Frame aus der Schnittstelle (Tag/SVI-Besonderheiten inklusive). */
-  xmit(ctx: DeviceCtx, iface: Iface, frame: Frame): void;
+  xmit(ctx: DeviceCtx, iface: XmitIface, frame: Frame): void;
 }
+
+/** Was zum Senden eines Frames nötig ist (IPv4- und IPv6-Schnittstellen). */
+export type XmitIface = Pick<Iface, 'id' | 'kind' | 'portId' | 'vlan' | 'mac' | 'mtu' | 'cfg'>;
 
 export type SendResult =
   { ok: true } | { ok: false; reason: 'noRoute' } | { ok: false; reason: 'needFrag'; mtu: number };

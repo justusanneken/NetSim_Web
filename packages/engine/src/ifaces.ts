@@ -12,6 +12,8 @@ export interface Iface {
   mask: string;
   mtu: number;
   cfg: IfaceCfg;
+  /** Nur OSPFv3-Pseudo-Schnittstellen: globale IPv6-Präfixe. */
+  v6Prefixes?: { prefix: string; plen: number }[];
 }
 
 export const subId = (portId: string, vlan: number): string => `${portId}.${vlan}`;

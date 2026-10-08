@@ -1,13 +1,10 @@
 import {
   type BpduPdu,
   type EigrpMsg,
-  type GrePdu,
-  type HsrpPdu,
   type Icmp6Pdu,
   type Ipv6Pdu,
   type OspfLsa,
   type OspfMsg,
-  type RipPdu,
   type RoutingPdu,
   type DhcpPdu,
   type DnsPdu,

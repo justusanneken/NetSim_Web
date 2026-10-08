@@ -2,13 +2,14 @@ import type { Frame, Ipv4Addr } from '@netsim/protocols';
 import { sameSubnet } from '@netsim/protocols';
 import type { DeviceCtx } from '../ctx';
 import { diagTimer, startPing, startTrace, type PingOptions } from '../diag';
-import { listIfaces, type Iface } from '../ifaces';
-import { ifaceFrameRx, ipTimer, type IpNode } from '../l3';
+import { listIfaces } from '../ifaces';
+import { ifaceFrameRx, ipTimer, type IpNode, type XmitIface } from '../l3';
 import { buildRib, lookupRib } from '../rib';
 import { greXmit } from '../routing/gre';
 import { hsrpVips } from '../routing/hsrp';
 import { routingTimer } from '../routing';
-import type { Device, Result, RouterConfig, SwitchConfig } from '../types';
+import { ip6FrameRx, ip6Timer, listIfaces6, routerNode6 } from '../l3v6';
+import type { Device, IfaceCfg, Result, RouterConfig, SwitchConfig } from '../types';
 import { switchOriginate, type SwitchDev } from './switch';
 
 export type L3Dev = Device & { config: RouterConfig | SwitchConfig };
@@ -20,19 +21,22 @@ export const ROUTER_TTL = 255;
 export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
   const cfg = dev.config;
   let ifaces = listIfaces(dev, cfg);
-  if (ifaces.some((i) => i.kind === 'tunnel')) {
+  let tunnelOk = (_c: IfaceCfg): boolean => true;
+  if (Object.values(cfg.ifaces).some((c) => c.kind === 'tunnel')) {
     // Tunnel nur „up“, wenn das Ziel über eine andere Schnittstelle erreichbar ist
     const rib0 = buildRib(
       cfg,
       ifaces.filter((i) => i.kind !== 'tunnel'),
     );
-    ifaces = ifaces.filter((i) => {
-      const dst = i.cfg.tunnel?.destination;
-      return i.kind !== 'tunnel' || (!!dst && lookupRib(rib0, dst) !== undefined);
-    });
+    tunnelOk = (c) => {
+      const dst = c.tunnel?.destination;
+      return !!dst && lookupRib(rib0, dst) !== undefined;
+    };
+    ifaces = ifaces.filter((i) => i.kind !== 'tunnel' || tunnelOk(i.cfg));
   }
   const rib = buildRib(cfg, ifaces);
   const { vips, silent } = hsrpVips(ifaces);
+  const ifaces6 = listIfaces6(dev, cfg, tunnelOk);
   const forwarding = cfg.kind === 'router' || cfg.ipRouting;
   const node: IpNode = {
     dev,
@@ -56,7 +60,7 @@ export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
       }
       return undefined;
     },
-    xmit(c: DeviceCtx, iface: Iface, frame: Frame) {
+    xmit(c: DeviceCtx, iface: XmitIface, frame: Frame) {
       if (iface.kind === 'loop') return;
       if (iface.kind === 'tunnel') {
         greXmit(c, node, iface, frame);
@@ -69,6 +73,7 @@ export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
       } else c.send(iface.portId, frame, c.processingUs);
     },
   };
+  if (ifaces6.length > 0) node.v6 = routerNode6(ifaces6, cfg);
   return node;
 }
 
@@ -81,6 +86,35 @@ export function routerRx(
   fromId: string,
 ): void {
   const node = l3Node(ctx, dev);
+  if (frame.payload.kind === 'ipv6') {
+    const i6 = node.v6?.ifaces.find(
+      (i) =>
+        i.portId === portId &&
+        i.kind !== 'svi' &&
+        (i.kind === 'sub' ? frame.vlan?.vid === i.vlan : !frame.vlan),
+    );
+    if (!i6 || !node.v6) {
+      ctx.log({
+        kind: 'drop',
+        proto: 'ND',
+        status: 'drop',
+        from: fromId,
+        port: ctx.port(portId),
+        frame,
+        msg: { key: 'host.noIp' },
+      });
+      return;
+    }
+    ip6FrameRx(
+      ctx,
+      { dev, cfg: node.cfg, v6: node.v6, xmit: node.xmit },
+      i6,
+      frame,
+      fromId,
+      ctx.port(portId),
+    );
+    return;
+  }
   const iface = node.ifaces.find(
     (i) =>
       i.portId === portId &&
@@ -108,6 +142,7 @@ export function l3Timer(ctx: DeviceCtx, dev: L3Dev, name: string): void {
     return;
   }
   const node = l3Node(ctx, dev);
+  if (node.v6 && ip6Timer(ctx, { dev, cfg: node.cfg, v6: node.v6, xmit: node.xmit }, name)) return;
   if (!ipTimer(ctx, node, name)) diagTimer(ctx, node, name);
 }
 

@@ -1,13 +1,12 @@
 import type {
   Ipv4Addr,
-  Ipv4Pdu,
   OspfLsa,
   OspfLsaBody,
   OspfLsaHeader,
   OspfMsg,
   OspfRouterLink,
 } from '@netsim/protocols';
-import { parseIpv4 } from '@netsim/protocols';
+import { ipv6Network, parseIpv4 } from '@netsim/protocols';
 import type { Iface } from '../ifaces';
 import type { Base } from '../l3';
 import {
@@ -27,6 +26,7 @@ import {
   type Rt,
 } from './core';
 import { requestRecompute } from './index';
+import { sendMcast6, sendNbr6, type Iface6 } from '../l3v6';
 import { spfRun } from './ospfspf';
 import {
   isPassive,
@@ -89,8 +89,52 @@ export const stateRank: Record<OspfNbrState, number> = {
 
 const nameOf = (rt: Rt, iface: Iface): string => rt.ctx.deviceIfaceName(iface.id);
 
+/** Timer-Präfix: OSPFv2 `rt:ospf`, OSPFv3 `rt:ospf6`. */
+export const tp = (c: OspfCfg): string => (c.v6 ? 'rt:ospf6' : 'rt:ospf');
+export const srcOf = (c: OspfCfg): string => `${c.v6 ? 'ospf6' : 'ospf'}:${c.pid}`;
+export const procsOf = (rt: Rt): OspfCfg[] => [
+  ...Object.values(rt.r.ospf),
+  ...Object.values(rt.r.ospf6),
+];
+
+export interface Pfx {
+  prefix: string;
+  plen: number;
+}
+
+/** Schnittstellen eines Prozesses: IPv4 direkt, IPv6 als Pseudo-Schnittstellen (Adresse = Link-Local). */
+export function ospfIfaces(rt: Rt, c: OspfCfg): Iface[] {
+  if (!c.v6) return rt.node.ifaces;
+  return (rt.node.v6?.ifaces ?? []).map(pseudoIface);
+}
+
+export const pseudoIface = (i: Iface6): Iface => ({
+  id: i.id,
+  kind: i.kind,
+  portId: i.portId,
+  vlan: i.vlan,
+  mac: i.mac,
+  ip: i.ll,
+  mask: '',
+  mtu: i.mtu,
+  cfg: i.cfg,
+  v6Prefixes: i.addrs.map((a) => ({ prefix: ipv6Network(a.addr, a.plen), plen: a.plen })),
+});
+
+export const ifaceOf = (rt: Rt, c: OspfCfg, id: string): Iface | undefined =>
+  ospfIfaces(rt, c).find((i) => i.id === id);
+
+/** Angeschlossene Präfixe (IPv4: ein Netz aus Adresse/Maske, IPv6: alle globalen Präfixe). */
+export function prefixesOf(c: OspfCfg, iface: Iface): Pfx[] {
+  if (c.v6) return iface.v6Prefixes ?? [];
+  if (iface.kind === 'loop') return [{ prefix: iface.ip, plen: 32 }];
+  const plen = plenOfMask(iface.mask);
+  return [{ prefix: networkOf(iface.ip, plen), plen }];
+}
+
 export function ifCfg(iface: Iface, c: OspfCfg): NonNullable<Iface['cfg']['ospf']> | undefined {
-  return iface.cfg.ospf?.pid === c.pid ? iface.cfg.ospf : undefined;
+  const o = c.v6 ? iface.cfg.v6?.ospf : iface.cfg.ospf;
+  return o?.pid === c.pid ? o : undefined;
 }
 export const ifNetwork = (iface: Iface, c: OspfCfg): 'broadcast' | 'point-to-point' =>
   ifCfg(iface, c)?.network ?? (iface.kind === 'tunnel' ? 'point-to-point' : 'broadcast');
@@ -126,11 +170,12 @@ interface Part {
 
 export function participants(rt: Rt, c: OspfCfg): Part[] {
   const out: Part[] = [];
-  for (const iface of rt.node.ifaces) {
-    const ic = iface.cfg.ospf;
+  if (c.v6 && effectiveRid(rt, c) === NO_ID) return out;
+  for (const iface of ospfIfaces(rt, c)) {
+    const ic = c.v6 ? iface.cfg.v6?.ospf : iface.cfg.ospf;
     if (ic && ic.pid !== c.pid) continue;
     let area = ic?.area;
-    if (area === undefined)
+    if (area === undefined && !c.v6)
       area = c.networks.find((n) => wildcardMatch(iface.ip, n.prefix, n.wildcard))?.area;
     if (area !== undefined) out.push({ iface, area });
   }
@@ -170,6 +215,16 @@ function send(rt: Rt, c: OspfCfg, iface: Iface, dst: Ipv4Addr, msg: OspfMsg): vo
     v: (c.v6 ? 3 : 2) as 2 | 3,
     msg,
   };
+  if (c.v6) {
+    const n6 = rt.node.v6;
+    const i6 = n6?.ifaces.find((i) => i.id === iface.id);
+    if (!n6 || !i6) return;
+    const host = { cfg: rt.node.cfg, v6: n6, xmit: rt.node.xmit };
+    if (dst === OSPF_ALL || dst === OSPF_DR)
+      sendMcast6(rt.ctx, host, i6, dst === OSPF_ALL ? 'ff02::5' : 'ff02::6', payload);
+    else sendNbr6(rt.ctx, host, i6, dst, payload);
+    return;
+  }
   if (dst === OSPF_ALL || dst === OSPF_DR) sendMcast(rt, iface, dst, payload);
   else sendNbr(rt, iface, dst, payload);
 }
@@ -188,7 +243,7 @@ function sendHello(rt: Rt, c: OspfCfg, iface: Iface, ifs: OspfIfState): void {
     neighbors: Object.values(ifs.neighbors)
       .filter((n) => stateRank[n.state] >= 1)
       .map((n) => n.rid),
-    plen: plenOfMask(iface.mask),
+    plen: c.v6 ? undefined : plenOfMask(iface.mask),
   };
   send(rt, c, iface, OSPF_ALL, msg);
   dbg(
@@ -203,11 +258,13 @@ function sendHello(rt: Rt, c: OspfCfg, iface: Iface, ifs: OspfIfState): void {
 // ------------------------------------------------------------------ Sync
 
 export function ospfSync(rt: Rt): void {
-  const procs = Object.values(rt.r.ospf);
+  const procs = procsOf(rt);
   // verwaiste Routen entfernen (Prozess gelöscht)
-  const known = new Set(procs.map((c) => `ospf:${c.pid}`));
+  const known = new Set(procs.map(srcOf));
   const orphan = rt.cfg.dynRoutes.filter((r) => r.src.startsWith('ospf:') && !known.has(r.src));
   if (orphan.length) rt.cfg.dynRoutes = rt.cfg.dynRoutes.filter((r) => !orphan.includes(r));
+  const orphan6 = rt.cfg.dynRoutes6.filter((r) => r.src.startsWith('ospf6:') && !known.has(r.src));
+  if (orphan6.length) rt.cfg.dynRoutes6 = rt.cfg.dynRoutes6.filter((r) => !orphan6.includes(r));
   for (const c of procs) syncProcess(rt, c);
 }
 
@@ -227,8 +284,8 @@ function syncProcess(rt: Rt, c: OspfCfg): void {
   const rid = effectiveRid(rt, c);
   if (!c.timersArmed) {
     c.timersArmed = true;
-    setBg(rt, `rt:ospf:refresh:${c.pid}`, LS_REFRESH * SEC, LS_REFRESH * SEC);
-    setBg(rt, `rt:ospf:age:${c.pid}`, 60 * SEC, 60 * SEC);
+    setBg(rt, `${tp(c)}:refresh:${c.pid}`, LS_REFRESH * SEC, LS_REFRESH * SEC);
+    setBg(rt, `${tp(c)}:age:${c.pid}`, 60 * SEC, 60 * SEC);
   }
   for (const { iface, area } of parts) {
     const cur = c.ifs[iface.id];
@@ -252,11 +309,11 @@ function syncProcess(rt: Rt, c: OspfCfg): void {
         ifs.state = isP2p ? 'p2p' : 'waiting';
         if (!isP2p) {
           ifs.waitUntil = rt.ctx.now + ifDead(iface, c) * SEC;
-          setBg(rt, `rt:ospf:wait:${c.pid}:${iface.id}`, ifDead(iface, c) * SEC);
+          setBg(rt, `${tp(c)}:wait:${c.pid}:${iface.id}`, ifDead(iface, c) * SEC);
         }
         setBg(
           rt,
-          `rt:ospf:hello:${c.pid}:${iface.id}`,
+          `${tp(c)}:hello:${c.pid}:${iface.id}`,
           100_000 + rt.ctx.rand(SEC),
           ifs.helloSec * SEC,
         );
@@ -283,7 +340,7 @@ function syncProcess(rt: Rt, c: OspfCfg): void {
       const hs = ifHello(iface, c);
       if (cur.helloSec !== hs) {
         cur.helloSec = hs;
-        setBg(rt, `rt:ospf:hello:${c.pid}:${iface.id}`, SEC, hs * SEC);
+        setBg(rt, `${tp(c)}:hello:${c.pid}:${iface.id}`, SEC, hs * SEC);
       }
     } else if (cur.state !== 'loopback') {
       // jetzt passiv: Nachbarn verwerfen
@@ -297,17 +354,17 @@ function syncProcess(rt: Rt, c: OspfCfg): void {
 }
 
 function ifDown(rt: Rt, c: OspfCfg, id: string, ifs: OspfIfState): void {
-  cancelBg(rt, `rt:ospf:hello:${c.pid}:${id}`);
-  cancelBg(rt, `rt:ospf:wait:${c.pid}:${id}`);
+  cancelBg(rt, `${tp(c)}:hello:${c.pid}:${id}`);
+  cancelBg(rt, `${tp(c)}:wait:${c.pid}:${id}`);
   for (const n of Object.values(ifs.neighbors)) killNbr(rt, c, id, ifs, n, 'Interface down', true);
   markDirty(rt, c);
 }
 
 export function ospfStop(rt: Rt): void {
-  for (const c of Object.values(rt.r.ospf)) {
+  for (const c of procsOf(rt)) {
     for (const [id, ifs] of Object.entries(c.ifs)) ifDown(rt, c, id, ifs);
-    cancelBg(rt, `rt:ospf:refresh:${c.pid}`);
-    cancelBg(rt, `rt:ospf:age:${c.pid}`);
+    cancelBg(rt, `${tp(c)}:refresh:${c.pid}`);
+    cancelBg(rt, `${tp(c)}:age:${c.pid}`);
   }
 }
 
@@ -352,9 +409,9 @@ function killNbr(
   why: string,
   silent = false,
 ): void {
-  cancelBg(rt, `rt:ospf:dead:${c.pid}:${ifaceId}:${n.rid}`);
-  cancelBg(rt, `rt:ospf:rxmt:${c.pid}:${ifaceId}:${n.rid}`);
-  const iface = rt.node.ifaces.find((i) => i.id === ifaceId);
+  cancelBg(rt, `${tp(c)}:dead:${c.pid}:${ifaceId}:${n.rid}`);
+  cancelBg(rt, `${tp(c)}:rxmt:${c.pid}:${ifaceId}:${n.rid}`);
+  const iface = ifaceOf(rt, c, ifaceId as string);
   const was = n.state;
   delete ifs.neighbors[n.rid];
   rlog(
@@ -471,7 +528,7 @@ function startAdj(rt: Rt, c: OspfCfg, iface: Iface, ifs: OspfIfState, n: OspfNbr
   n.retrans = {};
   setNbr(rt, c, iface, ifs, n, 'exstart');
   sendDbd(rt, c, iface, ifs, n, true);
-  setBg(rt, `rt:ospf:rxmt:${c.pid}:${iface.id}:${n.rid}`, RXMT);
+  setBg(rt, `${tp(c)}:rxmt:${c.pid}:${iface.id}:${n.rid}`, RXMT);
 }
 
 function lsdbHeaders(rt: Rt, c: OspfCfg, area: string): OspfLsaHeader[] {
@@ -504,9 +561,17 @@ function sendDbd(
 
 // ------------------------------------------------------------------ Empfang
 
-export function ospfRx(rt: Rt, iface: Iface, _base: Base, ip: Ipv4Pdu, msg: OspfMsg): void {
+export function ospfRx(
+  rt: Rt,
+  iface: Iface,
+  _base: Base,
+  ip: { src: string },
+  msg: OspfMsg,
+  v6 = false,
+): void {
   void _base;
-  for (const c of Object.values(rt.r.ospf)) {
+  for (const c of procsOf(rt)) {
+    if (c.v6 !== v6) continue;
     const ifs = c.ifs[iface.id];
     if (!ifs || ifs.state === 'loopback') continue;
     if (ip.src === iface.ip) return;
@@ -560,7 +625,7 @@ function rxHello(
   c: OspfCfg,
   iface: Iface,
   ifs: OspfIfState,
-  ip: Ipv4Pdu,
+  ip: { src: string },
   m: Extract<OspfMsg, { type: 'hello' }>,
 ): void {
   const myRid = effectiveRid(rt, c);
@@ -608,7 +673,7 @@ function rxHello(
   n.priority = m.priority;
   n.dr = m.dr;
   n.bdr = m.bdr;
-  setBg(rt, `rt:ospf:dead:${c.pid}:${iface.id}:${n.rid}`, ifDead(iface, c) * SEC);
+  setBg(rt, `${tp(c)}:dead:${c.pid}:${iface.id}:${n.rid}`, ifDead(iface, c) * SEC);
   const sawMe = m.neighbors.includes(myRid);
   if (!sawMe) {
     if (stateRank[n.state] >= 2) {
@@ -630,7 +695,7 @@ function rxHello(
   const backupSeen = m.bdr === m.routerId || (m.dr === m.routerId && m.bdr === NO_ID);
   if (ifs.state === 'waiting') {
     if (backupSeen) {
-      cancelBg(rt, `rt:ospf:wait:${c.pid}:${iface.id}`);
+      cancelBg(rt, `${tp(c)}:wait:${c.pid}:${iface.id}`);
       elect(rt, c, iface, ifs);
     }
     return;
@@ -644,7 +709,7 @@ function rxDbd(
   c: OspfCfg,
   iface: Iface,
   ifs: OspfIfState,
-  ip: Ipv4Pdu,
+  ip: { src: string },
   m: Extract<OspfMsg, { type: 'dbd' }>,
 ): void {
   const n = ifs.neighbors[m.routerId];
@@ -679,7 +744,7 @@ function rxDbd(
   n.reqList = need;
   if (need.length === 0) {
     setNbr(rt, c, iface, ifs, n, 'full');
-    cancelBg(rt, `rt:ospf:rxmt:${c.pid}:${iface.id}:${n.rid}`);
+    cancelBg(rt, `${tp(c)}:rxmt:${c.pid}:${iface.id}:${n.rid}`);
     maybeRxmt(rt, c, iface, n);
     return;
   }
@@ -697,7 +762,7 @@ function sendLsr(rt: Rt, c: OspfCfg, iface: Iface, ifs: OspfIfState, n: OspfNbr)
       return { type: Number(type), id, advRouter };
     }),
   });
-  setBg(rt, `rt:ospf:rxmt:${c.pid}:${iface.id}:${n.rid}`, RXMT);
+  setBg(rt, `${tp(c)}:rxmt:${c.pid}:${iface.id}:${n.rid}`, RXMT);
 }
 
 function rxLsr(
@@ -705,7 +770,7 @@ function rxLsr(
   c: OspfCfg,
   iface: Iface,
   ifs: OspfIfState,
-  ip: Ipv4Pdu,
+  ip: { src: string },
   m: Extract<OspfMsg, { type: 'lsr' }>,
 ): void {
   const n = ifs.neighbors[m.routerId];
@@ -741,7 +806,7 @@ function rxLsu(
   c: OspfCfg,
   iface: Iface,
   ifs: OspfIfState,
-  ip: Ipv4Pdu,
+  ip: { src: string },
   m: Extract<OspfMsg, { type: 'lsu' }>,
 ): void {
   const n = ifs.neighbors[m.routerId];
@@ -790,7 +855,7 @@ function rxLsu(
   send(rt, c, iface, ip.src, { type: 'lsack', routerId: myRid, areaId: ifs.area, headers: acks });
   if (flood.length) floodLsas(rt, c, ifs.area, flood, m.routerId);
   if ((n.state === 'loading' || n.state === 'exchange') && n.dbdDone && n.reqList.length === 0) {
-    cancelBg(rt, `rt:ospf:rxmt:${c.pid}:${iface.id}:${n.rid}`);
+    cancelBg(rt, `${tp(c)}:rxmt:${c.pid}:${iface.id}:${n.rid}`);
     setNbr(rt, c, iface, ifs, n, 'full');
     maybeRxmt(rt, c, iface, n);
   }
@@ -819,7 +884,7 @@ function floodLsas(rt: Rt, c: OspfCfg, area: string, lsas: OspfLsa[], exceptRid?
   const external = lsas.every((l) => l.type === 5);
   for (const [id, ifs] of Object.entries(c.ifs)) {
     if (!external && ifs.area !== area) continue;
-    const iface = rt.node.ifaces.find((i) => i.id === id);
+    const iface = ifaceOf(rt, c, id);
     if (!iface) continue;
     for (const n of Object.values(ifs.neighbors)) {
       if (stateRank[n.state] < 4 || n.rid === exceptRid) continue;
@@ -842,7 +907,7 @@ function maybeRxmt(rt: Rt, c: OspfCfg, iface: Iface, n: OspfNbr): void {
     n.state === 'exchange' ||
     n.state === 'loading'
   )
-    setBg(rt, `rt:ospf:rxmt:${c.pid}:${iface.id}:${n.rid}`, RXMT);
+    setBg(rt, `${tp(c)}:rxmt:${c.pid}:${iface.id}:${n.rid}`, RXMT);
 }
 
 function rxmtTimer(rt: Rt, c: OspfCfg, iface: Iface, ifs: OspfIfState, n: OspfNbr): void {
@@ -869,6 +934,9 @@ function rxmtTimer(rt: Rt, c: OspfCfg, iface: Iface, ifs: OspfIfState, n: OspfNb
 // ------------------------------------------------------------------ Origination
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+const contains = (c: OspfCfg, ip: string, prefix: string, plen: number): boolean =>
+  c.v6 ? ipv6Network(ip, plen) === prefix : inNet(ip, prefix, plen);
 
 /** Eigene LSA erzeugen/aktualisieren; liefert `true`, wenn sich der Inhalt änderte. */
 function originate(
@@ -927,22 +995,19 @@ function routerLinks(rt: Rt, c: OspfCfg, area: string, parts: Part[]): OspfRoute
     const ifs = c.ifs[iface.id];
     if (!ifs) continue;
     const cost = ifCost(rt, iface, c);
-    const plen = plenOfMask(iface.mask);
-    const net = networkOf(iface.ip, plen);
+    const stubs = (): void => {
+      for (const p of prefixesOf(c, iface))
+        links.push({ kind: 'stub', prefix: p.prefix, plen: p.plen, cost });
+    };
     if (ifs.state === 'loopback') {
-      links.push({
-        kind: 'stub',
-        prefix: iface.kind === 'loop' ? iface.ip : net,
-        plen: iface.kind === 'loop' ? 32 : plen,
-        cost,
-      });
+      stubs();
       continue;
     }
     if (ifs.state === 'p2p') {
       for (const n of Object.values(ifs.neighbors)) {
         if (n.state === 'full') links.push({ kind: 'p2p', neighbor: n.rid, addr: iface.ip, cost });
       }
-      links.push({ kind: 'stub', prefix: net, plen, cost });
+      stubs();
       continue;
     }
     const drNbr = ifs.dr === effectiveRid(rt, c) ? undefined : ifs.neighbors[ifs.dr];
@@ -957,7 +1022,7 @@ function routerLinks(rt: Rt, c: OspfCfg, area: string, parts: Part[]): OspfRoute
     ) {
       links.push({ kind: 'transit', neighbor: ifs.drAddr, addr: iface.ip, cost });
     } else {
-      links.push({ kind: 'stub', prefix: net, plen, cost });
+      stubs();
     }
   }
   return links;
@@ -987,11 +1052,11 @@ export function originateAll(rt: Rt, c: OspfCfg): void {
       const key = lsaKey({ type: 2, id: iface.ip, advRouter: rid });
       const full = Object.values(ifs.neighbors).filter((n) => n.state === 'full');
       if (ifs.state === 'dr' && full.length > 0) {
-        const plen = plenOfMask(iface.mask);
+        const pf = prefixesOf(c, iface)[0];
         originate(rt, c, area, 2, iface.ip, {
           type: 2,
-          prefix: networkOf(iface.ip, plen),
-          plen,
+          prefix: pf?.prefix ?? '::',
+          plen: pf?.plen ?? 0,
           attached: [rid, ...full.map((n) => n.rid)],
         });
       } else if (c.lsdb[area]?.[key]) {
@@ -1013,7 +1078,7 @@ export function originateAll(rt: Rt, c: OspfCfg): void {
 
 export function ospfRecompute(rt: Rt): boolean {
   let changed = false;
-  for (const c of Object.values(rt.r.ospf)) {
+  for (const c of procsOf(rt)) {
     if (syncExternals(rt, c)) markDirty(rt, c);
     if (!c.dirty) continue;
     c.dirty = false;
@@ -1046,7 +1111,7 @@ export function ospfRecompute(rt: Rt): boolean {
         ifaceId: r.nh?.ifaceId ?? '',
       }))
       .filter((r) => r.ifaceId !== '');
-    if (installRoutes(rt, `ospf:${c.pid}`, out)) changed = true;
+    if (installRoutes(rt, srcOf(c), out, c.v6)) changed = true;
     if (originateSummaries(rt, c, res)) {
       // neue Summary-LSAs ändern unsere eigene Sicht nicht
     }
@@ -1061,8 +1126,9 @@ function externalKey(prefix: string, plen: number): string {
 /** Redistribution → externe Routen und Typ-5-LSAs. Liefert `true`, wenn LSAs entstanden/verschwanden. */
 function syncExternals(rt: Rt, c: OspfCfg): boolean {
   const want = new Map<string, OspfExternal>();
-  for (const red of c.redistribute) {
-    for (const s of redistSource(rt, red, `ospf:${c.pid}`)) {
+  // Redistribution anderer Protokolle gibt es nur für OSPFv2 (OSPFv3: nur default-information originate)
+  for (const red of c.v6 ? [] : c.redistribute) {
+    for (const s of redistSource(rt, red, srcOf(c))) {
       if (s.plen === 0) continue;
       if (!red.subnets && s.plen > classfulPlenOf(s.prefix)) continue;
       want.set(externalKey(s.prefix, s.plen), {
@@ -1077,11 +1143,13 @@ function syncExternals(rt: Rt, c: OspfCfg): boolean {
   if (c.defaultOriginate) {
     const hasDefault =
       c.defaultOriginate.always ||
-      rt.cfg.staticRoutes.some((r) => r.prefix === '0.0.0.0' && r.mask === '0.0.0.0') ||
-      rt.cfg.dynRoutes.some((r) => r.plen === 0 && r.src !== `ospf:${c.pid}`);
+      (c.v6
+        ? rt.cfg.staticRoutes6.some((r) => r.plen === 0)
+        : rt.cfg.staticRoutes.some((r) => r.prefix === '0.0.0.0' && r.mask === '0.0.0.0') ||
+          rt.cfg.dynRoutes.some((r) => r.plen === 0 && r.src !== srcOf(c)));
     if (hasDefault)
-      want.set('0.0.0.0/0', {
-        prefix: '0.0.0.0',
+      want.set(c.v6 ? '::/0' : '0.0.0.0/0', {
+        prefix: c.v6 ? '::' : '0.0.0.0',
         plen: 0,
         metric: c.defaultOriginate.metric,
         eType: c.defaultOriginate.metricType,
@@ -1141,7 +1209,7 @@ function originateSummaries(rt: Rt, c: OspfCfg, res: ReturnType<typeof spfRun>):
       let { prefix, plen } = r;
       let metric = r.cost;
       const range = c.ranges.find(
-        (g) => g.area === r.area && plen >= g.plen && inNet(prefix, g.prefix, g.plen),
+        (g) => g.area === r.area && plen >= g.plen && contains(c, prefix, g.prefix, g.plen),
       );
       if (range) {
         if (range.notAdvertise) continue;
@@ -1195,18 +1263,19 @@ function originateSummaries(rt: Rt, c: OspfCfg, res: ReturnType<typeof spfRun>):
 // ------------------------------------------------------------------ Timer
 
 export function ospfTimer(rt: Rt, name: string): boolean {
-  if (!name.startsWith('rt:ospf:')) return false;
+  const v6 = name.startsWith('rt:ospf6:');
+  if (!v6 && !name.startsWith('rt:ospf:')) return false;
   const [, , kind, pidS, ifaceId, rid] = name.split(':');
-  const c = rt.r.ospf[Number(pidS)];
+  const c = (v6 ? rt.r.ospf6 : rt.r.ospf)[Number(pidS)];
   if (!c) return true;
   if (kind === 'hello') {
-    const iface = rt.node.ifaces.find((i) => i.id === ifaceId);
+    const iface = ifaceOf(rt, c, ifaceId as string);
     const ifs = c.ifs[ifaceId as string];
     if (iface && ifs) sendHello(rt, c, iface, ifs);
     return true;
   }
   if (kind === 'wait') {
-    const iface = rt.node.ifaces.find((i) => i.id === ifaceId);
+    const iface = ifaceOf(rt, c, ifaceId as string);
     const ifs = c.ifs[ifaceId as string];
     if (iface && ifs && ifs.state === 'waiting') elect(rt, c, iface, ifs);
     return true;
@@ -1218,7 +1287,7 @@ export function ospfTimer(rt: Rt, name: string): boolean {
     return true;
   }
   if (kind === 'rxmt') {
-    const iface = rt.node.ifaces.find((i) => i.id === ifaceId);
+    const iface = ifaceOf(rt, c, ifaceId as string);
     const ifs = c.ifs[ifaceId as string];
     const n = ifs?.neighbors[rid as string];
     if (iface && ifs && n) rxmtTimer(rt, c, iface, ifs, n);

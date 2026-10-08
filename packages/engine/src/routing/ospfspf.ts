@@ -1,8 +1,15 @@
 import type { OspfLsa } from '@netsim/protocols';
 import { inNet, type Rt } from './core';
-import { MAXAGE, areasOf, effectiveRid, ifCost, networkOf, participants } from './ospf';
+import {
+  MAXAGE,
+  areasOf,
+  effectiveRid,
+  ifCost,
+  ospfIfaces,
+  participants,
+  prefixesOf,
+} from './ospf';
 import type { OspfCfg } from './types';
-import { plenOfMask } from './core';
 
 export interface Nh {
   ifaceId: string;
@@ -56,7 +63,7 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
   const all: SpfRoute[] = [];
   const asbrs: SpfAsbr[] = [];
   const connected = new Set(
-    rt.node.ifaces.map((i) => `${networkOf(i.ip, plenOfMask(i.mask))}/${plenOfMask(i.mask)}`),
+    ospfIfaces(rt, c).flatMap((i) => prefixesOf(c, i).map((p) => `${p.prefix}/${p.plen}`)),
   );
 
   for (const area of areas) {
@@ -203,15 +210,16 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
 
   // Direkt angeschlossene Netze (für ABR-Summaries)
   for (const { iface, area } of parts) {
-    const plen = iface.kind === 'loop' ? 32 : plenOfMask(iface.mask);
-    all.push({
-      prefix: iface.kind === 'loop' ? iface.ip : networkOf(iface.ip, plen),
-      plen,
-      type: 'intra',
-      cost: ifCost(rt, iface, c),
-      area,
-      connected: true,
-    });
+    for (const p of prefixesOf(c, iface)) {
+      all.push({
+        prefix: p.prefix,
+        plen: p.plen,
+        type: 'intra',
+        cost: ifCost(rt, iface, c),
+        area,
+        connected: true,
+      });
+    }
   }
 
   // Externe Routen (Typ 5)

@@ -77,7 +77,7 @@ describe('OSPF', () => {
   });
 
   it('Abnahme: konvergiert im 4-Router-Ring; Linkausfall führt zum Umschalten', () => {
-    const { e, r, pc1, pc3 } = ring();
+    const { e, r, pc1 } = ring();
     sec(e, 100);
     expect(pingOk(e, pc1, '10.3.0.10')).toBe(true);
     // Primärpfad ermitteln und dessen ersten Link trennen

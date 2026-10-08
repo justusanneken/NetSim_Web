@@ -1,7 +1,16 @@
 import type { Frame, Ipv4Pdu, GrePdu } from '@netsim/protocols';
 import type { DeviceCtx } from '../ctx';
 import type { Iface } from '../ifaces';
-import { eth, ifaceFrameRx, ipSend, newIpPacket, type Base, type IpNode } from '../l3';
+import {
+  eth,
+  ifaceFrameRx,
+  ipSend,
+  newIpPacket,
+  type Base,
+  type IpNode,
+  type XmitIface,
+} from '../l3';
+import { eth6, ip6FrameRx } from '../l3v6';
 import { rlog, type Rt } from './core';
 
 /** Quelladresse des Tunnels: IP der Quellschnittstelle oder die konfigurierte Adresse. */
@@ -14,7 +23,7 @@ export function tunnelSrcIp(node: IpNode, iface: Pick<Iface, 'cfg'>): string | u
 }
 
 /** Senden über einen Tunnel: das Paket des Frames wird GRE-gekapselt und normal geroutet. */
-export function greXmit(c: DeviceCtx, node: IpNode, iface: Iface, frame: Frame): void {
+export function greXmit(c: DeviceCtx, node: IpNode, iface: XmitIface, frame: Frame): void {
   const inner = frame.payload;
   if (inner.kind !== 'ipv4' && inner.kind !== 'ipv6') return;
   const dst = iface.cfg.tunnel?.destination;
@@ -62,6 +71,17 @@ export function greRx(rt: Rt, base: Base, ip: Ipv4Pdu, pdu: GrePdu): void {
       },
     },
   );
-  if (pdu.inner.kind !== 'ipv4') return;
-  ifaceFrameRx(rt.ctx, rt.node, tun, eth(tun.mac, tun.mac, pdu.inner), base.from);
+  if (pdu.inner.kind === 'ipv4') {
+    ifaceFrameRx(rt.ctx, rt.node, tun, eth(tun.mac, tun.mac, pdu.inner), base.from);
+    return;
+  }
+  const i6 = rt.node.v6?.ifaces.find((i) => i.id === tun.id);
+  if (rt.node.v6 && i6)
+    ip6FrameRx(
+      rt.ctx,
+      { dev: rt.dev, cfg: rt.node.cfg, v6: rt.node.v6, xmit: rt.node.xmit },
+      i6,
+      eth6(i6.mac, i6.mac, pdu.inner),
+      base.from,
+    );
 }

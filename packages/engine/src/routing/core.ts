@@ -177,23 +177,31 @@ export const AD = {
 } as const;
 
 /** Ersetzt alle Routen einer Quelle; liefert `true` bei Änderung. */
-export function installRoutes(rt: Rt, src: string, routes: Omit<DynRoute, 'src'>[]): boolean {
+export function installRoutes(
+  rt: Rt,
+  src: string,
+  routes: Omit<DynRoute, 'src'>[],
+  v6 = false,
+): boolean {
   const key = (r: Omit<DynRoute, 'src'>): string =>
     `${r.proto}${r.sub ?? ''}|${r.prefix}/${r.plen}|${r.nextHop ?? ''}|${r.ifaceId}|${r.metric}|${r.ad}`;
-  const old = rt.cfg.dynRoutes.filter((r) => r.src === src);
+  const list = v6 ? rt.cfg.dynRoutes6 : rt.cfg.dynRoutes;
+  const old = list.filter((r) => r.src === src);
   const same =
     old.length === routes.length &&
     old.map(key).sort().join(';') === routes.map(key).sort().join(';');
   if (same) return false;
   const oldSince = new Map(old.map((r) => [`${r.prefix}/${r.plen}|${r.nextHop ?? ''}`, r.since]));
-  rt.cfg.dynRoutes = [
-    ...rt.cfg.dynRoutes.filter((r) => r.src !== src),
+  const next = [
+    ...list.filter((r) => r.src !== src),
     ...routes.map((r) => ({
       ...r,
       src,
       since: oldSince.get(`${r.prefix}/${r.plen}|${r.nextHop ?? ''}`) ?? rt.ctx.now,
     })),
   ];
+  if (v6) rt.cfg.dynRoutes6 = next;
+  else rt.cfg.dynRoutes = next;
   return true;
 }
 

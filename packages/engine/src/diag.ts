@@ -1,4 +1,5 @@
-import { ICMP_UNREACH, type Ipv4Addr, type Ipv4Pdu } from '@netsim/protocols';
+import { ICMP_UNREACH, isValidIpv6, type Ipv4Addr, type Ipv4Pdu } from '@netsim/protocols';
+import { sendPing6 } from './l3v6';
 import type { DeviceCtx } from './ctx';
 import { ipSend, newIpPacket, type IpNode } from './l3';
 import { tcpIcmpError } from './svc/tcp';
@@ -40,7 +41,7 @@ export function startPing(
   dst: Ipv4Addr,
   opts: PingOptions = {},
 ): Result<number> {
-  if (node.ifaces.length === 0) {
+  if (node.ifaces.length === 0 && !(isValidIpv6(dst) && node.v6 && node.v6.ifaces.length > 0)) {
     ctx.log({ kind: 'error', proto: 'ICMP', status: 'error', msg: { key: 'ping.noIp' } });
     return { ok: false, error: 'ping.noIp' };
   }
@@ -76,6 +77,12 @@ function sendPingSeq(ctx: DeviceCtx, node: IpNode, sessionId: number): void {
     ctx.cancelTimer(`ping:${s.id}`);
     cfg.pingSessions.splice(idx, 1);
   }
+  if (isValidIpv6(s.dst)) {
+    if (node.v6)
+      sendPing6(ctx, { cfg: node.cfg, v6: node.v6, host: node.host, xmit: node.xmit }, s, res, seq);
+    else failPing(ctx, res, 'ping.noRoute', s.dst, undefined);
+    return;
+  }
   const hop = node.lookup(s.dst);
   if (!hop) return failPing(ctx, res, 'ping.noRoute', s.dst, undefined);
   const src = s.source ?? hop.iface.ip;
@@ -100,7 +107,7 @@ function sendPingSeq(ctx: DeviceCtx, node: IpNode, sessionId: number): void {
   }
 }
 
-function failPing(
+export function failPing(
   ctx: DeviceCtx,
   res: PingResult,
   note: string,

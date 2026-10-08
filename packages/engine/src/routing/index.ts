@@ -1,17 +1,18 @@
-import type { Ipv4Pdu } from '@netsim/protocols';
+import type { Ipv4Pdu, Ipv6Pdu } from '@netsim/protocols';
 import type { DeviceCtx } from '../ctx';
 import type { L3Dev } from '../devices/l3dev';
 import type { Iface } from '../ifaces';
 import type { Base, IpNode } from '../l3';
+import type { Ip6Host, Iface6 } from '../l3v6';
 import type { L3Cfg } from '../types';
 import { rtOf, setBg, type Rt } from './core';
 import { bgpRecompute, bgpReset, bgpRx, bgpStop, bgpSync, bgpTimer } from './bgp';
 import { eigrpRecompute, eigrpReset, eigrpRx, eigrpStop, eigrpSync, eigrpTimer } from './eigrp';
+import { syncRa } from '../l3v6';
 import { greRx } from './gre';
 import { hsrpRx, hsrpStop, hsrpSync, hsrpTimer } from './hsrp';
-import { ospfRecompute, ospfRx, ospfStop, ospfSync, ospfTimer } from './ospf';
+import { pseudoIface, ospfRecompute, ospfRx, ospfStop, ospfSync, ospfTimer } from './ospf';
 import { ripRecompute, ripRx, ripStop, ripSync, ripTimer } from './rip';
-import { newRouting } from './types';
 
 export { newRouting } from './types';
 export { newRip } from './rip';
@@ -48,6 +49,7 @@ export function recompute(rt: Rt): void {
 /** Konfiguration/Topologie hat sich geändert: Protokollprozesse anpassen. */
 export function routingSync(ctx: DeviceCtx, dev: L3Dev): void {
   const rt = rtOf(ctx, dev);
+  syncRa(ctx, rt.cfg, rt.node.v6?.ifaces ?? []);
   ripSync(rt);
   ospfSync(rt);
   eigrpSync(rt);
@@ -110,6 +112,9 @@ function hsrpResetCfg(cfg: L3Cfg): void {
 
 export function routingResetRuntime(cfg: L3Cfg): void {
   cfg.dynRoutes = [];
+  cfg.dynRoutes6 = [];
+  cfg.raIfs = [];
+  for (const ic of Object.values(cfg.ifaces)) if (ic.v6) ic.v6.slaac = [];
   const r = cfg.routing;
   if (r.rip) {
     r.rip.routes = {};
@@ -118,7 +123,7 @@ export function routingResetRuntime(cfg: L3Cfg): void {
   hsrpResetCfg(cfg);
   if (r.bgp) bgpReset(r.bgp);
   for (const c of Object.values(r.eigrp)) eigrpReset(c);
-  for (const c of Object.values(r.ospf)) {
+  for (const c of [...Object.values(r.ospf), ...Object.values(r.ospf6)]) {
     c.ifs = {};
     c.lsdb = {};
     c.installed = {};
@@ -128,4 +133,19 @@ export function routingResetRuntime(cfg: L3Cfg): void {
     c.dirty = true;
     c.timersArmed = false;
   }
+}
+
+/** IPv6-Routing-Pakete (OSPFv3). */
+export function routingRx6(
+  ctx: DeviceCtx,
+  n: Ip6Host,
+  iface: Iface6,
+  base: Base,
+  pkt: Ipv6Pdu,
+): void {
+  if (!n.dev) return;
+  const rt = rtOf(ctx, n.dev as L3Dev);
+  const l4 = pkt.payload;
+  if (l4.kind === 'routing' && l4.proto === 'ospf' && l4.v === 3)
+    ospfRx(rt, pseudoIface(iface), base, { src: pkt.src }, l4.msg, true);
 }

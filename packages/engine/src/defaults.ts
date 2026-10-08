@@ -26,6 +26,8 @@ export function newIpCore(): IpCore {
   return {
     arpCache: {},
     arpPending: {},
+    nd: {},
+    ndPending: {},
     reasm: {},
     pingSessions: [],
     pings: [],
@@ -64,6 +66,10 @@ export function newL3(ipRouting: boolean): L3Cfg {
     ipRouting,
     dynRoutes: [],
     routing: newRouting(),
+    ipv6Routing: false,
+    staticRoutes6: [],
+    dynRoutes6: [],
+    raIfs: [],
   };
 }
 
@@ -71,6 +77,7 @@ export function newHost(): HostConfig {
   return {
     kind: 'host',
     ...newIpCore(),
+    v6: { enabled: true, addrs: [], autoconfig: false, slaac: [], rsSent: 0 },
     dhcpClient: { enabled: false, state: 'off', xid: 0, boundAt: 0, leaseSec: 0 },
     dnsServers: [],
     dnsCache: {},
