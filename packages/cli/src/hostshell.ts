@@ -187,8 +187,14 @@ export class HostShell implements Shell {
   }
 
   private tracert(args: string[], out: string[]): void {
-    const dst = this.target(args);
+    let dst = this.target(args);
     if (!dst) return void out.push('Usage: tracert [-h maximum_hops] target_name');
+    if (isValidIpv6(dst)) dst = normalizeIpv6(dst) ?? dst;
+    else if (!isValidIpv4(dst)) {
+      const ip = this.resolve(dst);
+      if (!ip) return void out.push(`Unable to resolve target system name ${dst}.`);
+      dst = ip;
+    }
     const maxHops = this.flagValue(args, '-h') ?? 30;
     const r = this.engine.trace(this.deviceId, dst, maxHops);
     if (!r.ok) return void out.push(`Unable to resolve target system name ${dst}.`);
@@ -223,6 +229,29 @@ export class HostShell implements Shell {
     const flag = (args[0] ?? '').toLowerCase();
     const cfg = this.dev.config;
     const port = this.dev.ports[0];
+    if (flag === '/renew6' || flag === '/release6') {
+      if (!cfg.v6.dhcp6) {
+        out.push(
+          'The operation failed as no adapter is in the state permissible for this operation.',
+        );
+        return;
+      }
+      this.engine.setHostIpv6(this.deviceId, { dhcp6: false });
+      if (flag === '/renew6') {
+        this.engine.setHostIpv6(this.deviceId, { dhcp6: true });
+        // Der Client folgt dem nächsten Router Advertisement; RS anstoßen, solange keines aktiv ist
+        if (!this.deferred())
+          waitFor(
+            this.engine,
+            () => cfg.v6.dh6?.state === 'bound' || this.engine.queueLength === 0,
+            50_000,
+          );
+      }
+      out.push('', 'Windows IP Configuration', '');
+      for (const a of cfg.v6.dhcpAddrs ?? [])
+        out.push(`   IPv6 Address....................: ${a.addr}`);
+      return;
+    }
     if (flag === '/release' || flag === '/renew') {
       if (flag === '/release' && !cfg.dhcpClient.enabled) {
         out.push(
@@ -266,12 +295,20 @@ export class HostShell implements Shell {
     if (all) {
       out.push(`   Physical Address................: ${winMac(port?.mac ?? '')}`);
       out.push(`   DHCP Enabled....................: ${cfg.dhcpClient.enabled ? 'Yes' : 'No'}`);
-      out.push(`   DNS Servers.....................: ${cfg.dnsServers.join(', ')}`);
+      out.push(
+        `   DNS Servers.....................: ${[...cfg.dnsServers, ...(cfg.v6.dns6 ?? [])].join(', ')}`,
+      );
+      if (cfg.v6.domain6) out.push(`   Connection-specific DNS Suffix..: ${cfg.v6.domain6}`);
+      out.push(`   DHCPv6 Enabled..................: ${cfg.v6.dhcp6 ? 'Yes' : 'No'}`);
     }
     if (cfg.v6.enabled && port) {
       out.push(`   Link-local IPv6 Address.........: ${linkLocalFromMac(port.mac)}`);
-      for (const a of [...cfg.v6.addrs, ...cfg.v6.slaac])
-        out.push(`   IPv6 Address....................: ${a.addr}`);
+      for (const a of [...cfg.v6.addrs, ...cfg.v6.slaac, ...(cfg.v6.dhcpAddrs ?? [])]) {
+        const st = cfg.dad?.[normalizeIpv6(a.addr) ?? a.addr]?.state;
+        const tag =
+          st === 'dup' ? '(Duplicate)' : st === 'tentative' || !st ? '(Tentative)' : '(Preferred)';
+        out.push(`   IPv6 Address....................: ${a.addr}${tag}`);
+      }
     }
     out.push(`   IPv4 Address....................: ${cfg.ip ?? '0.0.0.0'}`);
     out.push(`   Subnet Mask.....................: ${cfg.mask ?? '0.0.0.0'}`);

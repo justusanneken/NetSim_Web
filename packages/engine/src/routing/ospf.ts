@@ -20,6 +20,7 @@ import {
   installRoutes,
   plenOfMask,
   redistSource,
+  redistSource6,
   rlog,
   sendMcast,
   sendNbr,
@@ -1332,11 +1333,10 @@ export function translatorAreas(rt: Rt, c: OspfCfg): string[] {
 /** Redistribution → externe Routen, Typ-5-/Typ-7-LSAs und NSSA-Übersetzung. Liefert `true`, wenn sich etwas änderte. */
 function syncExternals(rt: Rt, c: OspfCfg): boolean {
   const own = new Map<string, OspfExternal>();
-  // Redistribution anderer Protokolle gibt es nur für OSPFv2 (OSPFv3: nur default-information originate)
-  for (const red of c.v6 ? [] : c.redistribute) {
-    for (const s of redistSource(rt, red, srcOf(c))) {
+  for (const red of c.redistribute) {
+    for (const s of c.v6 ? redistSource6(rt, red, srcOf(c)) : redistSource(rt, red, srcOf(c))) {
       if (s.plen === 0) continue;
-      if (!red.subnets && s.plen > classfulPlenOf(s.prefix)) continue;
+      if (!c.v6 && !red.subnets && s.plen > classfulPlenOf(s.prefix)) continue;
       own.set(externalKey(s.prefix, s.plen), {
         prefix: s.prefix,
         plen: s.plen,

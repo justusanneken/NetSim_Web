@@ -84,6 +84,8 @@ function appSize(p: UdpPdu['app'] | TcpPdu['app']): number {
       return 20;
     case 'dhcp':
       return DHCP_SIZE;
+    case 'dhcp6':
+      return 40 + (p.dns?.length ?? 0) * 16;
     case 'dns':
       return 12 + 20 + p.answers.length * 16;
     case 'http':
@@ -113,6 +115,7 @@ export function pduSize(pdu: Pdu): number {
       return 40 + pdu.vlans.length * 12;
     case 'rip':
     case 'hsrp':
+    case 'dhcp6':
       return appSize(pdu);
     case 'routing':
       return routingSize(pdu);
@@ -234,6 +237,17 @@ export function describePdu(pdu: Pdu): HeaderField[] {
       ];
     case 'dhcp':
       return describeDhcp(pdu);
+    case 'dhcp6':
+      return [
+        f('Message Type', pdu.op.toUpperCase()),
+        f('Transaction ID', hex(pdu.xid, 6)),
+        f('Client DUID', pdu.clientId),
+        ...(pdu.serverId ? [f('Server DUID', pdu.serverId)] : []),
+        ...(pdu.addr ? [f('IA_NA Address', `${pdu.addr}/${pdu.plen ?? 128}`)] : []),
+        ...(pdu.leaseSec !== undefined ? [f('Lease', `${pdu.leaseSec} s`)] : []),
+        ...(pdu.dns?.length ? [f('DNS Servers', pdu.dns.join(', '))] : []),
+        ...(pdu.domain ? [f('Domain Search List', pdu.domain)] : []),
+      ];
     case 'dns':
       return describeDns(pdu);
     case 'http':
@@ -443,6 +457,7 @@ const LAYER_META: Record<Pdu['kind'], { osi: number; name: string }> = {
   udp: { osi: 4, name: 'UDP' },
   tcp: { osi: 4, name: 'TCP' },
   dhcp: { osi: 7, name: 'DHCP' },
+  dhcp6: { osi: 7, name: 'DHCPv6' },
   dns: { osi: 7, name: 'DNS' },
   http: { osi: 7, name: 'HTTP' },
 };
@@ -523,6 +538,19 @@ function summarizeIp6(p: Ipv6Pdu): { proto: ProtoTag; info: string } {
   }
   if (l4.kind === 'routing') return summarizeRouting(l4, tail);
   if (l4.kind === 'gre') return { proto: 'GRE', info: `${p.src} → ${p.dst}${tail}` };
+  const a = l4.kind === 'udp' ? l4.app : undefined;
+  if (a?.kind === 'dhcp6')
+    return { proto: 'DHCP', info: `DHCPv6 ${a.op.toUpperCase()} xid ${hex(a.xid, 6)}${tail}` };
+  if (a?.kind === 'rip')
+    return {
+      proto: 'RIP',
+      info: `RIPng ${a.command} ${a.entries.length} route(s) ${p.src} → ${p.dst}${tail}`,
+    };
+  if (a?.kind === 'hsrp')
+    return {
+      proto: 'HSRP',
+      info: `group ${a.group} ${a.op} ${a.state} prio ${a.priority} vip ${a.vip}${tail}`,
+    };
   return {
     proto: l4.kind === 'tcp' ? 'TCP' : 'UDP',
     info: `[${p.src}]:${l4.srcPort} → [${p.dst}]:${l4.dstPort}${tail}`,

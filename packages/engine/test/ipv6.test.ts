@@ -36,6 +36,8 @@ function lab(opts: { slaac?: boolean } = {}) {
   if (opts.slaac) must(e.setHostIpv6(pc1, { autoconfig: true }));
   else must(e.setHostIpv6(pc1, { addr: '2001:db8:1::10', plen: 64, gateway: '2001:db8:1::1' }));
   must(e.setHostIpv6(pc2, { addr: '2001:db8:2::10', plen: 64, gateway: '2001:db8:2::1' }));
+  // Duplicate Address Detection abwarten (1 s)
+  if (!opts.slaac) sec(e, 3);
   return { e, r1, r2, pc1, pc2 };
 }
 

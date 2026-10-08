@@ -1,5 +1,5 @@
 import { ICMP_UNREACH, isValidIpv6, type Ipv4Addr, type Ipv4Pdu } from '@netsim/protocols';
-import { sendPing6 } from './l3v6';
+import { ip6Send, newIp6, sendPing6, srcFor6 } from './l3v6';
 import type { DeviceCtx } from './ctx';
 import { ipSend, newIpPacket, type IpNode } from './l3';
 import { tcpIcmpError } from './svc/tcp';
@@ -8,7 +8,7 @@ import type { PingResult, PingSession, Result, TraceProbe, TraceSession } from '
 export const PING_TIMEOUT_US = 4_000_000;
 export const TRACE_TIMEOUT_US = 2_000_000;
 export const TRACE_PROBES = 3;
-const TRACE_BASE = 10_000;
+export const TRACE_BASE = 10_000;
 const MAX_PING_HISTORY = 500;
 
 export interface PingOptions {
@@ -134,7 +134,9 @@ export function startTrace(
   dst: Ipv4Addr,
   maxHops = 30,
 ): Result<number> {
-  if (node.ifaces.length === 0) return { ok: false, error: 'ping.noIp' };
+  const v6 = isValidIpv6(dst);
+  if (v6 ? !node.v6 || node.v6.ifaces.length === 0 : node.ifaces.length === 0)
+    return { ok: false, error: 'ping.noIp' };
   const tr: TraceSession = {
     id: node.cfg.nextTraceId++,
     dst,
@@ -153,6 +155,7 @@ function sendProbe(ctx: DeviceCtx, node: IpNode, tr: TraceSession): void {
   const p = hop.probes.length;
   const probe: TraceProbe = { status: 'pending', sentAt: ctx.now };
   hop.probes.push(probe);
+  if (isValidIpv6(tr.dst)) return sendProbe6(ctx, node, tr, p, probe);
   const route = node.lookup(tr.dst);
   if (!route) {
     probe.status = 'timeout';
@@ -175,6 +178,61 @@ function sendProbe(ctx: DeviceCtx, node: IpNode, tr: TraceSession): void {
     { ttl: tr.ttl },
   );
   ipSend(ctx, node, pkt);
+}
+
+function sendProbe6(
+  ctx: DeviceCtx,
+  node: IpNode,
+  tr: TraceSession,
+  p: number,
+  probe: TraceProbe,
+): void {
+  const v6 = node.v6;
+  const route = v6?.lookup(tr.dst);
+  if (!v6 || !route) {
+    probe.status = 'timeout';
+    tr.done = true;
+    return;
+  }
+  ctx.setTimer(`trace-timeout:${tr.id}:${tr.ttl}:${p}`, TRACE_TIMEOUT_US);
+  const pkt = newIp6(
+    v6,
+    srcFor6(route.iface, tr.dst),
+    tr.dst,
+    {
+      kind: 'icmp6',
+      type: 'echo-request',
+      code: 0,
+      id: TRACE_BASE + tr.id,
+      seq: tr.ttl * 100 + p,
+      dataSize: 32,
+    },
+    tr.ttl,
+  );
+  ip6Send(ctx, { cfg: node.cfg, v6, host: node.host, xmit: node.xmit }, pkt);
+}
+
+/** Antwort auf eine IPv6-Traceroute-Probe (ICMPv6): Probe aktualisieren, Fortsetzung per Timer. */
+export function traceResponse6(
+  ctx: DeviceCtx,
+  cfg: { traces: TraceSession[] },
+  icmpId: number,
+  icmpSeq: number,
+  from: string,
+  outcome: NonNullable<TraceProbe['outcome']>,
+): void {
+  const tr = cfg.traces.find((t) => t.id === icmpId - TRACE_BASE);
+  if (!tr || tr.done) return;
+  const ttl = Math.floor(icmpSeq / 100);
+  const p = icmpSeq % 100;
+  const probe = tr.hops[ttl - 1]?.probes[p];
+  if (!probe || probe.status !== 'pending') return;
+  probe.status = 'reply';
+  probe.from = from;
+  probe.outcome = outcome;
+  probe.rttUs = ctx.now - probe.sentAt;
+  ctx.cancelTimer(`trace-timeout:${tr.id}:${ttl}:${p}`);
+  if (ttl === tr.ttl) ctx.setTimer(`trace-adv:${tr.id}`, 1);
 }
 
 function advanceTrace(ctx: DeviceCtx, node: IpNode, tr: TraceSession): void {
@@ -320,6 +378,11 @@ export function diagTimer(ctx: DeviceCtx, node: IpNode, name: string): boolean {
     const id = Number(name.slice(5));
     if (cfg.pingSessions.some((x) => x.id === id)) sendPingSeq(ctx, node, id);
     else ctx.cancelTimer(name);
+    return true;
+  }
+  if (name.startsWith('trace-adv:')) {
+    const tr = cfg.traces.find((t) => t.id === Number(name.slice(10)));
+    if (tr) advanceTrace(ctx, node, tr);
     return true;
   }
   if (name.startsWith('trace-timeout:')) {

@@ -1,5 +1,6 @@
 import { maskToPrefix, parseIpv4, sameSubnet } from '@netsim/protocols';
-import type { Device, Engine, Port, RibEntry, SwitchConfig } from '@netsim/engine';
+import type { Device, Engine, Port, RibEntry, SwitchConfig, SysConfig } from '@netsim/engine';
+import { formatClock } from './clock';
 import { ifaceUp, listIfaces, networkOf, prefixMask } from '@netsim/engine';
 import { ciscoMac, shortName } from './format';
 import { compressVlans, ifDisplay, ifShort } from './ifnames';
@@ -707,7 +708,6 @@ export function showVtp(d: D): string[] {
 
 const BASE_DATE = Date.UTC(2024, 0, 1, 0, 0, 0);
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function stamp(t: number): string {
   const x = new Date(BASE_DATE + t / 1000);
@@ -859,12 +859,8 @@ export function showVersion(e: Engine, d: D): string[] {
   ];
 }
 
-export function showClock(e: Engine): string[] {
-  const t = new Date(BASE_DATE + e.state.now / 1000);
-  const p2 = (n: number): string => String(n).padStart(2, '0');
-  return [
-    `*${p2(t.getUTCHours())}:${p2(t.getUTCMinutes())}:${p2(t.getUTCSeconds())}.${String(t.getUTCMilliseconds()).padStart(3, '0')} UTC ${DAYS[t.getUTCDay()]} ${MONTHS[t.getUTCMonth()]} ${t.getUTCDate()} ${t.getUTCFullYear()}`,
-  ];
+export function showClock(e: Engine, sys: SysConfig): string[] {
+  return [formatClock(sys, e.state.now)];
 }
 
 export function showRunning(e: Engine, d: D): string[] {

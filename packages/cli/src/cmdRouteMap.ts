@@ -465,15 +465,17 @@ export function addRouteMap(r: Registry<CliSession>): void {
   });
 
   // ------------------------------------------------------------ distribute-list
-  const DL: ModeId[] = ['config-rip', 'config-eigrp', 'config-ospf'];
+  const DL: ModeId[] = ['config-rip', 'config-eigrp', 'config-ospf', 'config-rip6'];
   const listsOf = (s: CliSession): { distributeLists?: DistList[] } & Record<string, unknown> => {
     const x = rt(s);
     const c =
       s.mode === 'config-rip'
         ? x.rip
-        : s.mode === 'config-eigrp'
-          ? x.eigrp[s.procId]
-          : x.ospf[s.procId];
+        : s.mode === 'config-rip6'
+          ? x.ripng?.[s.poolName]
+          : s.mode === 'config-eigrp'
+            ? x.eigrp[s.procId]
+            : x.ospf[s.procId];
     if (!c) throw new CliError('% Routing process is not running');
     return c as never;
   };

@@ -5,6 +5,8 @@ import { addRouteMap } from './cmdRouteMap';
 import { addOspfAreas } from './cmdOspf';
 import { addHsrpGaps } from './cmdHsrp';
 import { addBgpGaps } from './cmdBgp';
+import { addMisc } from './cmdMisc';
+import { addIpv6Gaps } from './cmdIpv6';
 import * as showGaps from './showGaps';
 
 /**
@@ -58,6 +60,8 @@ export function addGaps(r: Registry<CliSession>): void {
   addOspfAreas(r);
   addHsrpGaps(r);
   addBgpGaps(r);
+  addMisc(r);
+  addIpv6Gaps(r);
   // ------------------------------------------------------------ show (Policies)
   const SHOW = K('show', 'Show running system information');
   const U: ModeId[] = ['user', 'priv'];

@@ -12,6 +12,7 @@ import { l3Node } from '../devices/l3dev';
 import type { Iface } from '../ifaces';
 import { eth, ipSend, ipSendVia, newIpPacket, type IpNode } from '../l3';
 import { buildRib, networkOf, type RibEntry } from '../rib';
+import { buildRib6 } from '../l3v6';
 import type { DynRoute, L3Cfg, Msg } from '../types';
 import { evalRouteMap, type RouteMapSet } from './routemap';
 import { filterPermits } from './routemap';
@@ -285,4 +286,44 @@ export function distPermits(
     if (!filterPermits({ routing: rt.r, acls: rt.cfg.acls }, l.kind, l.name, route)) return false;
   }
   return true;
+}
+
+/** IPv6-Variante von `redistSource` (OSPFv3, RIPng, BGP-IPv6): connected, static und andere IPv6-Protokolle. */
+export function redistSource6(rt: Rt, red: RedistCfg, self: string): RedistRoute[] {
+  const rib = rt.node.v6 ? buildRib6(rt.cfg, rt.node.v6.ifaces) : [];
+  const out: RedistRoute[] = [];
+  for (const e of rib) {
+    if (e.type === 'L' || e.src === self) continue;
+    let ok = false;
+    if (red.source === 'connected') ok = e.type === 'C';
+    else if (red.source === 'static') ok = e.type === 'S';
+    else {
+      const t = { rip: 'R', ospf: 'O', eigrp: 'D', bgp: 'B' }[red.source];
+      ok =
+        e.type === t &&
+        (red.id === undefined || e.src === `ospf6:${red.id}` || e.src === red.source);
+    }
+    if (!ok) continue;
+    let set: RouteMapSet | undefined;
+    if (red.routeMap) {
+      const res = evalRouteMap({ routing: rt.r, acls: rt.cfg.acls }, red.routeMap, {
+        prefix: e.prefix,
+        plen: e.plen,
+        metric: e.metric,
+        nextHop: e.nextHop,
+        v6: true,
+      });
+      if (!res.permit) continue;
+      set = res.set;
+    }
+    out.push({
+      prefix: e.prefix,
+      plen: e.plen,
+      metric: e.metric,
+      nextHop: e.nextHop,
+      ifaceId: e.ifaceId,
+      set,
+    });
+  }
+  return out;
 }

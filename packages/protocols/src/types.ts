@@ -100,7 +100,7 @@ export interface Ipv4Pdu {
 
 export type IpPayload = IcmpPdu | UdpPdu | TcpPdu | RoutingPdu | GrePdu;
 
-export type AppPdu = DhcpPdu | DnsPdu | RipPdu | HsrpPdu;
+export type AppPdu = DhcpPdu | Dhcp6Pdu | DnsPdu | RipPdu | HsrpPdu;
 
 export interface UdpPdu {
   kind: 'udp';
@@ -165,6 +165,22 @@ export interface DhcpPdu {
   };
 }
 
+/** DHCPv6 (UDP 546/547, Multicast ff02::1:2): Solicit/Advertise/Request/Reply bzw. Information-Request/Reply. */
+export interface Dhcp6Pdu {
+  kind: 'dhcp6';
+  op: 'solicit' | 'advertise' | 'request' | 'reply' | 'information-request';
+  xid: number;
+  /** DUID des Clients (vereinfacht: MAC). */
+  clientId: Mac;
+  serverId?: Mac;
+  /** Zugewiesene Adresse (IA_NA) und Präfixlänge. */
+  addr?: Ipv6Addr;
+  plen?: number;
+  leaseSec?: number;
+  dns?: Ipv6Addr[];
+  domain?: string;
+}
+
 export type DnsType = 'A' | 'AAAA' | 'CNAME' | 'MX' | 'PTR';
 
 export interface DnsRecord {
@@ -212,8 +228,11 @@ export interface VtpPdu {
 // ---------------------------------------------------------------- Routing-Protokolle (Phase 4)
 
 export interface RipEntry {
-  prefix: Ipv4Addr;
+  /** IPv4-Präfix (RIPv2) bzw. IPv6-Präfix (RIPng). */
+  prefix: string;
+  /** Subnetzmaske (RIPv2); bei RIPng leer, die Länge steht in `plen`. */
   mask: string;
+  plen?: number;
   nextHop: Ipv4Addr;
   /** 1–15, 16 = unerreichbar. */
   metric: number;
@@ -223,6 +242,8 @@ export interface RipEntry {
 /** RIPv2 (UDP 520, Multicast 224.0.0.9). */
 export interface RipPdu {
   kind: 'rip';
+  /** RIPng (UDP 521, ff02::9) statt RIPv2. */
+  ng?: boolean;
   command: 'request' | 'response';
   entries: RipEntry[];
 }
@@ -423,6 +444,8 @@ export interface Icmp6Pdu {
   lladdr?: Mac;
   /** NA-Flags. */
   naFlags?: { router: boolean; solicited: boolean; override: boolean };
+  /** RA: M-Flag (Managed: DHCPv6 für Adressen) und O-Flag (Other: DHCPv6 für übrige Informationen). */
+  raFlags?: { managed: boolean; other: boolean };
   /** RA: Präfixe (SLAAC) und Router-Lebensdauer. */
   prefixes?: { prefix: Ipv6Addr; plen: number; onLink: boolean; autonomous: boolean }[];
   routerLifetime?: number;
@@ -459,6 +482,7 @@ export type Pdu =
   | UdpPdu
   | TcpPdu
   | DhcpPdu
+  | Dhcp6Pdu
   | DnsPdu
   | HttpPdu
   | BpduPdu

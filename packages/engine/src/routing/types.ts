@@ -75,6 +75,23 @@ export interface RipCfg {
   version: 2;
 }
 
+/** RIPng-Prozess (`ipv6 router rip NAME`). */
+export interface RipngCfg {
+  name: string;
+  redistribute: RedistCfg[];
+  defaultOriginate: boolean;
+  defaultMetric?: number;
+  timers: { update: number; invalid: number; holddown: number; flush: number };
+  poison: boolean;
+  passive?: string[];
+  distributeLists?: DistList[];
+  maxPaths?: number;
+  /** Laufzeit. */
+  routes: Record<string, RipRoute>;
+  held?: Record<string, { until: number; metric: number; via?: string }>;
+  timersArmed?: boolean;
+}
+
 // ---------------------------------------------------------------- OSPF
 
 export interface OspfNetworkStmt {
@@ -413,6 +430,8 @@ export interface TunnelCfg {
 
 export interface RoutingCfg {
   rip?: RipCfg;
+  /** RIPng-Prozesse nach Name. */
+  ripng?: Record<string, RipngCfg>;
   ospf: Record<number, OspfCfg>;
   /** OSPFv3 (IPv6). */
   ospf6: Record<number, OspfCfg>;

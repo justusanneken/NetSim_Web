@@ -130,7 +130,7 @@ export function runPing(s: CliSession, dst: string, o: PingParams): void {
   s.out(line);
 }
 
-function runTrace(s: CliSession, dst: string): void {
+export function runTrace(s: CliSession, dst: string): void {
   const e = s.engine;
   const d = s.device;
   const r = e.trace(d.id, dst);
@@ -497,7 +497,7 @@ export function buildRegistry(): Registry<CliSession> {
     'switch',
   );
   sh([['history', 'Display the session command history']], (s) => s.outLines([...s.history]));
-  sh([['clock', 'Display the system clock']], (s) => s.outLines(show.showClock(s.engine)));
+  sh([['clock', 'Display the system clock']], (s) => s.outLines(show.showClock(s.engine, s.sys)));
 
   // --- Diagnose
   r.add({

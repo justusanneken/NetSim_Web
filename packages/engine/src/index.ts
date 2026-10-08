@@ -22,9 +22,11 @@ export { newSys, newSwitchPort } from './defaults';
 export { bridgeId } from './devices/stp';
 export * from './routing/types';
 export * from './routing/routemap';
+export { newDhcp6Pool } from './svc/dhcp6';
 export {
   newRouting,
   newRip,
+  newRipng,
   newOspf,
   newEigrp,
   newHsrp,

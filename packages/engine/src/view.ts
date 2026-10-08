@@ -63,6 +63,13 @@ export interface HostV6View {
   gateway?: string;
   raGateway?: string;
   autoconfig: boolean;
+  dhcp6: boolean;
+  dhcpAddrs: { addr: string; plen: number }[];
+  dns6: string[];
+  domain6?: string;
+  /** Adressen in der Duplicate Address Detection bzw. als Duplikat erkannt. */
+  tentative: string[];
+  duplicate: string[];
 }
 
 export interface DeviceView {
@@ -265,6 +272,16 @@ export function buildDevices(engine: Engine): DeviceView[] {
         gateway: d.config.v6.gateway,
         raGateway: d.config.v6.raGateway?.addr,
         autoconfig: d.config.v6.autoconfig,
+        dhcp6: !!d.config.v6.dhcp6,
+        dhcpAddrs: (d.config.v6.dhcpAddrs ?? []).map((a) => ({ addr: a.addr, plen: a.plen })),
+        dns6: [...(d.config.v6.dns6 ?? [])],
+        domain6: d.config.v6.domain6,
+        tentative: Object.entries(d.config.dad ?? {})
+          .filter(([, x]) => x.state === 'tentative')
+          .map(([a]) => a),
+        duplicate: Object.entries(d.config.dad ?? {})
+          .filter(([, x]) => x.state === 'dup')
+          .map(([a]) => a),
       };
     } else if (d.config.kind === 'router') {
       v.hostname = d.config.sys.hostname;

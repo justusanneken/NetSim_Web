@@ -137,6 +137,10 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
       out.push(` ipv6 address ${a.addr.toUpperCase()}/${a.plen}${a.eui64 ? ' eui-64' : ''}`);
     if (v6.autoconfig) out.push(' ipv6 address autoconfig');
     if (v6.raSuppress) out.push(' ipv6 nd ra suppress');
+    if (v6.managed) out.push(' ipv6 nd managed-config-flag');
+    if (v6.otherConfig) out.push(' ipv6 nd other-config-flag');
+    if (v6.dhcp6Server) out.push(` ipv6 dhcp server ${v6.dhcp6Server}`);
+    if (v6.ripng) out.push(` ipv6 rip ${v6.ripng} enable`);
     const v = v6.ospf;
     if (v) {
       if (v.area !== undefined) out.push(` ipv6 ospf ${v.pid ?? 1} area ${area(v.area)}`);
@@ -292,6 +296,16 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
   if (cfg.kind === 'switch' && d.type === 'switch-l3' && cfg.ipRouting) L.push('ip routing', '!');
   if (cfg.ipv6Routing) L.push('ipv6 unicast-routing', '!');
   trackNamer = (id) => ifDisplay(d, id);
+  for (const p of cfg.dhcp6?.pools ?? []) {
+    L.push(`ipv6 dhcp pool ${p.name}`);
+    if (p.prefix)
+      L.push(
+        ` address prefix ${p.prefix.prefix.toUpperCase()}/${p.prefix.plen}${p.leaseSec !== 86400 ? ` lifetime ${p.leaseSec} ${p.leaseSec}` : ''}`,
+      );
+    for (const dns of p.dns) L.push(` dns-server ${dns.toUpperCase()}`);
+    if (p.domain) L.push(` domain-name ${p.domain}`);
+    L.push('!');
+  }
   for (const ex of cfg.dhcp.excluded) {
     L.push(`ip dhcp excluded-address ${ex.from}${ex.to !== ex.from ? ` ${ex.to}` : ''}`);
   }
@@ -423,6 +437,14 @@ function distLines(d: Device, lists: DistList[] | undefined, L: string[]): void 
     );
 }
 
+const redist6Text = (r: RedistCfg): string => {
+  let s = ` redistribute ${r.source}${r.id !== undefined ? ' ' + r.id : ''}`;
+  if (r.metric !== undefined) s += ` metric ${r.metric}`;
+  if (r.metricType) s += ` metric-type ${r.metricType}`;
+  if (r.routeMap) s += ` route-map ${r.routeMap}`;
+  return s;
+};
+
 function passiveLines(
   d: Device,
   c: { passive: string[]; unpassive: string[]; passiveDefault: boolean },
@@ -484,6 +506,20 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     for (const x of c.redistribute) L.push(redistText(x, 'ospf'));
     L.push('!');
   }
+  for (const c of Object.values(r.ripng ?? {})) {
+    L.push(`ipv6 router rip ${c.name}`);
+    if (c.defaultOriginate) L.push(' default-information originate');
+    if (c.defaultMetric !== undefined) L.push(` default-metric ${c.defaultMetric}`);
+    if (c.poison) L.push(' poison-reverse');
+    const t = c.timers;
+    if (t.update !== 30 || t.invalid !== 180 || t.holddown !== 180 || t.flush !== 240)
+      L.push(` timers ${t.update} ${t.invalid} ${t.holddown} ${t.flush}`);
+    for (const id of c.passive ?? []) L.push(` passive-interface ${ifDisplay(d, id)}`);
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    distLines(d, c.distributeLists, L);
+    for (const x of c.redistribute) L.push(redist6Text(x));
+    L.push('!');
+  }
   for (const c of Object.values(r.ospf6)) {
     L.push(`ipv6 router ospf ${c.pid}`);
     if (c.routerId) L.push(` router-id ${c.routerId}`);
@@ -496,6 +532,7 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
       );
     }
     if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    for (const x of c.redistribute) L.push(redist6Text(x));
     L.push('!');
   }
   for (const c of Object.values(r.eigrp)) {

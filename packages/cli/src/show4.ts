@@ -657,6 +657,10 @@ export function showIpv6Interface(e: Engine, d: D, brief: boolean): string[] {
     if (i.addrs.length) out.push('  Global unicast address(es):');
     for (const a of i.addrs)
       out.push(`    ${up6(a.addr)}, subnet is ${up6(ipv6Network(a.addr, a.plen))}/${a.plen}`);
+    for (const a of i.tentative)
+      out.push(`    ${up6(a.addr)}, subnet is ${up6(ipv6Network(a.addr, a.plen))}/${a.plen} [TEN]`);
+    for (const a of i.dup)
+      out.push(`    ${up6(a.addr)}, subnet is ${up6(ipv6Network(a.addr, a.plen))}/${a.plen} [DUP]`);
     out.push(
       '  Joined group address(es):',
       '    FF02::1',
@@ -664,7 +668,7 @@ export function showIpv6Interface(e: Engine, d: D, brief: boolean): string[] {
     );
     out.push(
       `  MTU is ${i.mtu} bytes`,
-      '  ND DAD is not supported',
+      '  ND DAD is enabled, number of DAD attempts: 1',
       '  ND reachable time is 30000 milliseconds',
     );
     out.push('');
@@ -695,6 +699,17 @@ export function showIpv6Protocols(e: Engine, d: D): string[] {
     out.push('  Interfaces (Area 0):');
     for (const id of Object.keys(c.ifs)) out.push(`    ${ifDisplay(d, id)}`);
     out.push('  Redistribution:', '    None', '');
+  }
+  for (const c of Object.values(cfg.routing.ripng ?? {})) {
+    out.push(`IPv6 Routing Protocol is "rip ${c.name}"`);
+    out.push(`  Interfaces:`);
+    for (const [id, ic] of Object.entries(cfg.ifaces))
+      if (ic.v6?.ripng === c.name) out.push(`    ${ifDisplay(d, id)}`);
+    out.push(
+      '  Redistribution:',
+      c.redistribute.length ? `    ${c.redistribute.map((x) => x.source).join(', ')}` : '    None',
+      '',
+    );
   }
   if (!out.length) out.push('IPv6 Routing Protocol is "connected"', '');
   void e;
