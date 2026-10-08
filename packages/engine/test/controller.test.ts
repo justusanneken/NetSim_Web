@@ -91,7 +91,9 @@ describe('SimController', () => {
     svc.ping(a, '10.0.0.2');
     svc.step();
     svc.reset();
-    expect(svc.getView()).toMatchObject({ now: 0, logLength: 0, canStepBack: false });
+    expect(svc.getView()).toMatchObject({ now: 0, logLength: 0, canStepBack: false, logEpoch: 1 });
+    svc.clear();
+    expect(svc.getView()).toMatchObject({ devices: [], links: [], logEpoch: 2 });
   });
 
   it('Service reicht Befehle durch', () => {

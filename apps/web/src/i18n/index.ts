@@ -1,0 +1,37 @@
+import i18next from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import de from './de.json';
+import en from './en.json';
+
+export type Lang = 'de' | 'en';
+
+function storedLang(): Lang {
+  try {
+    const v = localStorage.getItem('netsim.lang');
+    if (v === 'de' || v === 'en') return v;
+  } catch {
+    /* Speicher nicht verfügbar */
+  }
+  return 'de';
+}
+
+void i18next.use(initReactI18next).init({
+  resources: { de: { translation: de }, en: { translation: en } },
+  lng: storedLang(),
+  fallbackLng: 'de',
+  keySeparator: false,
+  nsSeparator: false,
+  interpolation: { escapeValue: false },
+});
+
+export function setLang(lang: Lang): void {
+  void i18next.changeLanguage(lang);
+  document.documentElement.lang = lang;
+  try {
+    localStorage.setItem('netsim.lang', lang);
+  } catch {
+    /* ignorieren */
+  }
+}
+
+export default i18next;

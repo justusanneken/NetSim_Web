@@ -240,6 +240,24 @@ export class Engine {
     portA.linkId = id;
     portB.linkId = id;
     this.refreshLinks();
+    if (!check.operUp) {
+      // Port war schon down → kein Zustandswechsel; Ursache trotzdem sichtbar machen.
+      for (const [dev, p] of [
+        [devA, portA],
+        [devB, portB],
+      ] as const) {
+        this.addLog(dev, {
+          kind: 'info',
+          proto: 'LINK',
+          status: 'info',
+          port: p,
+          msg: {
+            key: 'link.down',
+            params: { port: p.name, reason: check.problemKey ?? 'cable.problem.generic' },
+          },
+        });
+      }
+    }
     return { ok: true, value: link };
   }
 

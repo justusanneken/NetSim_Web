@@ -316,6 +316,16 @@ describe('Topologie', () => {
     });
   });
 
+  it('Falsches Kabel: Ursache wird im Log sichtbar', () => {
+    const e = new Engine();
+    const a = e.addDevice('pc');
+    const b = e.addDevice('pc');
+    e.connect({ deviceId: a, portId: 'p0' }, { deviceId: b, portId: 'p0' }, 'straight');
+    const downs = e.log.filter((l) => l.msg.key === 'link.down');
+    expect(downs).toHaveLength(2);
+    expect(downs[0]?.msg.params).toMatchObject({ reason: 'cable.problem.mdi' });
+  });
+
   it('Auto-MDIX: PC↔Switch geht mit beiden Kabeln, Hub↔PC nur Straight, Hub↔Hub nur Crossover', () => {
     const e = new Engine();
     const sw = e.addDevice('switch-l2');

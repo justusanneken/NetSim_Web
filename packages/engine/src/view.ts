@@ -55,6 +55,7 @@ export interface ViewModel {
   devices: DeviceView[];
   links: LinkView[];
   logLength: number;
+  logEpoch: number;
   queueLength: number;
   canStepBack: boolean;
   domains: { hubs: string[]; endpoints: PortRef[] }[];

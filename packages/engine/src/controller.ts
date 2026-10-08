@@ -21,8 +21,10 @@ export class SimController {
   private acc = 0;
   private history: EngineSnapshot[] = [];
   private dirty = true;
+  /** Wird erhöht, wenn das Log nicht nur wächst (Step Back, Reset, Neu). */
+  private epoch = 0;
 
-  constructor(opts: EngineOptions = {}) {
+  constructor(private readonly opts: EngineOptions = {}) {
     this.engine = new Engine(opts);
   }
 
@@ -85,6 +87,7 @@ export class SimController {
     const snap = this.history.pop();
     if (!snap) return false;
     this.engine.restore(snap);
+    this.epoch++;
     this.autoCapture = false;
     this.markDirty();
     return true;
@@ -92,6 +95,17 @@ export class SimController {
 
   reset(): void {
     this.engine.resetRuntime();
+    this.epoch++;
+    this.history = [];
+    this.autoCapture = false;
+    this.acc = 0;
+    this.markDirty();
+  }
+
+  /** Verwirft die gesamte Topologie und startet mit einem leeren Netz. */
+  clear(): void {
+    this.engine = new Engine(this.opts);
+    this.epoch++;
     this.history = [];
     this.autoCapture = false;
     this.acc = 0;
@@ -133,6 +147,7 @@ export class SimController {
       devices: buildDevices(e),
       links: buildLinks(e),
       logLength: e.log.length,
+      logEpoch: this.epoch,
       queueLength: e.queueLength,
       canStepBack: this.history.length > 0,
       domains: e.collisionDomains(),

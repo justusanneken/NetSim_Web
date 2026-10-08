@@ -105,4 +105,7 @@ export class EngineService {
   reset(): void {
     this.ctl.reset();
   }
+  clear(): void {
+    this.ctl.clear();
+  }
 }
