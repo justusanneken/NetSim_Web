@@ -627,7 +627,14 @@ export function showIpv6Route(e: Engine, d: D): string[] {
               ? 'OE2'
               : 'O'
         : r.type;
-    out.push(`${code.padEnd(4)}${up6(r.prefix)}/${r.plen} [${r.ad}/${r.metric}]`);
+    const prev = sorted[sorted.indexOf(r) - 1];
+    const sameAsPrev =
+      prev !== undefined &&
+      prev.prefix === r.prefix &&
+      prev.plen === r.plen &&
+      prev.type === r.type &&
+      prev.ad === r.ad;
+    if (!sameAsPrev) out.push(`${code.padEnd(4)}${up6(r.prefix)}/${r.plen} [${r.ad}/${r.metric}]`);
     const ifn = r.ifaceId ? ifDisplay(d, r.ifaceId) : '';
     out.push(
       r.nextHop ? `     via ${up6(r.nextHop)}, ${ifn}` : `     via ${ifn}, directly connected`,
