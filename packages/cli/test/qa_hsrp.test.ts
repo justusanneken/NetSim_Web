@@ -102,4 +102,40 @@ describe('QA HSRP v2 failover', () => {
     expect(r2.run('show standby brief')).toMatch(/Active/);
     expect(pingOk(e, pc, '10.9.0.10')).toBe(true);
   });
+
+  it('no standby <group> on the active router removes the group; standby takes over', () => {
+    const { e, pc, r1, r2 } = lab();
+    sec(e, 90);
+    const o = r1.run('configure terminal', 'interface gi0/0', 'no standby 10', 'end');
+    expect(o).not.toContain('%');
+    expect(r1.run('show running-config')).not.toContain('standby 10');
+    expect(r1.run('show standby brief')).not.toMatch(/Gi0\/0\s+10/);
+    sec(e, 15);
+    expect(r2.run('show standby brief')).toMatch(/Gi0\/0\s+10\s+100\s+P\s+Active/);
+    sec(e, 10);
+    expect(pingOk(e, pc, '10.9.0.10')).toBe(true);
+  });
+
+  it('no interface loopbackN withdraws its route', () => {
+    const { e, r1, r3 } = lab();
+    r1.run(
+      'configure terminal',
+      'interface loopback7',
+      'ip address 7.7.7.7 255.255.255.255',
+      'exit',
+      'router ospf 1',
+      'network 7.7.7.7 0.0.0.0 area 0',
+      'end',
+    );
+    sec(e, 90);
+    expect(r3.run('show ip route')).toContain('7.7.7.7');
+    const o = r1.run('configure terminal', 'no interface Loopback7', 'end');
+    expect(o).not.toContain('%');
+    sec(e, 15);
+    expect(r1.run('show running-config')).not.toContain('Loopback7');
+    expect(r3.run('show ip route')).not.toContain('7.7.7.7');
+    expect(r1.run('configure terminal', 'no interface gi0/0', 'end')).toContain(
+      '% Invalid interface',
+    );
+  });
 });

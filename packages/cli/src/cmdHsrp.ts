@@ -10,6 +10,26 @@ const STBY = K('standby', 'HSRP interface configuration commands');
 
 /** HSRP-Erweiterungen: Version 2, Authentifizierung und IPv6-Gruppen. */
 export function addHsrpGaps(r: Registry<CliSession>): void {
+  // IOS: `no standby <group>` entfernt die ganze Gruppe (IPv4 und IPv6)
+  r.add({
+    modes: [...IFM],
+    only: 'l3',
+    slots: [
+      K('no', 'Negate a command or set its defaults'),
+      STBY,
+      P('g', 'int', '<0-4095>', 'group number', [0, 4095]),
+    ],
+    run: (s, a) => {
+      const group = Number(a.g);
+      for (const id of targets(s)) {
+        const ic = l3c(s).ifaces[id];
+        if (!ic) continue;
+        if (ic.hsrp) delete ic.hsrp[group];
+        if (ic.hsrp6) delete ic.hsrp6[group];
+      }
+      touch(s);
+    },
+  });
   r.add({
     modes: [...IFM],
     only: 'l3',

@@ -810,6 +810,7 @@ export function buildRegistry(): Registry<CliSession> {
   };
   r.add({
     modes: CF,
+    negatable: true,
     slots: [
       K('interface', 'Select an interface to configure'),
       P('if', 'iface', 'IFNAME', 'Interface name'),
@@ -817,6 +818,13 @@ export function buildRegistry(): Registry<CliSession> {
     run: (s, a) => {
       const ref = resolveIface(s.device, a.if as string);
       if (!ref) throw new CliError('% Invalid interface');
+      if (s.negated) {
+        // `no interface Loopback5` usw.: nur virtuelle Schnittstellen lassen sich löschen
+        if (ref.kind === 'phys' || ref.kind === 'po') throw new CliError('% Invalid interface');
+        delete s.device.config.ifaces[ref.id];
+        s.engine.routingChanged(s.deviceId);
+        return;
+      }
       if (ref.kind === 'po') {
         s.ifaces = [ref.id];
         s.mode = 'config-if';
