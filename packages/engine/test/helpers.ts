@@ -22,7 +22,14 @@ export function switchLab(n = 3, seed = 1): Lab {
     e.setHostIp(pc, `10.0.0.${i + 1}`, '255.255.255.0');
     ids.push(pc);
   }
+  converge(e);
   return { e, ids, sw };
+}
+
+/** Wartet, bis Spanning Tree (802.1D) alle Access-Ports in den Forwarding-Zustand gebracht hat. */
+export function converge(e: Engine, seconds = 35): void {
+  e.runUntil(e.state.now + seconds * 1_000_000);
+  e.log.length = 0;
 }
 
 export function hubLab(n = 3, seed = 1): Lab {

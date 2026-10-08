@@ -150,9 +150,10 @@ describe('SimController', () => {
 
   it('View enthält MAC-/ARP-Tabellen und Domänen', () => {
     const { svc, a } = setup();
-    svc.ping(a, '10.0.0.2');
     new SimController();
     svc.setSpeed(20);
+    for (let i = 0; i < 150; i++) svc.tick(16);
+    svc.ping(a, '10.0.0.2');
     for (let i = 0; i < 100; i++) svc.tick(16);
     const v = svc.getView();
     expect(v.devices.find((d) => d.type === 'switch-l2')?.macTable).toHaveLength(2);

@@ -12,20 +12,28 @@ import { CATALOG, PORT_MAX_SPEED } from './catalog';
 import type { DeviceCtx, LogInput } from './ctx';
 import {
   announce,
+  hostDhcp,
+  hostHttp,
   hostPing,
+  hostResolve,
   hostRx,
   hostTimer,
   hostTrace,
   resetIpRuntime,
   type PingOptions,
 } from './devices/host';
-import { routerPing, routerRx, routerTimer, routerTrace } from './devices/router';
+import { l3Ping, l3Timer, l3Trace, routerRx, type L3Dev } from './devices/l3dev';
+import { ifaceName, listIfaces, sviId, subId } from './ifaces';
 import { buildRib, networkOf, type RibEntry } from './rib';
 import { hubRx } from './devices/hub';
-import { activeMacTable, switchPortDown, switchRx } from './devices/switch';
+import { activeMacTable, switchPortDown, switchRx, switchStart, switchTimer, type SwitchDev } from './devices/switch';
+import { stpPortsChanged } from './devices/stp';
+import { vtpSend } from './devices/vtp';
 import { heapPop, heapPush, heapRemove } from './heap';
 import { mulberry32 } from './rng';
 import type {
+  HostConfig,
+  SwitchPortCfg,
   CableType,
   CollisionPayload,
   Device,
@@ -67,6 +75,9 @@ export class Engine {
   state: EngineState;
   /** Event-Log (außerhalb des Zustands, damit Snapshots klein bleiben). */
   log: LogEntry[] = [];
+  private refreshWanted = false;
+  /** Signatur der zuletzt verarbeiteten Switch-Konfiguration (löst STP-Neuaufbau aus). */
+  private readonly switchSig = new Map<string, string>();
 
   constructor(opts: EngineOptions = {}) {
     const seed = opts.seed ?? 1;
@@ -116,15 +127,29 @@ export class Engine {
     for (const dev of Object.values(s.devices)) {
       delete dev.crashed;
       const cfg = dev.config;
-      if (cfg.kind === 'host' || cfg.kind === 'router') {
+      if (cfg.kind === 'host' || cfg.kind === 'router' || cfg.kind === 'switch') {
         resetIpRuntime(cfg);
         cfg.pings = [];
         cfg.traces = [];
         cfg.nextPingId = 1;
         cfg.nextTraceId = 1;
         cfg.nextIpId = 1;
-      } else if (cfg.kind === 'switch') cfg.macTable = {};
-      else if (cfg.kind === 'hub') cfg.busyUntil = 0;
+      }
+      if (cfg.kind === 'host') {
+        cfg.tcp = {};
+        cfg.requests = [];
+        cfg.dnsPending = {};
+        cfg.dnsResults = {};
+        cfg.dnsCache = {};
+        cfg.dhcpClient.state = cfg.dhcpClient.enabled ? 'init' : 'off';
+      } else if (cfg.kind === 'router' || cfg.kind === 'switch') {
+        cfg.nat.table = [];
+        cfg.dynRoutes = [];
+        if (cfg.kind === 'switch') {
+          cfg.macTable = {};
+          cfg.stp.instances = {};
+        }
+      } else if (cfg.kind === 'hub') cfg.busyUntil = 0;
       for (const p of dev.ports) {
         p.txBusyUntil = 0;
         p.counters = {
@@ -139,6 +164,15 @@ export class Engine {
       }
     }
     this.log.length = 0;
+    this.refreshLinks();
+    for (const dev of Object.values(s.devices)) this.startTimers(dev);
+  }
+
+  /** Hintergrund-Timer (STP, VTP) eines Geräts starten. */
+  private startTimers(dev: Device): void {
+    if (dev.config.kind === 'switch' && dev.powered) {
+      this.withCtx(dev, (ctx) => switchStart(ctx, dev as SwitchDev));
+    }
   }
 
   // ------------------------------------------------------------ Topologie
@@ -174,7 +208,7 @@ export class Engine {
       txBusyUntil: 0,
       mtu: 1500,
     }));
-    const config = spec.makeConfig(name);
+    const config = spec.makeConfig(name, ports);
     s.devices[id] = {
       id,
       type,
@@ -187,6 +221,7 @@ export class Engine {
       config,
       physical: {},
     };
+    this.startTimers(s.devices[id] as Device);
     return id;
   }
 
@@ -299,6 +334,7 @@ export class Engine {
       }
     }
     delete this.state.links[linkId];
+    this.refreshSwitches();
   }
 
   setPower(deviceId: string, on: boolean): void {
@@ -307,14 +343,24 @@ export class Engine {
     dev.powered = on;
     if (!on) {
       heapRemove(this.state.queue, (e) => e.deviceId === deviceId);
-      if (dev.config.kind === 'host' || dev.config.kind === 'router') resetIpRuntime(dev.config);
-      if (dev.config.kind === 'switch') dev.config.macTable = {};
+      if (dev.config.kind === 'host' || dev.config.kind === 'router' || dev.config.kind === 'switch')
+        resetIpRuntime(dev.config);
+      if (dev.config.kind === 'switch') {
+        dev.config.macTable = {};
+        dev.config.stp.instances = {};
+      }
+      if (dev.config.kind === 'host') {
+        dev.config.tcp = {};
+        dev.config.dnsPending = {};
+        if (dev.config.dhcpClient.enabled) dev.config.dhcpClient.state = 'init';
+      }
       if (dev.config.kind === 'hub') dev.config.busyUntil = 0;
       for (const p of dev.ports) p.txBusyUntil = 0;
     } else {
       delete dev.crashed;
     }
     this.refreshLinks();
+    if (on) this.startTimers(dev);
   }
 
   setPortAdmin(deviceId: string, portId: string, up: boolean): void {
@@ -364,44 +410,76 @@ export class Engine {
   /** Ping von einem Host oder Router aus (Ergebnisse in `config.pings`). */
   ping(deviceId: string, dst: string, opts?: PingOptions): Result<number> {
     const dev = this.state.devices[deviceId];
-    if (!dev || (dev.config.kind !== 'host' && dev.config.kind !== 'router'))
+    if (!dev || dev.config.kind === 'hub' || dev.config.kind === 'none')
       return { ok: false, error: 'ip.notAHost' };
     if (!dev.powered || dev.crashed) return { ok: false, error: 'dev.off' };
     if (!isValidIpv4(dst)) return { ok: false, error: 'ip.invalidIp' };
     const cfg = dev.config;
     return this.withCtx(dev, (ctx) =>
-      cfg.kind === 'host' ? hostPing(ctx, cfg, dst, opts) : routerPing(ctx, cfg, dst, opts),
+      cfg.kind === 'host' ? hostPing(ctx, cfg, dst, opts) : l3Ping(ctx, dev as L3Dev, dst, opts),
     );
   }
 
   /** Traceroute (Ergebnis in `config.traces`). */
   trace(deviceId: string, dst: string, maxHops = 30): Result<number> {
     const dev = this.state.devices[deviceId];
-    if (!dev || (dev.config.kind !== 'host' && dev.config.kind !== 'router'))
+    if (!dev || dev.config.kind === 'hub' || dev.config.kind === 'none')
       return { ok: false, error: 'ip.notAHost' };
     if (!dev.powered || dev.crashed) return { ok: false, error: 'dev.off' };
     if (!isValidIpv4(dst)) return { ok: false, error: 'ip.invalidIp' };
     const cfg = dev.config;
     return this.withCtx(dev, (ctx) =>
-      cfg.kind === 'host' ? hostTrace(ctx, cfg, dst, maxHops) : routerTrace(ctx, cfg, dst, maxHops),
+      cfg.kind === 'host' ? hostTrace(ctx, cfg, dst, maxHops) : l3Trace(ctx, dev as L3Dev, dst, maxHops),
     );
   }
 
   // ------------------------------------------------------------ Router-Konfiguration
 
-  private router(deviceId: string): Device | undefined {
+  private l3(deviceId: string): L3Dev | undefined {
     const d = this.state.devices[deviceId];
-    return d?.config.kind === 'router' ? d : undefined;
+    return d && (d.config.kind === 'router' || d.config.kind === 'switch') ? (d as L3Dev) : undefined;
   }
 
-  /** IP-Adresse einer Router-Schnittstelle setzen (`ip=''` löscht sie). */
-  setInterfaceIp(deviceId: string, portId: string, ip: string, mask: string): Result<true> {
-    const dev = this.router(deviceId);
-    const port = dev?.ports.find((p) => p.id === portId);
-    if (!dev || !port || dev.config.kind !== 'router') return { ok: false, error: 'ip.notARouter' };
+  /** L3-Schnittstelle anlegen (Subinterface `p0.10`, SVI `vlan10`); physische existieren implizit. */
+  ensureIface(deviceId: string, id: string): Result<string> {
+    const dev = this.l3(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notARouter' };
     const cfg = dev.config;
+    if (cfg.ifaces[id]) return { ok: true, value: id };
+    const sub = /^(p\d+)\.(\d+)$/.exec(id);
+    const svi = /^vlan(\d+)$/.exec(id);
+    if (sub && dev.config.kind === 'router' && dev.ports.some((p) => p.id === sub[1])) {
+      cfg.ifaces[id] = { kind: 'sub', portId: sub[1], vlan: Number(sub[2]), shutdown: false };
+    } else if (svi && dev.config.kind === 'switch') {
+      cfg.ifaces[id] = { kind: 'svi', vlan: Number(svi[1]), shutdown: false };
+    } else if (dev.ports.some((p) => p.id === id)) {
+      cfg.ifaces[id] = { kind: 'phys', portId: id };
+    } else return { ok: false, error: 'cable.reject.notFound' };
+    return { ok: true, value: id };
+  }
+
+  /** Subinterface (`encapsulation dot1Q`) auf einem Routerport anlegen. */
+  createSubIface(deviceId: string, portId: string, vlan: number): Result<string> {
+    return this.ensureIface(deviceId, subId(portId, vlan));
+  }
+
+  /** SVI (`interface vlan N`) auf einem Switch anlegen. */
+  createSvi(deviceId: string, vlan: number): Result<string> {
+    return this.ensureIface(deviceId, sviId(vlan));
+  }
+
+  /** IP-Adresse einer L3-Schnittstelle setzen (`ip=''` löscht sie). */
+  setInterfaceIp(deviceId: string, ifaceId: string, ip: string, mask: string): Result<true> {
+    const dev = this.l3(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notARouter' };
+    const cfg = dev.config;
+    const made = this.ensureIface(deviceId, ifaceId);
+    if (!made.ok) return made;
+    const ic = cfg.ifaces[ifaceId];
+    if (!ic) return { ok: false, error: 'ip.notARouter' };
     if (ip === '') {
-      delete cfg.ifaces[portId];
+      ic.ip = undefined;
+      ic.mask = undefined;
       return { ok: true, value: true };
     }
     if (!isValidIpv4(ip)) return { ok: false, error: 'ip.invalidIp' };
@@ -410,40 +488,40 @@ export class Engine {
     if (plen < 31 && (parseIpv4(ip) as number) === parseIpv4(networkOf(ip, plen))) {
       return { ok: false, error: 'ip.networkAddress' };
     }
-    for (const other of dev.ports) {
-      const o = cfg.ifaces[other.id];
-      if (other.id === portId || !o?.ip || !o.mask) continue;
+    for (const [oid, o] of Object.entries(cfg.ifaces)) {
+      if (oid === ifaceId || !o.ip || !o.mask) continue;
       const olen = maskToPrefix(o.mask) as number;
       const common = Math.min(plen, olen);
       if (networkOf(ip, common) === networkOf(o.ip, common)) {
         return {
           ok: false,
           error: 'ip.overlap',
-          params: { net: networkOf(ip, plen), port: other.name },
+          params: { net: networkOf(ip, plen), port: ifaceName(dev, oid, o) },
         };
       }
     }
-    cfg.ifaces[portId] = { ip, mask };
+    ic.ip = ip;
+    ic.mask = mask;
     return { ok: true, value: true };
   }
 
   addStaticRoute(
     deviceId: string,
-    r: { prefix: string; mask: string; nextHop?: string; outPortId?: string; ad?: number },
+    r: { prefix: string; mask: string; nextHop?: string; outIfaceId?: string; ad?: number },
   ): Result<true> {
-    const dev = this.router(deviceId);
-    if (!dev || dev.config.kind !== 'router') return { ok: false, error: 'ip.notARouter' };
+    const dev = this.l3(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notARouter' };
     if (!isValidIpv4(r.prefix)) return { ok: false, error: 'ip.invalidIp' };
     if (maskToPrefix(r.mask) === undefined) return { ok: false, error: 'ip.invalidMask' };
     if (r.nextHop !== undefined && !isValidIpv4(r.nextHop))
       return { ok: false, error: 'ip.invalidGateway' };
-    if (r.nextHop === undefined && r.outPortId === undefined)
+    if (r.nextHop === undefined && r.outIfaceId === undefined)
       return { ok: false, error: 'ip.invalidGateway' };
     const entry = {
       prefix: networkOf(r.prefix, maskToPrefix(r.mask) as number),
       mask: r.mask,
       nextHop: r.nextHop,
-      outPortId: r.outPortId,
+      outIfaceId: r.outIfaceId,
       ad: r.ad ?? 1,
     };
     const routes = dev.config.staticRoutes;
@@ -451,17 +529,17 @@ export class Engine {
       x.prefix === entry.prefix &&
       x.mask === entry.mask &&
       x.nextHop === entry.nextHop &&
-      x.outPortId === entry.outPortId;
+      x.outIfaceId === entry.outIfaceId;
     if (!routes.some(same)) routes.push(entry);
     return { ok: true, value: true };
   }
 
   removeStaticRoute(
     deviceId: string,
-    r: { prefix: string; mask: string; nextHop?: string; outPortId?: string },
+    r: { prefix: string; mask: string; nextHop?: string; outIfaceId?: string },
   ): Result<true> {
-    const dev = this.router(deviceId);
-    if (!dev || dev.config.kind !== 'router') return { ok: false, error: 'ip.notARouter' };
+    const dev = this.l3(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notARouter' };
     const plen = maskToPrefix(r.mask);
     if (plen === undefined) return { ok: false, error: 'ip.invalidMask' };
     const prefix = networkOf(r.prefix, plen);
@@ -471,7 +549,7 @@ export class Engine {
         x.prefix === prefix &&
         x.mask === r.mask &&
         x.nextHop === r.nextHop &&
-        x.outPortId === r.outPortId,
+        x.outIfaceId === r.outIfaceId,
     );
     if (i >= 0) routes.splice(i, 1);
     return { ok: true, value: true };
@@ -486,10 +564,173 @@ export class Engine {
     return { ok: true, value: true };
   }
 
-  /** Routing-Tabelle eines Routers (C/L/S). */
+  /** Routing-Tabelle eines Routers bzw. L3-Switches. */
   routingTable(deviceId: string): RibEntry[] {
-    const dev = this.router(deviceId);
-    return dev && dev.config.kind === 'router' ? buildRib(dev.config, dev.ports) : [];
+    const dev = this.l3(deviceId);
+    return dev ? buildRib(dev.config, listIfaces(dev, dev.config)) : [];
+  }
+
+  // ------------------------------------------------------------ Switch-Konfiguration
+
+  private sw(deviceId: string): SwitchDev | undefined {
+    const d = this.state.devices[deviceId];
+    return d?.config.kind === 'switch' ? (d as SwitchDev) : undefined;
+  }
+
+  /** Nach Konfigurationsänderungen: Trunks/Channels neu berechnen, STP neu aufbauen. */
+  switchChanged(deviceId: string): void {
+    const dev = this.sw(deviceId);
+    if (!dev) return;
+    this.refreshLinks();
+    this.withCtx(dev, (ctx) => stpPortsChanged(ctx, dev));
+  }
+
+  private bumpVtp(dev: SwitchDev): void {
+    const vtp = dev.config.vtp;
+    if (vtp.mode === 'transparent') return;
+    vtp.revision++;
+    this.withCtx(dev, (ctx) => vtpSend(ctx, dev));
+  }
+
+  addVlan(deviceId: string, vid: number, name?: string): Result<true> {
+    const dev = this.sw(deviceId);
+    if (!dev) return { ok: false, error: 'sw.notASwitch' };
+    if (!Number.isInteger(vid) || vid < 1 || vid > 4094) return { ok: false, error: 'sw.invalidVlan' };
+    if (dev.config.vtp.mode === 'client') return { ok: false, error: 'sw.vtpClient' };
+    const cur = dev.config.vlans[vid];
+    const n = name ?? cur?.name ?? `VLAN${String(vid).padStart(4, '0')}`;
+    if (cur?.name === n) return { ok: true, value: true };
+    dev.config.vlans[vid] = { name: n };
+    this.bumpVtp(dev);
+    this.switchChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  removeVlan(deviceId: string, vid: number): Result<true> {
+    const dev = this.sw(deviceId);
+    if (!dev) return { ok: false, error: 'sw.notASwitch' };
+    if (vid === 1 || (vid >= 1002 && vid <= 1005)) return { ok: false, error: 'sw.defaultVlan' };
+    if (dev.config.vtp.mode === 'client') return { ok: false, error: 'sw.vtpClient' };
+    delete dev.config.vlans[vid];
+    this.bumpVtp(dev);
+    this.switchChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  setVtp(deviceId: string, patch: { mode?: 'server' | 'client' | 'transparent'; domain?: string }): Result<true> {
+    const dev = this.sw(deviceId);
+    if (!dev) return { ok: false, error: 'sw.notASwitch' };
+    const vtp = dev.config.vtp;
+    if (patch.mode) vtp.mode = patch.mode;
+    if (patch.domain !== undefined) {
+      vtp.domain = patch.domain;
+      vtp.revision = 0;
+    }
+    this.withCtx(dev, (ctx) => vtpSend(ctx, dev));
+    return { ok: true, value: true };
+  }
+
+  /** Switchport-Einstellungen eines Ports ändern. */
+  setSwitchport(deviceId: string, portId: string, patch: Partial<SwitchPortCfg>): Result<true> {
+    const dev = this.sw(deviceId);
+    const pc = dev?.config.ports[portId];
+    if (!dev || !pc) return { ok: false, error: 'sw.notASwitch' };
+    if (patch.accessVlan !== undefined && (patch.accessVlan < 1 || patch.accessVlan > 4094))
+      return { ok: false, error: 'sw.invalidVlan' };
+    Object.assign(pc, patch);
+    this.switchChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  setStp(deviceId: string, patch: { mode?: 'pvst' | 'rapid-pvst'; vlan?: number; priority?: number }): Result<true> {
+    const dev = this.sw(deviceId);
+    if (!dev) return { ok: false, error: 'sw.notASwitch' };
+    if (patch.mode) {
+      dev.config.stp.mode = patch.mode;
+      dev.config.stp.instances = {};
+    }
+    if (patch.vlan !== undefined && patch.priority !== undefined) {
+      if (patch.priority % 4096 !== 0 || patch.priority > 61440)
+        return { ok: false, error: 'sw.invalidPriority' };
+      dev.config.stp.priority[patch.vlan] = patch.priority;
+      delete dev.config.stp.instances[patch.vlan];
+    }
+    this.switchChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  /** err-disabled aufheben (`shutdown` / `no shutdown`). */
+  clearErrdisable(deviceId: string, portId: string): void {
+    const p = this.getPort({ deviceId, portId });
+    if (p?.errdisabled) {
+      delete p.errdisabled;
+      this.refreshLinks();
+    }
+  }
+
+  // ------------------------------------------------------------ Dienste (Hosts)
+
+  private host(deviceId: string): (Device & { config: HostConfig }) | undefined {
+    const d = this.state.devices[deviceId];
+    return d?.config.kind === 'host' ? (d as Device & { config: HostConfig }) : undefined;
+  }
+
+  setHostDhcp(deviceId: string, on: boolean): Result<true> {
+    const dev = this.host(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notAHost' };
+    if (on) {
+      dev.config.ip = undefined;
+      dev.config.mask = undefined;
+      dev.config.gateway = undefined;
+      if (dev.powered) this.withCtx(dev, (ctx) => hostDhcp(ctx, dev.config, true));
+      else dev.config.dhcpClient.enabled = true;
+    } else if (dev.config.dhcpClient.enabled) {
+      this.withCtx(dev, (ctx) => hostDhcp(ctx, dev.config, false));
+    }
+    return { ok: true, value: true };
+  }
+
+  setDnsServers(deviceId: string, servers: string[]): Result<true> {
+    const dev = this.host(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notAHost' };
+    if (servers.some((x) => !isValidIpv4(x))) return { ok: false, error: 'ip.invalidIp' };
+    dev.config.dnsServers = servers;
+    dev.config.dnsCache = {};
+    return { ok: true, value: true };
+  }
+
+  /** Server-Dienste (HTTP/DNS/DHCP) eines Hosts konfigurieren. */
+  setService(
+    deviceId: string,
+    patch: {
+      http?: Partial<HostConfig['services']['http']>;
+      dns?: Partial<HostConfig['services']['dns']>;
+      dhcp?: Partial<HostConfig['services']['dhcp']>;
+    },
+  ): Result<true> {
+    const dev = this.host(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notAHost' };
+    Object.assign(dev.config.services.http, patch.http);
+    Object.assign(dev.config.services.dns, patch.dns);
+    Object.assign(dev.config.services.dhcp, patch.dhcp);
+    return { ok: true, value: true };
+  }
+
+  /** HTTP(S)-Abruf (Browser): Ergebnis in `config.requests`. */
+  httpGet(deviceId: string, url: string): Result<number> {
+    const dev = this.host(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notAHost' };
+    if (!dev.powered || dev.crashed) return { ok: false, error: 'dev.off' };
+    return { ok: true, value: this.withCtx(dev, (ctx) => hostHttp(ctx, dev.config, url)) };
+  }
+
+  /** Namensauflösung (`nslookup`): Ergebnis in `config.dnsResults`. */
+  resolveName(deviceId: string, name: string): Result<{ id?: number; cached?: string }> {
+    const dev = this.host(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notAHost' };
+    if (!dev.powered || dev.crashed) return { ok: false, error: 'dev.off' };
+    const r = this.withCtx(dev, (ctx) => hostResolve(ctx, dev.config, name));
+    return r.error ? { ok: false, error: r.error } : { ok: true, value: r };
   }
 
   /** Werkseinstellungen für Router/Switch (Startup-Config bleibt erhalten) – Basis für `reload`. */
@@ -499,7 +740,7 @@ export class Engine {
     if (!dev || !spec) return;
     if (dev.config.kind !== 'router' && dev.config.kind !== 'switch') return;
     const startup = dev.config.sys.startupConfig;
-    dev.config = spec.makeConfig(dev.name);
+    dev.config = spec.makeConfig(dev.name, dev.ports);
     if (dev.config.kind === 'router' || dev.config.kind === 'switch')
       dev.config.sys.startupConfig = startup;
     for (const p of dev.ports) {
@@ -507,9 +748,11 @@ export class Engine {
       p.speed = 'auto';
       p.duplex = 'auto';
       p.mtu = 1500;
+      delete p.errdisabled;
     }
     heapRemove(this.state.queue, (e) => e.deviceId === deviceId);
     this.refreshLinks();
+    this.startTimers(dev);
   }
 
   // ------------------------------------------------------------ Link-Status
@@ -530,6 +773,7 @@ export class Engine {
       if (!link.cableOk) reason = link.cableProblem ?? 'cable.problem.generic';
       else if (!devA.powered || !devB.powered) reason = 'link.reason.power';
       else if (!pa.adminUp || !pb.adminUp) reason = 'link.reason.admin';
+      else if (pa.errdisabled || pb.errdisabled) reason = 'link.reason.errdisable';
       const up = reason === undefined;
       link.operUp = up;
       const speed = up ? Math.min(this.effectiveSpeed(pa), this.effectiveSpeed(pb)) : 0;
@@ -543,13 +787,92 @@ export class Engine {
         this.setPortOper(dev, p, up, reason);
       }
     }
+    this.refreshSwitches();
+  }
+
+  /** Trunk-Aushandlung (DTP) und EtherChannel-Bündelung je Switch neu berechnen. */
+  private refreshSwitches(): void {
+    const peerPort = (dev: Device, portId: string): { dev: Device; port: Port } | undefined => {
+      const p = dev.ports.find((x) => x.id === portId);
+      const link = p?.linkId ? this.state.links[p.linkId] : undefined;
+      if (!link) return undefined;
+      const ref = link.a.deviceId === dev.id && link.a.portId === portId ? link.b : link.a;
+      const pd = this.state.devices[ref.deviceId];
+      const pp = pd?.ports.find((x) => x.id === ref.portId);
+      return pd && pp ? { dev: pd, port: pp } : undefined;
+    };
+    const compat = (a?: string, b?: string): boolean =>
+      (a === 'on' && b === 'on') ||
+      ((a === 'active' || a === 'passive') && (b === 'active' || (b === 'passive' && a === 'active'))) ||
+      ((a === 'desirable' || a === 'auto') && (b === 'desirable' || (b === 'auto' && a === 'desirable')));
+    for (const dev of Object.values(this.state.devices)) {
+      if (dev.config.kind !== 'switch') continue;
+      const cfg = dev.config;
+      const trunk: Record<string, boolean> = {};
+      for (const p of dev.ports) {
+        const pc = cfg.ports[p.id];
+        if (!pc || pc.routed) continue;
+        let t = pc.mode === 'trunk';
+        if (pc.mode === 'dynamic-auto' || pc.mode === 'dynamic-desirable') {
+          const peer = peerPort(dev, p.id);
+          const pm = peer?.dev.config.kind === 'switch' ? peer.dev.config.ports[peer.port.id]?.mode : undefined;
+          if (pm) {
+            t = pc.mode === 'dynamic-desirable'
+              ? pm === 'trunk' || pm === 'dynamic-desirable' || pm === 'dynamic-auto'
+              : pm === 'trunk' || pm === 'dynamic-desirable';
+          }
+        }
+        if (t) trunk[p.id] = true;
+      }
+      const bundles: Record<number, string[]> = {};
+      const groups: Record<number, string[]> = {};
+      for (const p of dev.ports) {
+        const n = cfg.ports[p.id]?.channel;
+        if (n !== undefined && p.operUp) (groups[n] ??= []).push(p.id);
+      }
+      for (const [n, members] of Object.entries(groups)) {
+        const peers = members.map((m) => peerPort(dev, m));
+        const first = peers[0];
+        const ok =
+          first?.dev.config.kind === 'switch' &&
+          peers.every((q) => q?.dev.id === first.dev.id) &&
+          peers.every((q) => {
+            const qc = q?.dev.config;
+            const mine = cfg.ports[members[peers.indexOf(q)] as string];
+            const theirs = qc?.kind === 'switch' ? qc.ports[q?.port.id as string] : undefined;
+            return theirs?.channel !== undefined && compat(mine?.channelMode, theirs.channelMode);
+          }) &&
+          new Set(peers.map((q) => (q?.dev.config.kind === 'switch' ? q.dev.config.ports[q.port.id]?.channel : -1))).size === 1;
+        if (ok) bundles[Number(n)] = members;
+      }
+      cfg.operTrunk = trunk;
+      cfg.bundles = bundles;
+      const sig = JSON.stringify([
+        trunk,
+        bundles,
+        dev.ports.map((p) => p.operUp),
+        Object.keys(cfg.vlans),
+        Object.values(cfg.ports).map((q) => [q.accessVlan, q.allowed, q.portfast, q.routed, q.nativeVlan]),
+      ]);
+      if (this.switchSig.get(dev.id) !== sig) {
+        this.switchSig.set(dev.id, sig);
+        const sw = dev as SwitchDev;
+        this.withCtx(dev, (ctx) => {
+          stpPortsChanged(ctx, sw);
+          if (Object.keys(trunk).length) vtpSend(ctx, sw);
+        });
+      }
+    }
   }
 
   private setPortOper(dev: Device, p: Port, up: boolean, reason?: string): void {
     if (p.operUp === up) return;
     p.operUp = up;
     if (!up) {
-      if (dev.config.kind === 'switch') switchPortDown(dev.config, p.id);
+      if (dev.config.kind === 'switch') {
+        const sw = dev as SwitchDev;
+        this.withCtx(dev, (ctx) => switchPortDown(ctx, sw, p.id));
+      }
       p.txBusyUntil = 0;
     }
     this.addLog(dev, {
@@ -596,14 +919,14 @@ export class Engine {
 
   // ------------------------------------------------------------ Abfragen
 
-  macTable(deviceId: string): { mac: string; portId: string; ageSec: number }[] {
+  macTable(deviceId: string): { mac: string; vlan: number; portId: string; ageSec: number }[] {
     const dev = this.state.devices[deviceId];
     return dev?.config.kind === 'switch' ? activeMacTable(dev.config, this.state.now) : [];
   }
 
   arpTable(deviceId: string): { ip: string; mac: string }[] {
     const dev = this.state.devices[deviceId];
-    if (dev?.config.kind !== 'host' && dev?.config.kind !== 'router') return [];
+    if (!dev || dev.config.kind === 'hub' || dev.config.kind === 'none') return [];
     const now = this.state.now;
     return Object.entries(dev.config.arpCache)
       .filter(([, e]) => e.expiresAt > now)
@@ -622,8 +945,9 @@ export class Engine {
     return Math.floor(r.value * max);
   }
 
+  /** Anzahl der Vordergrund-Ereignisse (ohne periodische Hintergrund-Timer wie STP). */
   get queueLength(): number {
-    return this.state.queue.length;
+    return this.state.queue.filter((e) => !(e.kind === 'timer' && e.payload.name.startsWith('bg:'))).length;
   }
 
   peekNextTime(): number | undefined {
@@ -637,6 +961,7 @@ export class Engine {
     this.state.now = Math.max(this.state.now, ev.t);
     const dev = this.state.devices[ev.deviceId];
     if (!dev || dev.crashed) return ev;
+    this.refreshWanted = false;
     try {
       switch (ev.kind) {
         case 'rx':
@@ -652,6 +977,7 @@ export class Engine {
           this.onCollision(dev, ev.payload);
           break;
       }
+      if (this.refreshWanted) this.refreshLinks();
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       dev.crashed = { message, t: this.state.now };
@@ -677,14 +1003,19 @@ export class Engine {
     return n;
   }
 
-  /** Läuft, bis die Queue leer ist (oder `maxEvents` erreicht – Schutz vor Broadcast-Stürmen). */
+  /** Läuft, bis nur noch Hintergrund-Timer übrig sind (oder `maxEvents` erreicht – Schutz vor Broadcast-Stürmen). */
   runAll(maxEvents = 100_000): number {
     let n = 0;
-    while (this.state.queue.length > 0 && n < maxEvents) {
+    while (this.hasForeground() && n < maxEvents) {
       this.step();
       n++;
     }
     return n;
+  }
+
+  /** Gibt es Ereignisse außer periodischen Hintergrund-Timern (STP, VTP)? */
+  hasForeground(): boolean {
+    return this.state.queue.some((e) => !(e.kind === 'timer' && e.payload.name.startsWith('bg:')));
   }
 
   // ------------------------------------------------------------ Ereignisbehandlung
@@ -779,10 +1110,10 @@ export class Engine {
           hostRx(ctx, cfg, p.portId, p.frame, fromId);
           break;
         case 'router':
-          routerRx(ctx, cfg, p.portId, p.frame, fromId);
+          routerRx(ctx, dev as L3Dev, p.portId, p.frame, fromId);
           break;
         case 'switch':
-          switchRx(ctx, cfg, p.portId, p.frame, fromId);
+          switchRx(ctx, dev as SwitchDev, p.portId, p.frame, fromId);
           break;
         case 'hub':
           hubRx(ctx, cfg, p.portId, p.frame, p.txId, fromId);
@@ -804,8 +1135,15 @@ export class Engine {
       });
     }
     const cfg = dev.config;
-    if (cfg.kind === 'host') this.withCtx(dev, (ctx) => hostTimer(ctx, cfg, p.name));
-    else if (cfg.kind === 'router') this.withCtx(dev, (ctx) => routerTimer(ctx, cfg, p.name));
+    const name = p.name.startsWith('bg:') ? p.name.slice(3) : p.name;
+    if (cfg.kind === 'host') this.withCtx(dev, (ctx) => hostTimer(ctx, cfg, name));
+    else if (cfg.kind === 'router') this.withCtx(dev, (ctx) => l3Timer(ctx, dev as L3Dev, name));
+    else if (cfg.kind === 'switch') {
+      this.withCtx(dev, (ctx) => {
+        if (/^(arp|ping|ping-timeout|trace-timeout):/.test(name)) l3Timer(ctx, dev as L3Dev, name);
+        else switchTimer(ctx, dev as SwitchDev, name);
+      });
+    }
   }
 
   private onCollision(dev: Device, p: CollisionPayload): void {
@@ -873,6 +1211,10 @@ export class Engine {
       processingUs: s.config.processingUs,
       propagationUs: s.config.propagationUs,
       rand: (max) => eng.rand(max),
+      deviceIfaceName: (id) => ifaceName(dev, id),
+      requestRefresh: () => {
+        eng.refreshWanted = true;
+      },
       port(portId) {
         const p = dev.ports.find((x) => x.id === portId);
         if (!p) throw new Error(`Unknown port ${portId} on ${dev.name}`);

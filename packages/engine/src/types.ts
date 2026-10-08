@@ -1,4 +1,4 @@
-import type { Frame, Ipv4Addr, Ipv4Pdu, Mac, ProtoTag } from '@netsim/protocols';
+import type { DnsRecord, Frame, Ipv4Addr, Ipv4Pdu, Mac, ProtoTag } from '@netsim/protocols';
 
 export type DeviceType =
   | 'pc'
@@ -73,6 +73,8 @@ export interface Port {
   txBusyUntil: number;
   /** Maximale IP-Paketgröße in Byte. */
   mtu: number;
+  /** Gesetzt, wenn der Port durch err-disable abgeschaltet wurde (z. B. `psecure-violation`). */
+  errdisabled?: string;
 }
 
 export interface PortRef {
@@ -166,7 +168,7 @@ export interface ArpEntry {
 
 export interface ArpPending {
   attempts: number;
-  portId: string;
+  ifaceId: string;
   queue: Ipv4Pdu[];
 }
 
@@ -190,11 +192,166 @@ export interface IpCore {
   nextTraceId: number;
 }
 
+// ---------------------------------------------------------------- ACL / NAT / DHCP
+
+export type AddrMatch = { any: true } | { ip: Ipv4Addr; wildcard: string };
+
+export interface PortMatch {
+  op: 'eq' | 'neq' | 'lt' | 'gt' | 'range';
+  a: number;
+  b?: number;
+}
+
+export interface AclEntry {
+  seq: number;
+  action: 'permit' | 'deny';
+  proto: 'ip' | 'icmp' | 'tcp' | 'udp';
+  src: AddrMatch;
+  dst?: AddrMatch;
+  srcPort?: PortMatch;
+  dstPort?: PortMatch;
+  /** TCP: nur Segmente mit ACK oder RST. */
+  established?: boolean;
+  log?: boolean;
+  matches: number;
+}
+
+export interface Acl {
+  name: string;
+  type: 'standard' | 'extended';
+  entries: AclEntry[];
+}
+
+export interface NatPool {
+  name: string;
+  start: Ipv4Addr;
+  end: Ipv4Addr;
+  mask: string;
+}
+
+export type NatRule =
+  | { kind: 'static'; local: Ipv4Addr; global: Ipv4Addr; proto?: 'tcp' | 'udp'; lport?: number; gport?: number }
+  | { kind: 'dynamic'; acl: string; pool: string; overload: boolean }
+  | { kind: 'interface'; acl: string; ifaceId: string };
+
+export interface NatEndpoint {
+  ip: Ipv4Addr;
+  port: number;
+}
+
+export interface NatEntry {
+  proto: 'icmp' | 'tcp' | 'udp' | 'ip';
+  insideLocal: NatEndpoint;
+  insideGlobal: NatEndpoint;
+  outside: NatEndpoint;
+  kind: 'static' | 'dynamic';
+  expiresAt: number;
+}
+
+export interface NatCfg {
+  pools: Record<string, NatPool>;
+  rules: NatRule[];
+  table: NatEntry[];
+  hits: number;
+  misses: number;
+  nextPort: number;
+}
+
+export interface DhcpPool {
+  name: string;
+  network: Ipv4Addr;
+  mask: string;
+  router?: Ipv4Addr;
+  dns: Ipv4Addr[];
+  domain?: string;
+  leaseSec: number;
+  tftp?: string;
+  /** Optionaler Adressbereich (Server-Gerät); sonst das ganze Netz. */
+  rangeStart?: Ipv4Addr;
+  rangeEnd?: Ipv4Addr;
+}
+
+export interface DhcpBinding {
+  mac: Mac;
+  poolName: string;
+  expiresAt: number;
+  /** Angebot (noch nicht bestätigt) – verfällt nach 10 s. */
+  offered?: boolean;
+}
+
+export interface DhcpServerCfg {
+  enabled: boolean;
+  pools: DhcpPool[];
+  excluded: { from: Ipv4Addr; to: Ipv4Addr }[];
+  bindings: Record<Ipv4Addr, DhcpBinding>;
+  conflicts: Ipv4Addr[];
+}
+
+// ---------------------------------------------------------------- Hosts
+
+export interface TcpConn {
+  state: 'syn-sent' | 'established' | 'closed';
+  lport: number;
+  raddr: Ipv4Addr;
+  rport: number;
+  seq: number;
+  ack: number;
+  /** Anfrage, die nach dem Handshake gesendet wird. */
+  pending?: { host: string; path: string; reqId: number };
+  retries: number;
+}
+
+export interface HttpRequest {
+  id: number;
+  url: string;
+  host: string;
+  path: string;
+  https: boolean;
+  status: 'resolving' | 'connecting' | 'waiting' | 'done' | 'failed';
+  /** HTTP-Status der Antwort (200, 404 …). */
+  code?: number;
+  body?: string;
+  /** Fehlerschlüssel (`http.err.*`). */
+  error?: string;
+  addr?: Ipv4Addr;
+  startedAt: number;
+}
+
+export interface DhcpClient {
+  enabled: boolean;
+  state: 'off' | 'init' | 'selecting' | 'requesting' | 'probing' | 'bound' | 'renewing';
+  xid: number;
+  server?: Ipv4Addr;
+  offered?: { ip: Ipv4Addr; mask: string; router?: Ipv4Addr; dns?: Ipv4Addr[]; leaseSec: number };
+  boundAt: number;
+  leaseSec: number;
+}
+
+export interface HostServices {
+  http: { enabled: boolean; https: boolean; pages: Record<string, string> };
+  dns: { enabled: boolean; records: DnsRecord[] };
+  dhcp: DhcpServerCfg;
+}
+
 export interface HostConfig extends IpCore {
   kind: 'host';
   ip?: Ipv4Addr;
   mask?: string;
   gateway?: Ipv4Addr;
+  dhcpClient: DhcpClient;
+  dnsServers: Ipv4Addr[];
+  dnsCache: Record<string, { ip: Ipv4Addr; expiresAt: number }>;
+  /** Offene DNS-Anfragen: Anfrage-ID → Name + wartende HTTP-/Ping-Aufträge. */
+  dnsPending: Record<number, { name: string; reqId?: number; started: number }>;
+  /** Abgeschlossene Namensauflösungen (für `nslookup`). */
+  dnsResults: Record<number, { name: string; rcode: number; answers: DnsRecord[]; done: boolean; error?: string }>;
+  nextDnsId: number;
+  nextPort: number;
+  tcp: Record<string, TcpConn>;
+  nextIsn: number;
+  requests: HttpRequest[];
+  nextReqId: number;
+  services: HostServices;
 }
 
 export interface LineConfig {
@@ -221,39 +378,160 @@ export interface SysConfig {
   setupDone: boolean;
 }
 
-export interface RouterIface {
+/** Konfiguration einer L3-Schnittstelle (physisch, Subinterface oder SVI). */
+export interface IfaceCfg {
+  kind: 'phys' | 'sub' | 'svi';
+  portId?: string;
+  /** Sub: Dot1Q-VLAN; SVI: VLAN-ID. */
+  vlan?: number;
   ip?: Ipv4Addr;
   mask?: string;
+  /** Nur Sub/SVI (physisch: Port-Admin-Status). */
+  shutdown?: boolean;
+  aclIn?: string;
+  aclOut?: string;
+  natSide?: 'inside' | 'outside';
+  helpers?: Ipv4Addr[];
 }
+export type RouterIface = IfaceCfg;
 
 export interface StaticRoute {
   prefix: Ipv4Addr;
   mask: string;
   nextHop?: Ipv4Addr;
-  /** Alternativ zum Next-Hop: Ausgangsschnittstelle. */
-  outPortId?: string;
+  /** Alternativ zum Next-Hop: Ausgangsschnittstelle (ID wie in `ifaces`). */
+  outIfaceId?: string;
   /** Administrative Distance (Default 1). */
   ad: number;
 }
 
-export interface RouterConfig extends IpCore {
+/** Von einem dynamischen Routing-Protokoll installierte Route (Laufzeit). */
+export interface DynRoute {
+  proto: 'R' | 'O' | 'D' | 'B';
+  /** Unterart, z. B. `IA`, `E2`, `EX`. */
+  sub?: string;
+  prefix: Ipv4Addr;
+  plen: number;
+  ad: number;
+  metric: number;
+  nextHop?: Ipv4Addr;
+  ifaceId: string;
+}
+
+/** Gemeinsamer L3-Zustand von Router und L3-fähigen Switches. */
+export interface L3Cfg extends IpCore {
+  dynRoutes: DynRoute[];
+  ifaces: Record<string, IfaceCfg>;
+  staticRoutes: StaticRoute[];
+  acls: Record<string, Acl>;
+  nat: NatCfg;
+  dhcp: DhcpServerCfg;
+  /** `ip routing` (Router: immer an). */
+  ipRouting: boolean;
+  /** Switch ohne Routing: `ip default-gateway`. */
+  defaultGateway?: Ipv4Addr;
+}
+
+export interface RouterConfig extends L3Cfg {
   kind: 'router';
   sys: SysConfig;
-  ifaces: Record<string, RouterIface>;
-  staticRoutes: StaticRoute[];
 }
 
 export interface MacEntry {
   portId: string;
+  vlan: number;
   updatedAt: number;
 }
 
-export interface SwitchConfig {
+export interface PortSecurity {
+  enabled: boolean;
+  max: number;
+  violation: 'protect' | 'restrict' | 'shutdown';
+  sticky: boolean;
+  /** Erlaubte (statisch/sticky) MACs. */
+  macs: Mac[];
+  /** Dynamisch gelernte sichere MACs (nicht persistent). */
+  dynMacs: Mac[];
+  violations: number;
+  lastMac?: Mac;
+}
+
+export type SwitchportMode = 'access' | 'trunk' | 'dynamic-auto' | 'dynamic-desirable';
+
+export interface SwitchPortCfg {
+  mode: SwitchportMode;
+  accessVlan: number;
+  nativeVlan: number;
+  /** `'all'` oder explizite Liste. */
+  allowed: 'all' | number[];
+  /** `no switchport`: Routed Port (L3-Switch). */
+  routed: boolean;
+  portfast: boolean;
+  bpduguard: boolean;
+  rootguard: boolean;
+  psec: PortSecurity;
+  channel?: number;
+  channelMode?: 'on' | 'active' | 'passive' | 'desirable' | 'auto';
+}
+
+export interface VtpCfg {
+  mode: 'server' | 'client' | 'transparent';
+  domain: string;
+  revision: number;
+}
+
+export type StpMode = 'pvst' | 'rapid-pvst';
+
+export interface StpPortState {
+  role: 'root' | 'designated' | 'alternate' | 'disabled';
+  state: 'discarding' | 'listening' | 'learning' | 'forwarding';
+  /** Letzte empfangene (beste) Vektorinformation. */
+  info?: { rootId: string; cost: number; bridgeId: string; portId: string; rstp: boolean };
+  infoAt?: number;
+  /** Zeitpunkt des nächsten Zustandsübergangs (802.1D). */
+  nextAt?: number;
+  proposing?: boolean;
+  /** Operative Edge (PortFast oder RSTP-Edge). */
+  edge: boolean;
+  /** PortFast wurde durch ein empfangenes BPDU betrieblich deaktiviert. */
+  edgeBroken?: boolean;
+  /** Quittiert durch Agreement. */
+  synced?: boolean;
+}
+
+export interface StpInstance {
+  vlan: number;
+  rootId: string;
+  rootCost: number;
+  rootPort?: string;
+  ports: Record<string, StpPortState>;
+  /** Topology Change aktiv bis. */
+  tcUntil: number;
+}
+
+export interface StpCfg {
+  mode: StpMode;
+  /** Priorität je VLAN (Default 32768). */
+  priority: Record<number, number>;
+  instances: Record<number, StpInstance>;
+}
+
+export interface SwitchConfig extends L3Cfg {
   kind: 'switch';
   sys: SysConfig;
-  macTable: Record<Mac, MacEntry>;
+  /** Schlüssel `${vlan}|${mac}`. */
+  macTable: Record<string, MacEntry>;
   /** Aging in Sekunden (Default 300). */
   agingSec: number;
+  vlans: Record<number, { name: string }>;
+  vtp: VtpCfg;
+  ports: Record<string, SwitchPortCfg>;
+  stp: StpCfg;
+  /** Laufzeit: gebündelte Port-Channels (Nummer → Mitglieds-Port-IDs). */
+  bundles: Record<number, string[]>;
+  /** Laufzeit: operativer Trunk-Status je Port. */
+  operTrunk: Record<string, boolean>;
+  errdisableRecovery: { psecure: boolean; intervalSec: number };
 }
 
 export interface HubConfig {

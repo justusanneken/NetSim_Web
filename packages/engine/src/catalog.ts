@@ -1,16 +1,7 @@
-import { newIpCore } from './devices/host';
-import type { DeviceState, DeviceType, PortKind, SysConfig } from './types';
+import { newHost, newL3, newSwitch, newSys } from './defaults';
+import type { DeviceState, DeviceType, Port, PortKind } from './types';
 
-export function newSys(hostname: string): SysConfig {
-  return {
-    hostname,
-    servicePasswordEncryption: false,
-    lineCon: { login: false },
-    lineVty: { login: false },
-    descriptions: {},
-    setupDone: false,
-  };
-}
+export { newSys };
 
 export interface PortSpec {
   name: string;
@@ -29,7 +20,7 @@ export interface ModelSpec {
   mdi: 'mdi' | 'mdix';
   /** Router-Schnittstellen sind (wie bei IOS) standardmäßig administrativ down. */
   portsDefaultDown?: boolean;
-  makeConfig: (name: string) => DeviceState;
+  makeConfig: (name: string, ports: Port[]) => DeviceState;
 }
 
 const range = (n: number, make: (i: number) => PortSpec): PortSpec[] =>
@@ -43,7 +34,7 @@ export const CATALOG: Partial<Record<DeviceType, ModelSpec>> = {
     ports: [{ name: 'FastEthernet0', kind: 'fe' }],
     autoMdix: false,
     mdi: 'mdi',
-    makeConfig: () => ({ kind: 'host', ...newIpCore() }),
+    makeConfig: () => newHost(),
   },
   'switch-l2': {
     model: 'SW2960-24',
@@ -55,7 +46,7 @@ export const CATALOG: Partial<Record<DeviceType, ModelSpec>> = {
     ],
     autoMdix: true,
     mdi: 'mdix',
-    makeConfig: (name) => ({ kind: 'switch', sys: newSys(name), macTable: {}, agingSec: 300 }),
+    makeConfig: (name, ports) => newSwitch(name, ports),
   },
   laptop: {
     model: 'Laptop-PT',
@@ -64,7 +55,7 @@ export const CATALOG: Partial<Record<DeviceType, ModelSpec>> = {
     ports: [{ name: 'FastEthernet0', kind: 'fe' }],
     autoMdix: false,
     mdi: 'mdi',
-    makeConfig: () => ({ kind: 'host', ...newIpCore() }),
+    makeConfig: () => newHost(),
   },
   server: {
     model: 'Server-PT',
@@ -73,7 +64,7 @@ export const CATALOG: Partial<Record<DeviceType, ModelSpec>> = {
     ports: [{ name: 'FastEthernet0', kind: 'fe' }],
     autoMdix: false,
     mdi: 'mdi',
-    makeConfig: () => ({ kind: 'host', ...newIpCore() }),
+    makeConfig: () => newHost(),
   },
   router: {
     model: 'R1941',
@@ -83,13 +74,19 @@ export const CATALOG: Partial<Record<DeviceType, ModelSpec>> = {
     autoMdix: true,
     mdi: 'mdi',
     portsDefaultDown: true,
-    makeConfig: (name) => ({
-      kind: 'router',
-      ...newIpCore(),
-      sys: newSys(name),
-      ifaces: {},
-      staticRoutes: [],
-    }),
+    makeConfig: (name) => ({ kind: 'router', sys: newSys(name), ...newL3(true) }),
+  },
+  'switch-l3': {
+    model: 'SW3560-24',
+    type: 'switch-l3',
+    namePrefix: 'MLS',
+    ports: [
+      ...range(24, (i) => ({ name: `FastEthernet0/${i + 1}`, kind: 'fe' as const })),
+      ...range(2, (i) => ({ name: `GigabitEthernet0/${i + 1}`, kind: 'ge' as const })),
+    ],
+    autoMdix: true,
+    mdi: 'mdix',
+    makeConfig: (name, ports) => newSwitch(name, ports),
   },
   hub: {
     model: 'Hub-PT',

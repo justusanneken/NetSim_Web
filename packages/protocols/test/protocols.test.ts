@@ -134,6 +134,133 @@ describe('pdu', () => {
     expect(summarizeFrame({ ...ping, payload: err }).info).toContain('code=4');
   });
 
+  it('Neue PDUs: VLAN-Tag, UDP/DHCP, TCP/HTTP, DNS, BPDU, VTP', () => {
+    const ip = ping.payload as Ipv4Pdu;
+    const tagged: EthernetPdu = { ...ping, vlan: { vid: 10, pcp: 0 } };
+    expect(pduSize(tagged)).toBe(pduSize(ping) + 4);
+    expect(describeFrame(tagged)[0]?.fields.some((x) => x.name === '802.1Q VLAN')).toBe(true);
+    const dhcp = {
+      kind: 'dhcp' as const,
+      op: 'offer' as const,
+      xid: 0xabcd,
+      chaddr: '02:00:00:00:00:09',
+      ciaddr: '0.0.0.0',
+      yiaddr: '10.0.0.9',
+      siaddr: '10.0.0.1',
+      giaddr: '0.0.0.0',
+      options: {
+        mask: '255.255.255.0',
+        router: '10.0.0.1',
+        dns: ['10.0.0.2'],
+        domain: 'lan',
+        leaseSec: 86400,
+        serverId: '10.0.0.1',
+        requestedIp: '10.0.0.9',
+        tftp: 'tftp.lan',
+      },
+    };
+    const udp: Ipv4Pdu = {
+      ...ip,
+      payload: { kind: 'udp', srcPort: 67, dstPort: 68, dataSize: 0, app: dhcp },
+    };
+    const fr: EthernetPdu = { ...ping, payload: udp };
+    expect(summarizeFrame(fr).proto).toBe('DHCP');
+    expect(layersOf(fr).map((l) => l.kind)).toEqual(['ethernet', 'ipv4', 'udp', 'dhcp']);
+    expect(describeFrame(fr).map((l) => l.osi)).toEqual([2, 3, 4, 7]);
+    expect(describePdu(dhcp).length).toBeGreaterThan(10);
+    expect(pduSize(fr)).toBeGreaterThan(300);
+    const dns = {
+      kind: 'dns' as const,
+      id: 7,
+      response: true,
+      rcode: 0 as const,
+      question: { name: 'a.lan', type: 'A' as const },
+      answers: [{ name: 'a.lan', type: 'A' as const, data: '10.0.0.5', ttl: 60 }],
+    };
+    const dfr: EthernetPdu = {
+      ...ping,
+      payload: {
+        ...ip,
+        payload: { kind: 'udp', srcPort: 53, dstPort: 5000, dataSize: 0, app: dns },
+      },
+    };
+    expect(summarizeFrame(dfr).proto).toBe('DNS');
+    expect(describePdu(dns).some((x) => x.name === 'Answer')).toBe(true);
+    expect(describePdu({ ...dns, response: false })).toHaveLength(4);
+    const plain: EthernetPdu = {
+      ...ping,
+      payload: { ...ip, payload: { kind: 'udp', srcPort: 1, dstPort: 2, dataSize: 10 } },
+    };
+    expect(summarizeFrame(plain).proto).toBe('UDP');
+    expect(pduSize(plain)).toBe(64);
+    const http = { kind: 'http' as const, method: 'GET' as const, path: '/', host: 'a.lan' };
+    const tcp: EthernetPdu = {
+      ...ping,
+      payload: {
+        ...ip,
+        payload: {
+          kind: 'tcp',
+          srcPort: 4000,
+          dstPort: 80,
+          flags: { syn: false, ack: true, fin: false, rst: false, psh: true },
+          seq: 1,
+          ack: 1,
+          window: 8192,
+          dataSize: 0,
+          app: http,
+        },
+      },
+    };
+    expect(summarizeFrame(tcp)).toMatchObject({ proto: 'HTTP' });
+    expect(describePdu(http)).toHaveLength(2);
+    expect(describePdu({ kind: 'http', status: 200, body: 'hi' })).toHaveLength(2);
+    const syn: EthernetPdu = {
+      ...ping,
+      payload: {
+        ...ip,
+        payload: {
+          kind: 'tcp',
+          srcPort: 4000,
+          dstPort: 80,
+          flags: { syn: true, ack: false, fin: false, rst: false, psh: false },
+          seq: 1,
+          ack: 0,
+          window: 8192,
+          dataSize: 0,
+        },
+      },
+    };
+    expect(summarizeFrame(syn).proto).toBe('TCP');
+    expect(describeFrame(syn)[2]?.fields.find((x) => x.name === 'Flags')?.value).toBe('SYN');
+    const bpdu = {
+      kind: 'bpdu' as const,
+      rstp: true,
+      vlan: 1,
+      rootId: '32769.02:00:00:00:00:01',
+      rootCost: 4,
+      bridgeId: '32769.02:00:00:00:00:02',
+      portId: '128.1',
+      flags: {
+        proposal: true,
+        agreement: false,
+        topologyChange: false,
+        role: 'designated' as const,
+      },
+    };
+    const bf: EthernetPdu = { ...ping, payload: bpdu };
+    expect(summarizeFrame(bf).proto).toBe('STP');
+    expect(describePdu(bpdu)).toHaveLength(10);
+    const vtp = {
+      kind: 'vtp' as const,
+      domain: 'lab',
+      revision: 3,
+      vlans: [{ id: 10, name: 'A' }],
+    };
+    expect(summarizeFrame({ ...ping, payload: vtp }).proto).toBe('VTP');
+    expect(describePdu(vtp)).toHaveLength(3);
+    expect(pduSize(vtp)).toBe(52);
+  });
+
   it('Zusammenfassung', () => {
     expect(summarizeFrame(arpReq)).toEqual({
       proto: 'ARP',

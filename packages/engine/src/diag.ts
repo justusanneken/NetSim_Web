@@ -1,6 +1,7 @@
 import { ICMP_UNREACH, type Ipv4Addr, type Ipv4Pdu } from '@netsim/protocols';
 import type { DeviceCtx } from './ctx';
-import { ipSend, newIpPacket, type IpNode } from './ip';
+import { ipSend, newIpPacket, type IpNode } from './l3';
+import { tcpIcmpError } from './svc/tcp';
 import type { PingResult, PingSession, Result, TraceProbe, TraceSession } from './types';
 
 export const PING_TIMEOUT_US = 4_000_000;
@@ -24,6 +25,7 @@ const findPing = (node: IpNode, id: number, seq: number): PingResult | undefined
 
 function errorNote(type: string, code: number): string {
   if (type === 'time-exceeded') return 'ping.ttlExpired';
+  if (code === ICMP_UNREACH.admin) return 'ping.adminProhibited';
   if (code === ICMP_UNREACH.net) return 'ping.netUnreachable';
   if (code === ICMP_UNREACH.host) return 'ping.hostUnreachable';
   if (code === ICMP_UNREACH.fragNeeded) return 'ping.fragNeeded';
@@ -210,6 +212,7 @@ function traceResponse(
 
 export function onEchoReply(ctx: DeviceCtx, node: IpNode, ip: Ipv4Pdu): void {
   const icmp = ip.payload;
+  if (icmp.kind !== 'icmp') return;
   if (icmp.id >= TRACE_BASE) {
     traceResponse(ctx, node, icmp.id, icmp.seq, ip.src, 'reached');
     return;
@@ -245,6 +248,12 @@ export function onIcmpError(
 ): void {
   if (local) {
     const own = ip.payload;
+    if (own.kind !== 'icmp') {
+      if (node.host && own.kind === 'tcp') {
+        tcpIcmpError(node.host, { dst: ip.dst, sport: own.srcPort, dport: own.dstPort }, false);
+      }
+      return;
+    }
     const from = node.ifaces[0]?.ip ?? ip.src;
     if (own.id >= TRACE_BASE) {
       const tr = node.cfg.traces.find((t) => t.id === own.id - TRACE_BASE);
@@ -259,7 +268,11 @@ export function onIcmpError(
     return;
   }
   const icmp = ip.payload;
-  if (!icmp.orig) return;
+  if (icmp.kind !== 'icmp' || !icmp.orig) return;
+  if (icmp.orig.protocol === 6 && node.host) {
+    tcpIcmpError(node.host, icmp.orig, icmp.type === 'dest-unreachable' && icmp.code === 13);
+    return;
+  }
   const { icmpId, icmpSeq } = icmp.orig;
   if (icmpId >= TRACE_BASE) {
     traceResponse(

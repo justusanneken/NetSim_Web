@@ -1,0 +1,152 @@
+import { parseIpv4, formatIpv4, type Ipv4Addr, type Ipv4Pdu } from '@netsim/protocols';
+import { aclEval, l4Of } from './acl';
+import type { Iface } from './ifaces';
+import type { L3Cfg, NatCfg, NatEntry, NatRule } from './types';
+
+const FOREVER = Number.MAX_SAFE_INTEGER;
+const TIMEOUT_US = { icmp: 60_000_000, udp: 300_000_000, tcp: 86_400_000_000, ip: 300_000_000 };
+
+export function natPurge(nat: NatCfg, now: number): void {
+  if (nat.table.some((e) => e.expiresAt <= now)) nat.table = nat.table.filter((e) => e.expiresAt > now);
+}
+
+function setPorts(ip: Ipv4Pdu, src?: number, dst?: number): Ipv4Pdu {
+  const out = structuredClone(ip);
+  const p = out.payload;
+  if (p.kind === 'icmp') {
+    // Echo: die Kennung dient als „Port“.
+    if (src !== undefined) p.id = src;
+    if (dst !== undefined) p.id = dst;
+  } else if (p.kind === 'tcp' || p.kind === 'udp') {
+    if (src !== undefined) p.srcPort = src;
+    if (dst !== undefined) p.dstPort = dst;
+  }
+  return out;
+}
+
+function poolAddrs(nat: NatCfg, name: string): Ipv4Addr[] {
+  const p = nat.pools[name];
+  if (!p) return [];
+  const a = parseIpv4(p.start);
+  const b = parseIpv4(p.end);
+  if (a === undefined || b === undefined) return [];
+  const out: Ipv4Addr[] = [];
+  for (let n = a; n <= b && out.length < 256; n++) out.push(formatIpv4(n));
+  return out;
+}
+
+const used = (nat: NatCfg, proto: NatEntry['proto'], ip: Ipv4Addr, port: number): boolean =>
+  nat.table.some((e) => e.proto === proto && e.insideGlobal.ip === ip && e.insideGlobal.port === port);
+
+function createDynamic(
+  l3: L3Cfg,
+  rule: Extract<NatRule, { kind: 'dynamic' | 'interface' }>,
+  ip: Ipv4Pdu,
+  out: Iface,
+  now: number,
+): NatEntry | undefined {
+  const nat = l3.nat;
+  const k = l4Of(ip);
+  if (aclEval(l3.acls[rule.acl], ip).action !== 'permit') return undefined;
+  let gip: Ipv4Addr | undefined;
+  let overload = true;
+  if (rule.kind === 'interface') gip = out.ip;
+  else {
+    overload = rule.overload;
+    const addrs = poolAddrs(nat, rule.pool);
+    if (overload) gip = addrs[0];
+    else gip = addrs.find((a) => !nat.table.some((e) => e.insideGlobal.ip === a));
+  }
+  if (!gip) return undefined;
+  let gport = k.sport;
+  if (overload || used(nat, k.proto, gip, gport)) {
+    do gport = nat.nextPort++;
+    while (used(nat, k.proto, gip, gport));
+    if (nat.nextPort > 65535) nat.nextPort = 1024;
+  }
+  return {
+    proto: k.proto,
+    insideLocal: { ip: ip.src, port: k.sport },
+    insideGlobal: { ip: gip, port: gport },
+    outside: { ip: ip.dst, port: k.dport },
+    kind: 'dynamic',
+    expiresAt: now + TIMEOUT_US[k.proto],
+  };
+}
+
+/** Inside → Outside: Quelladresse (und Port) übersetzen. Liefert das (ggf. veränderte) Paket. */
+export function natInside2Outside(l3: L3Cfg, ip: Ipv4Pdu, out: Iface, now: number): { pkt: Ipv4Pdu; entry?: NatEntry } {
+  const nat = l3.nat;
+  natPurge(nat, now);
+  if (ip.fragOffset > 0) return { pkt: ip };
+  const k = l4Of(ip);
+  let e = nat.table.find(
+    (x) =>
+      x.proto === k.proto &&
+      x.insideLocal.ip === ip.src &&
+      x.insideLocal.port === k.sport &&
+      x.outside.ip === ip.dst &&
+      x.outside.port === k.dport,
+  );
+  if (!e) {
+    for (const r of nat.rules) {
+      if (r.kind === 'static') {
+        if (r.local !== ip.src) continue;
+        if (r.proto && (r.proto !== k.proto || (r.lport !== undefined && r.lport !== k.sport))) continue;
+        e = {
+          proto: k.proto,
+          insideLocal: { ip: ip.src, port: k.sport },
+          insideGlobal: { ip: r.global, port: r.gport ?? k.sport },
+          outside: { ip: ip.dst, port: k.dport },
+          kind: 'static',
+          expiresAt: FOREVER,
+        };
+      } else e = createDynamic(l3, r, ip, out, now);
+      if (e) break;
+    }
+    if (!e) {
+      nat.misses++;
+      return { pkt: ip };
+    }
+    nat.table.push(e);
+  } else if (e.kind === 'dynamic') e.expiresAt = now + TIMEOUT_US[e.proto];
+  nat.hits++;
+  const pkt = setPorts({ ...structuredClone(ip), src: e.insideGlobal.ip }, e.insideGlobal.port);
+  return { pkt, entry: e };
+}
+
+/** Outside → Inside: Zieladresse (und Port) zurückübersetzen (Antworten bzw. Static NAT). */
+export function natOutside2Inside(l3: L3Cfg, ip: Ipv4Pdu, now: number): { pkt: Ipv4Pdu; entry?: NatEntry } {
+  const nat = l3.nat;
+  natPurge(nat, now);
+  if (ip.fragOffset > 0) return { pkt: ip };
+  const k = l4Of(ip);
+  let e = nat.table.find(
+    (x) =>
+      x.proto === k.proto &&
+      x.insideGlobal.ip === ip.dst &&
+      x.insideGlobal.port === k.dport &&
+      x.outside.ip === ip.src &&
+      x.outside.port === k.sport,
+  );
+  if (!e) {
+    for (const r of nat.rules) {
+      if (r.kind !== 'static' || r.global !== ip.dst) continue;
+      if (r.proto && (r.proto !== k.proto || (r.gport !== undefined && r.gport !== k.dport))) continue;
+      e = {
+        proto: k.proto,
+        insideLocal: { ip: r.local, port: r.lport ?? k.dport },
+        insideGlobal: { ip: r.global, port: k.dport },
+        outside: { ip: ip.src, port: k.sport },
+        kind: 'static',
+        expiresAt: FOREVER,
+      };
+      nat.table.push(e);
+      break;
+    }
+  } else if (e.kind === 'dynamic') e.expiresAt = now + TIMEOUT_US[e.proto];
+  if (!e) return { pkt: ip };
+  nat.hits++;
+  const pkt = setPorts({ ...structuredClone(ip), dst: e.insideLocal.ip }, undefined, e.insideLocal.port);
+  return { pkt, entry: e };
+}

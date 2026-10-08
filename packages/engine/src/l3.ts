@@ -1,55 +1,67 @@
 import {
   BROADCAST_MAC,
   ETHERTYPE,
-  IP_PROTO,
   ICMP_UNREACH,
+  IP_PROTO,
   broadcastAddress,
   isBroadcastMac,
   isMulticastMac,
   pduSize,
   summarizeFrame,
+  type AppPdu,
   type ArpPdu,
+  type EthernetPdu,
   type Frame,
   type IcmpPdu,
+  type IpPayload,
   type Ipv4Addr,
   type Ipv4Pdu,
   type ProtoTag,
 } from '@netsim/protocols';
+import { aclEval } from './acl';
 import type { DeviceCtx } from './ctx';
 import { onEchoReply, onIcmpError } from './diag';
-import type { IpCore } from './types';
+import { dhcpRx } from './svc/dhcp';
+import { dnsRx } from './svc/dns';
+import type { Iface } from './ifaces';
+import { natInside2Outside, natOutside2Inside } from './nat';
+import { tcpRx } from './svc/tcp';
+import type { Device, HostConfig, IpCore, L3Cfg, Port } from './types';
 
 export const ARP_RETRY_US = 1_000_000;
 export const ARP_MAX_ATTEMPTS = 3;
 export const REASM_TIMEOUT_US = 15_000_000;
-
-export interface Iface {
-  portId: string;
-  ip: Ipv4Addr;
-  mask: string;
-}
 
 export interface NextHop {
   nextHop: Ipv4Addr;
   iface: Iface;
 }
 
-/** Sicht auf ein IP-fähiges Gerät (Host oder Router) für einen Verarbeitungsschritt. */
+/** Sicht auf ein IP-fähiges Gerät (Host, Router, L3-Switch) für einen Verarbeitungsschritt. */
 export interface IpNode {
+  dev: Device;
   cfg: IpCore;
+  /** Router/L3-Switch: ACL, NAT, DHCP-Server/Relay. */
+  l3?: L3Cfg;
+  /** Host: Dienste (DHCP-Client, DNS, TCP, HTTP). */
+  host?: HostConfig;
   forwarding: boolean;
   arpTtlUs: number;
   defaultTtl: number;
   ifaces: Iface[];
   lookup(dst: Ipv4Addr): NextHop | undefined;
+  /** Sendet einen fertigen Frame aus der Schnittstelle (Tag/SVI-Besonderheiten inklusive). */
+  xmit(ctx: DeviceCtx, iface: Iface, frame: Frame): void;
 }
 
 export type SendResult =
-  { ok: true } | { ok: false; reason: 'noRoute' } | { ok: false; reason: 'needFrag'; mtu: number };
+  | { ok: true }
+  | { ok: false; reason: 'noRoute' }
+  | { ok: false; reason: 'needFrag'; mtu: number };
 
-type Base = {
+export type Base = {
   readonly from: string;
-  readonly port: ReturnType<DeviceCtx['port']>;
+  readonly port?: Port;
   readonly frame: Frame;
   readonly summary: string;
   readonly proto: ProtoTag;
@@ -65,11 +77,14 @@ export function eth(src: string, dst: string, payload: ArpPdu | Ipv4Pdu): Frame 
   };
 }
 
+const protoOf = (p: IpPayload): number =>
+  p.kind === 'icmp' ? IP_PROTO.icmp : p.kind === 'tcp' ? IP_PROTO.tcp : IP_PROTO.udp;
+
 export function newIpPacket(
   node: IpNode,
   src: Ipv4Addr,
   dst: Ipv4Addr,
-  payload: IcmpPdu,
+  payload: IpPayload,
   opts: { ttl?: number; df?: boolean } = {},
 ): Ipv4Pdu {
   return {
@@ -77,7 +92,7 @@ export function newIpPacket(
     src,
     dst,
     ttl: opts.ttl ?? node.defaultTtl,
-    protocol: IP_PROTO.icmp,
+    protocol: protoOf(payload),
     id: node.cfg.nextIpId++,
     df: opts.df ?? false,
     mf: false,
@@ -86,37 +101,33 @@ export function newIpPacket(
   };
 }
 
-export function isLocalIp(node: IpNode, ip: Ipv4Addr): boolean {
-  return node.ifaces.some((i) => i.ip === ip);
-}
+export const isLocalIp = (node: IpNode, ip: Ipv4Addr): boolean => node.ifaces.some((i) => i.ip === ip);
 
 // ------------------------------------------------------------------ Senden
 
-export function sendArpRequest(ctx: DeviceCtx, iface: Iface, target: Ipv4Addr): void {
-  const port = ctx.port(iface.portId);
+export function sendArpRequest(ctx: DeviceCtx, node: IpNode, iface: Iface, target: Ipv4Addr): void {
   const req: ArpPdu = {
     kind: 'arp',
     op: 'request',
-    senderMac: port.mac,
+    senderMac: iface.mac,
     senderIp: iface.ip,
     targetMac: '00:00:00:00:00:00',
     targetIp: target,
   };
-  ctx.send(port.id, eth(port.mac, BROADCAST_MAC, req), ctx.processingUs);
+  node.xmit(ctx, iface, eth(iface.mac, BROADCAST_MAC, req));
 }
 
 function emit(ctx: DeviceCtx, node: IpNode, hop: NextHop, pkt: Ipv4Pdu): void {
-  const port = ctx.port(hop.iface.portId);
   const entry = node.cfg.arpCache[hop.nextHop];
   if (entry && entry.expiresAt > ctx.now) {
-    ctx.send(port.id, eth(port.mac, entry.mac, pkt), ctx.processingUs);
+    node.xmit(ctx, hop.iface, eth(hop.iface.mac, entry.mac, pkt));
     return;
   }
   let pend = node.cfg.arpPending[hop.nextHop];
   if (!pend) {
-    pend = { attempts: 1, portId: port.id, queue: [] };
+    pend = { attempts: 1, ifaceId: hop.iface.id, queue: [] };
     node.cfg.arpPending[hop.nextHop] = pend;
-    sendArpRequest(ctx, hop.iface, hop.nextHop);
+    sendArpRequest(ctx, node, hop.iface, hop.nextHop);
     ctx.setTimer(`arp:${hop.nextHop}`, ARP_RETRY_US);
   }
   pend.queue.push(pkt);
@@ -140,11 +151,9 @@ export function fragment(pkt: Ipv4Pdu, mtu: number): Ipv4Pdu[] {
   return out;
 }
 
-/** Routet ein Paket: Lookup → MTU/Fragmentierung → ARP → Senden. */
-export function ipSend(ctx: DeviceCtx, node: IpNode, pkt: Ipv4Pdu): SendResult {
-  const hop = node.lookup(pkt.dst);
-  if (!hop) return { ok: false, reason: 'noRoute' };
-  const mtu = ctx.port(hop.iface.portId).mtu;
+/** MTU-Prüfung/Fragmentierung und Auslieferung über einen bereits bestimmten Next-Hop. */
+export function ipSendVia(ctx: DeviceCtx, node: IpNode, hop: NextHop, pkt: Ipv4Pdu): SendResult {
+  const mtu = hop.iface.mtu;
   if (pduSize(pkt) <= mtu) {
     emit(ctx, node, hop, pkt);
     return { ok: true };
@@ -164,6 +173,46 @@ export function ipSend(ctx: DeviceCtx, node: IpNode, pkt: Ipv4Pdu): SendResult {
   return { ok: true };
 }
 
+/** Routet ein lokal erzeugtes Paket: Lookup → MTU/Fragmentierung → ARP → Senden. */
+export function ipSend(ctx: DeviceCtx, node: IpNode, pkt: Ipv4Pdu): SendResult {
+  const hop = node.lookup(pkt.dst);
+  if (!hop) return { ok: false, reason: 'noRoute' };
+  return ipSendVia(ctx, node, hop, pkt);
+}
+
+/** Broadcast (255.255.255.255) aus einer Schnittstelle, ohne ARP. */
+export function sendBroadcast(ctx: DeviceCtx, node: IpNode, iface: Iface, pkt: Ipv4Pdu): void {
+  node.xmit(ctx, iface, eth(iface.mac, BROADCAST_MAC, pkt));
+}
+
+/** Unicast direkt an eine bekannte MAC (z. B. DHCP-Antwort an einen Client ohne IP). */
+export function sendDirect(ctx: DeviceCtx, node: IpNode, iface: Iface, dstMac: string, pkt: Ipv4Pdu): void {
+  node.xmit(ctx, iface, eth(iface.mac, dstMac, pkt));
+}
+
+export interface UdpSend {
+  src?: Ipv4Addr;
+  dst: Ipv4Addr;
+  sport: number;
+  dport: number;
+  app?: AppPdu;
+  dataSize?: number;
+}
+
+/** Sendet ein UDP-Datagramm per Routing (Quelle = Adresse der Ausgangsschnittstelle). */
+export function sendUdp(ctx: DeviceCtx, node: IpNode, o: UdpSend): SendResult {
+  const hop = node.lookup(o.dst);
+  if (!hop) return { ok: false, reason: 'noRoute' };
+  const pkt = newIpPacket(node, o.src ?? hop.iface.ip, o.dst, {
+    kind: 'udp',
+    srcPort: o.sport,
+    dstPort: o.dport,
+    dataSize: o.dataSize ?? 0,
+    app: o.app,
+  });
+  return ipSendVia(ctx, node, hop, pkt);
+}
+
 /** ICMP-Fehlermeldung an den Absender von `off` (RFC 1812: nie als Antwort auf Fehler/Fragmente). */
 export function sendIcmpError(
   ctx: DeviceCtx,
@@ -174,8 +223,9 @@ export function sendIcmpError(
   srcIp: Ipv4Addr,
   nextHopMtu?: number,
 ): void {
-  const t = off.payload.type;
-  if (t === 'dest-unreachable' || t === 'time-exceeded' || off.fragOffset > 0) return;
+  const p = off.payload;
+  if (p.kind === 'icmp' && (p.type === 'dest-unreachable' || p.type === 'time-exceeded')) return;
+  if (off.fragOffset > 0) return;
   const icmp: IcmpPdu = {
     kind: 'icmp',
     type,
@@ -188,48 +238,44 @@ export function sendIcmpError(
       dst: off.dst,
       ipId: off.id,
       protocol: off.protocol,
-      icmpId: off.payload.id,
-      icmpSeq: off.payload.seq,
+      icmpId: p.kind === 'icmp' ? p.id : 0,
+      icmpSeq: p.kind === 'icmp' ? p.seq : 0,
+      sport: p.kind === 'tcp' || p.kind === 'udp' ? p.srcPort : undefined,
+      dport: p.kind === 'tcp' || p.kind === 'udp' ? p.dstPort : undefined,
     },
     nextHopMtu,
   };
-  const pkt = newIpPacket(node, srcIp, off.src, icmp, {
-    ttl: node.forwarding ? 255 : node.defaultTtl,
-  });
+  const pkt = newIpPacket(node, srcIp, off.src, icmp, { ttl: node.forwarding ? 255 : node.defaultTtl });
   ipSend(ctx, node, pkt);
 }
 
 // ------------------------------------------------------------------ Empfang
 
-export function ipFrameRx(
+/** Frame an einer bereits bestimmten Schnittstelle verarbeiten (ARP/IPv4). */
+export function ifaceFrameRx(
   ctx: DeviceCtx,
   node: IpNode,
-  portId: string,
+  iface: Iface,
   frame: Frame,
   fromId: string,
+  port?: Port,
 ): void {
-  const port = ctx.port(portId);
   const { proto, info } = summarizeFrame(frame);
   const base: Base = { from: fromId, port, frame, summary: info, proto };
-  if (frame.dst !== port.mac && !isBroadcastMac(frame.dst) && !isMulticastMac(frame.dst)) {
+  if (frame.dst !== iface.mac && !isBroadcastMac(frame.dst) && !isMulticastMac(frame.dst)) {
     ctx.log({
       ...base,
       kind: 'drop',
       status: 'drop',
-      msg: { key: 'host.l2.notForMe', params: { dst: frame.dst, mac: port.mac } },
+      msg: { key: 'host.l2.notForMe', params: { dst: frame.dst, mac: iface.mac } },
     });
     return;
   }
-  const iface = node.ifaces.find((i) => i.portId === portId);
-  if (!iface) {
-    ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'host.noIp' } });
-    return;
-  }
   if (frame.payload.kind === 'arp') arpRx(ctx, node, iface, base, frame.payload);
-  else ipRx(ctx, node, iface, base, frame.payload, frame);
+  else if (frame.payload.kind === 'ipv4') ipRx(ctx, node, iface, base, frame.payload, frame);
 }
 
-function learn(ctx: DeviceCtx, node: IpNode, ip: Ipv4Addr, mac: string): void {
+export function learn(ctx: DeviceCtx, node: IpNode, ip: Ipv4Addr, mac: string): void {
   node.cfg.arpCache[ip] = { mac, expiresAt: ctx.now + node.arpTtlUs };
 }
 
@@ -274,12 +320,12 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
     const reply: ArpPdu = {
       kind: 'arp',
       op: 'reply',
-      senderMac: base.port.mac,
+      senderMac: iface.mac,
       senderIp: iface.ip,
       targetMac: a.senderMac,
       targetIp: a.senderIp,
     };
-    ctx.send(base.port.id, eth(base.port.mac, a.senderMac, reply), ctx.processingUs);
+    node.xmit(ctx, iface, eth(iface.mac, a.senderMac, reply));
     return;
   }
   learn(ctx, node, a.senderIp, a.senderMac);
@@ -293,20 +339,12 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
   if (pend) {
     delete node.cfg.arpPending[a.senderIp];
     ctx.cancelTimer(`arp:${a.senderIp}`);
-    for (const pkt of pend.queue) {
-      ctx.send(pend.portId, eth(ctx.port(pend.portId).mac, a.senderMac, pkt), ctx.processingUs);
-    }
+    const out = node.ifaces.find((i) => i.id === pend.ifaceId) ?? iface;
+    for (const pkt of pend.queue) node.xmit(ctx, out, eth(out.mac, a.senderMac, pkt));
   }
 }
 
-function ipRx(
-  ctx: DeviceCtx,
-  node: IpNode,
-  iface: Iface,
-  base: Base,
-  ip: Ipv4Pdu,
-  frame: Frame,
-): void {
+function ipRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, ip: Ipv4Pdu, frame: Frame): void {
   const bcast = ip.dst === '255.255.255.255' || ip.dst === broadcastAddress(iface.ip, iface.mask);
   if (isLocalIp(node, ip.dst) || bcast) {
     deliverLocal(ctx, node, iface, base, ip, frame, bcast && !isLocalIp(node, ip.dst));
@@ -324,7 +362,41 @@ function ipRx(
   forward(ctx, node, iface, base, ip);
 }
 
-function forward(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, ip: Ipv4Pdu): void {
+function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn: Ipv4Pdu): void {
+  const l3 = node.l3;
+  let ip = ipIn;
+  // 1) Eingehende ACL
+  if (l3 && ifaceIn.cfg.aclIn) {
+    const r = aclEval(l3.acls[ifaceIn.cfg.aclIn], ip);
+    if (r.action === 'deny') {
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        proto: 'ACL',
+        status: 'drop',
+        msg: { key: 'acl.deny', params: { acl: ifaceIn.cfg.aclIn, dir: 'in', src: ip.src, dst: ip.dst } },
+      });
+      sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.admin, ip, ifaceIn.ip);
+      return;
+    }
+  }
+  // 2) NAT outside → inside (vor dem Routing)
+  if (l3 && ifaceIn.cfg.natSide === 'outside' && l3.nat.rules.length > 0) {
+    const r = natOutside2Inside(l3, ip, ctx.now);
+    if (r.entry) {
+      ctx.log({
+        ...base,
+        kind: 'rx',
+        proto: 'NAT',
+        status: 'info',
+        msg: {
+          key: 'nat.in',
+          params: { global: r.entry.insideGlobal.ip, local: r.entry.insideLocal.ip, src: ip.src },
+        },
+      });
+      ip = r.pkt;
+    }
+  }
   if (ip.ttl <= 1) {
     ctx.log({
       ...base,
@@ -332,7 +404,7 @@ function forward(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, ip: Ipv
       status: 'drop',
       msg: { key: 'router.ttlExpired', params: { dst: ip.dst, src: ip.src } },
     });
-    sendIcmpError(ctx, node, 'time-exceeded', 0, ip, iface.ip);
+    sendIcmpError(ctx, node, 'time-exceeded', 0, ip, ifaceIn.ip);
     return;
   }
   const hop = node.lookup(ip.dst);
@@ -343,11 +415,46 @@ function forward(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, ip: Ipv
       status: 'drop',
       msg: { key: 'router.noRoute', params: { dst: ip.dst } },
     });
-    sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.net, ip, iface.ip);
+    sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.net, ip, ifaceIn.ip);
     return;
   }
-  const out: Ipv4Pdu = { ...structuredClone(ip), ttl: ip.ttl - 1 };
-  const r = ipSend(ctx, node, out);
+  let out: Ipv4Pdu = { ...structuredClone(ip), ttl: ip.ttl - 1 };
+  // 3) NAT inside → outside (nach dem Routing)
+  if (l3 && ifaceIn.cfg.natSide === 'inside' && hop.iface.cfg.natSide === 'outside') {
+    const r = natInside2Outside(l3, out, hop.iface, ctx.now);
+    if (r.entry) {
+      ctx.log({
+        ...base,
+        kind: 'rx',
+        proto: 'NAT',
+        status: 'info',
+        msg: {
+          key: 'nat.out',
+          params: { local: r.entry.insideLocal.ip, global: r.entry.insideGlobal.ip, dst: ip.dst },
+        },
+      });
+      out = r.pkt;
+    }
+  }
+  // 4) Ausgehende ACL
+  if (l3 && hop.iface.cfg.aclOut) {
+    const r = aclEval(l3.acls[hop.iface.cfg.aclOut], out);
+    if (r.action === 'deny') {
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        proto: 'ACL',
+        status: 'drop',
+        msg: {
+          key: 'acl.deny',
+          params: { acl: hop.iface.cfg.aclOut, dir: 'out', src: out.src, dst: out.dst },
+        },
+      });
+      sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.admin, ip, ifaceIn.ip);
+      return;
+    }
+  }
+  const r = ipSendVia(ctx, node, hop, out);
   if (!r.ok && r.reason === 'needFrag') {
     ctx.log({
       ...base,
@@ -355,10 +462,10 @@ function forward(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, ip: Ipv
       status: 'drop',
       msg: {
         key: 'router.needFrag',
-        params: { size: pduSize(ip), mtu: r.mtu, port: ctx.port(hop.iface.portId).name },
+        params: { size: pduSize(ip), mtu: r.mtu, port: ctx.deviceIfaceName(hop.iface.id) },
       },
     });
-    sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.fragNeeded, ip, iface.ip, r.mtu);
+    sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.fragNeeded, ip, ifaceIn.ip, r.mtu);
     return;
   }
   ctx.log({
@@ -370,7 +477,7 @@ function forward(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, ip: Ipv
       params: {
         dst: ip.dst,
         via: hop.nextHop,
-        port: ctx.port(hop.iface.portId).name,
+        port: ctx.deviceIfaceName(hop.iface.id),
         ttl: out.ttl,
       },
     },
@@ -395,13 +502,7 @@ function reassemble(ctx: DeviceCtx, cfg: IpCore, ip: Ipv4Pdu): Ipv4Pdu | undefin
   }
   if (cur < e.total) return undefined;
   delete cfg.reasm[key];
-  return {
-    ...structuredClone(ip),
-    mf: false,
-    fragOffset: 0,
-    dataLen: undefined,
-    payload: e.payload,
-  };
+  return { ...structuredClone(ip), mf: false, fragOffset: 0, dataLen: undefined, payload: e.payload };
 }
 
 function deliverLocal(
@@ -424,15 +525,19 @@ function deliverLocal(
     return;
   }
   const reassembled = ip !== ipIn;
-  const icmp = ip.payload;
-  if (icmp.type === 'echo-request') {
+  const l4 = ip.payload;
+  if (l4.kind === 'udp') {
+    udpIn(ctx, node, iface, base, ip, frame, broadcast);
+    return;
+  }
+  if (l4.kind === 'tcp') {
+    if (node.host && !broadcast) tcpRx(ctx, node, node.host, iface, base, ip, l4);
+    else ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'ip.noService', params: { port: l4.dstPort } } });
+    return;
+  }
+  if (l4.type === 'echo-request') {
     if (broadcast) {
-      ctx.log({
-        ...base,
-        kind: 'drop',
-        status: 'drop',
-        msg: { key: 'host.icmp.broadcastIgnored' },
-      });
+      ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'host.icmp.broadcastIgnored' } });
       return;
     }
     learn(ctx, node, ip.src, frame.src);
@@ -445,11 +550,11 @@ function deliverLocal(
         params: { src: ip.src, size: pduSize(ip) },
       },
     });
-    const reply = newIpPacket(node, ip.dst, ip.src, { ...icmp, type: 'echo-reply' });
+    const reply = newIpPacket(node, ip.dst, ip.src, { ...l4, type: 'echo-reply' });
     ipSend(ctx, node, reply);
     return;
   }
-  if (icmp.type === 'echo-reply') {
+  if (l4.type === 'echo-reply') {
     ctx.log({
       ...base,
       kind: 'rx',
@@ -466,13 +571,32 @@ function deliverLocal(
     ...base,
     kind: 'rx',
     status: 'info',
-    msg: {
-      key: 'host.icmp.error',
-      params: { src: ip.src, type: icmp.type, code: icmp.code },
-    },
+    msg: { key: 'host.icmp.error', params: { src: ip.src, type: l4.type, code: l4.code } },
   });
   onIcmpError(ctx, node, ip);
-  void iface;
+}
+
+function udpIn(
+  ctx: DeviceCtx,
+  node: IpNode,
+  iface: Iface,
+  base: Base,
+  ip: Ipv4Pdu,
+  frame: Frame,
+  broadcast: boolean,
+): void {
+  const udp = ip.payload;
+  if (udp.kind !== 'udp') return;
+  const app = udp.app;
+  if (app?.kind === 'dhcp' && dhcpRx(ctx, node, iface, base, ip, udp, app, frame)) return;
+  if (app?.kind === 'dns' && dnsRx(ctx, node, iface, base, ip, udp, app)) return;
+  ctx.log({
+    ...base,
+    kind: 'drop',
+    status: 'drop',
+    msg: { key: 'ip.noService', params: { port: udp.dstPort } },
+  });
+  if (!broadcast) sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.port, ip, iface.ip);
 }
 
 // ------------------------------------------------------------------ Timer
@@ -494,8 +618,8 @@ export function ipTimer(ctx: DeviceCtx, node: IpNode, name: string): boolean {
     return true;
   }
   pend.attempts++;
-  const iface = node.ifaces.find((i) => i.portId === pend.portId);
-  if (iface) sendArpRequest(ctx, iface, ip);
+  const iface = node.ifaces.find((i) => i.id === pend.ifaceId);
+  if (iface) sendArpRequest(ctx, node, iface, ip);
   ctx.setTimer(name, ARP_RETRY_US);
   return true;
 }
@@ -509,3 +633,5 @@ function undeliverable(ctx: DeviceCtx, node: IpNode, pkt: Ipv4Pdu): void {
   const back = node.lookup(pkt.src);
   if (back) sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.host, pkt, back.iface.ip);
 }
+
+export type { EthernetPdu };

@@ -47,6 +47,7 @@ describe('Scheduler', () => {
   it('Timer: wiederholt, abbrechbar; Ping mit count=3 sendet 3x im Sekundentakt', () => {
     const { e, ids } = switchLab(2);
     const a = ids[0] as string;
+    const t0 = e.state.now;
     e.ping(a, '10.0.0.2', { count: 3, intervalUs: 1_000_000 });
     e.runAll();
     const cfg = e.getDevice(a)?.config;
@@ -55,7 +56,7 @@ describe('Scheduler', () => {
       'reply',
       'reply',
     ]);
-    expect(cfg?.kind === 'host' && cfg.pings.map((p) => Math.round(p.sentAt / 1e6))).toEqual([
+    expect(cfg?.kind === 'host' && cfg.pings.map((p) => Math.round((p.sentAt - t0) / 1e6))).toEqual([
       0, 1, 2,
     ]);
     expect(e.queueLength).toBe(0);
@@ -63,22 +64,24 @@ describe('Scheduler', () => {
 
   it('runUntil verarbeitet nur bis t und setzt die Uhr', () => {
     const { e, ids } = switchLab(2);
+    const t0 = e.state.now;
     e.ping(ids[0] as string, '10.0.0.2');
-    const n = e.runUntil(100);
+    const n = e.runUntil(t0 + 100);
     expect(n).toBeGreaterThan(0);
-    expect(e.state.now).toBe(100);
-    expect(e.peekNextTime()).toBeGreaterThan(100);
-    e.runUntil(10_000_000);
+    expect(e.state.now).toBe(t0 + 100);
+    expect(e.peekNextTime()).toBeGreaterThan(t0 + 100);
+    e.runUntil(t0 + 10_000_000);
     expect(e.queueLength).toBe(0);
   });
 
   it('Verzögerung = Serialisierung + Propagation + Verarbeitung', () => {
     const { e, ids } = switchLab(2);
+    const t0 = e.state.now;
     e.ping(ids[0] as string, '10.0.0.2');
     e.runAll();
     // ARP-Request: 64 B = 512 bit @100 Mbit/s → 6 µs (aufgerundet 5,12) + 5 µs Propagation
     const first = e.log.find((l) => l.msg.key.startsWith('switch.flood'));
-    expect(first?.t).toBe(50 + 6 + 5);
+    expect((first?.t ?? 0) - t0).toBe(50 + 6 + 5);
   });
 });
 
@@ -176,6 +179,7 @@ describe('Switch', () => {
     e.setHostIp(a, '10.0.0.1', '255.255.255.0');
     e.setHostIp(b, '10.0.0.2', '255.255.255.0');
     e.setHostIp(c, '10.0.0.3', '255.255.255.0');
+    e.runUntil(e.state.now + 35_000_000);
     e.ping(c, '10.0.0.1');
     e.runAll();
     e.ping(a, '10.0.0.2');
@@ -234,8 +238,11 @@ describe('Host / ARP / Ping', () => {
 
   it('Gratuitous ARP bei IP-Konfiguration, Duplicate-IP-Konflikt wird gemeldet', () => {
     const { e, ids } = switchLab(2);
+    e.setHostIp(ids[0] as string, '10.0.0.7', '255.255.255.0');
     e.runAll();
     expect(keys(e.log)).toContain('host.arp.gratuitous');
+    e.setHostIp(ids[0] as string, '10.0.0.1', '255.255.255.0');
+    e.runAll();
     e.log.length = 0;
     e.setHostIp(ids[1] as string, '10.0.0.1', '255.255.255.0'); // gleiche IP wie PC0
     e.runAll();
@@ -487,6 +494,7 @@ describe('Topologie', () => {
       'router',
       'server',
       'switch-l2',
+      'switch-l3',
     ]);
   });
 });
