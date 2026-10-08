@@ -133,7 +133,7 @@ export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): s
   const rib = proto
     ? allRib.filter((r) => r.type === codeOf[proto] || (proto === 'connected' && r.type === 'L'))
     : allRib;
-  if (target) return showRouteEntry(d, rib, target);
+  if (target) return showRouteEntry(e, d, rib, target);
   const def = rib.find((r) => r.plen === 0 && r.type !== 'C' && r.type !== 'L');
   const out = [...CODES, ''];
   out.push(
@@ -151,19 +151,40 @@ export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): s
     const key = classful(r.prefix).net + '/' + classful(r.prefix).plen;
     (groups.get(key) ?? groups.set(key, []).get(key))?.push(r);
   }
-  const line = (r: RibEntry, width: number): string => {
+  const where = (r: RibEntry): string => {
+    const ifn = r.ifaceId ? ifDisplay(d, r.ifaceId) : '';
+    if (r.type === 'C' || r.type === 'L') return `is directly connected, ${ifn}`;
+    if (r.nextHop) {
+      const age = r.type === 'S' ? '' : `, ${clock(e.state.now - (r.since ?? 0))}, ${ifn}`;
+      return `[${r.ad}/${r.metric}] via ${r.nextHop}${age}`;
+    }
+    return `[${r.ad}/${r.metric}] is directly connected, ${ifn}`;
+  };
+  /** Eine Zeile je Pfad; weitere gleichwertige Pfade (ECMP) stehen eingerückt darunter. */
+  const lines = (list: RibEntry[], width: number): string[] => {
+    const r = list[0] as RibEntry;
     const star = r.plen === 0 ? '*' : '';
     const code = `${r.type}${r.sub ? ' ' + r.sub : ''}${star}`.padEnd(width);
-    const ifn = r.ifaceId ? ifDisplay(d, r.ifaceId) : '';
-    let where: string;
-    if (r.type === 'C' || r.type === 'L') where = `is directly connected, ${ifn}`;
-    else if (r.nextHop) {
-      const age = r.type === 'S' ? '' : `, ${clock(e.state.now - (r.since ?? 0))}, ${ifn}`;
-      where = `[${r.ad}/${r.metric}] via ${r.nextHop}${age}`;
-    } else where = `[${r.ad}/${r.metric}] is directly connected, ${ifn}`;
-    return `${code}${r.prefix}/${r.plen} ${where}`;
+    const head = `${code}${r.prefix}/${r.plen} `;
+    return list.map((x, i) =>
+      i === 0 ? `${head}${where(x)}` : `${' '.repeat(head.length)}${where(x)}`,
+    );
   };
-  if (def) out.push(line(def, 5));
+  const byPrefix = (entries: RibEntry[]): RibEntry[][] => {
+    const m = new Map<string, RibEntry[]>();
+    for (const x of entries) {
+      const k = `${x.prefix}/${x.plen}`;
+      (m.get(k) ?? m.set(k, []).get(k))?.push(x);
+    }
+    return [...m.values()];
+  };
+  if (def)
+    out.push(
+      ...lines(
+        rib.filter((x) => x.plen === 0 && x.type !== 'C' && x.type !== 'L'),
+        5,
+      ),
+    );
   for (const [key, entries] of groups) {
     const masks = new Set(entries.map((x) => x.plen));
     const subnets = new Set(entries.map((x) => `${x.prefix}/${x.plen}`)).size;
@@ -173,12 +194,12 @@ export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): s
       const only = [...masks][0] as number;
       out.push(`      ${key.split('/')[0]}/${only} is subnetted, ${subnets} subnets`);
     }
-    for (const r of entries) out.push(line(r, 9));
+    for (const g of byPrefix(entries)) out.push(...lines(g, 9));
   }
   return out;
 }
 
-function showRouteEntry(d: D, rib: RibEntry[], target: string): string[] {
+function showRouteEntry(e: Engine, d: D, rib: RibEntry[], target: string): string[] {
   let best: RibEntry | undefined;
   for (const r of rib) {
     if (r.type === 'L' && r.prefix !== target) continue;
@@ -195,14 +216,29 @@ function showRouteEntry(d: D, rib: RibEntry[], target: string): string[] {
     D: 'eigrp',
     B: 'bgp',
   };
-  const ifn = best.ifaceId ? ifDisplay(d, best.ifaceId) : '';
+  const paths = rib.filter(
+    (r) =>
+      r.type === best.type &&
+      r.prefix === best.prefix &&
+      r.plen === best.plen &&
+      r.ad === best.ad &&
+      (r.metric === best.metric || r.share !== undefined),
+  );
   const out = [
     `Routing entry for ${best.prefix}/${best.plen}`,
     `  Known via "${names[best.type]}", distance ${best.ad}, metric ${best.metric}${best.type === 'C' ? ' (connected, via interface)' : ''}`,
     '  Routing Descriptor Blocks:',
   ];
-  out.push(best.nextHop ? `  * ${best.nextHop}` : `  * directly connected, via ${ifn}`);
-  out.push(`      Route metric is ${best.metric}, traffic share count is 1`);
+  const minShare = Math.min(...paths.map((p) => p.share ?? 1));
+  paths.forEach((p, i) => {
+    const ifn = p.ifaceId ? ifDisplay(d, p.ifaceId) : '';
+    out.push(
+      `${i === 0 ? '  * ' : '    '}${p.nextHop ? (p.type === 'S' ? p.nextHop : `${p.nextHop}, from ${p.nextHop}, ${clock(e.state.now - (p.since ?? 0))} ago, via ${ifn}`) : `directly connected, via ${ifn}`}`,
+    );
+    out.push(
+      `      Route metric is ${p.metric}, traffic share count is ${p.share !== undefined ? Math.max(1, Math.round(p.share / minShare)) : 1}`,
+    );
+  });
   return out;
 }
 

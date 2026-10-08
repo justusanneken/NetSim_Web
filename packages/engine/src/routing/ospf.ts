@@ -30,6 +30,7 @@ import { sendMcast6, sendNbr6, type Iface6 } from '../l3v6';
 import { spfRun } from './ospfspf';
 import {
   isPassive,
+  maxPathsOf,
   type OspfCfg,
   type OspfExternal,
   type OspfIfState,
@@ -1092,24 +1093,30 @@ export function ospfRecompute(rt: Rt): boolean {
       () => `OSPF-${c.pid} SPF   Running SPF, ${res.routes.length} route(s)`,
     );
     rlog(rt, 'OSPF', { key: 'ospf.spf', params: { pid: c.pid, routes: res.routes.length } });
+    const max = maxPathsOf(c);
     const out = res.routes
-      .map((r) => ({
-        proto: 'O' as const,
-        sub:
-          r.type === 'intra'
-            ? undefined
-            : r.type === 'inter'
-              ? 'IA'
-              : r.type === 'e1'
-                ? 'E1'
-                : 'E2',
-        prefix: r.prefix,
-        plen: r.plen,
-        ad: 110,
-        metric: r.cost,
-        nextHop: r.nh?.addr,
-        ifaceId: r.nh?.ifaceId ?? '',
-      }))
+      .flatMap((r) =>
+        r.nhs
+          .filter((n) => n.addr !== undefined)
+          .slice(0, max)
+          .map((nh) => ({
+            proto: 'O' as const,
+            sub:
+              r.type === 'intra'
+                ? undefined
+                : r.type === 'inter'
+                  ? 'IA'
+                  : r.type === 'e1'
+                    ? 'E1'
+                    : 'E2',
+            prefix: r.prefix,
+            plen: r.plen,
+            ad: 110,
+            metric: r.cost,
+            nextHop: nh.addr,
+            ifaceId: nh.ifaceId,
+          })),
+      )
       .filter((r) => r.ifaceId !== '');
     if (installRoutes(rt, srcOf(c), out, c.v6)) changed = true;
     if (originateSummaries(rt, c, res)) {

@@ -417,6 +417,7 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     const t = c.timers;
     if (t.update !== 30 || t.invalid !== 180 || t.holddown !== 180 || t.flush !== 240)
       L.push(` timers basic ${t.update} ${t.invalid} ${t.holddown} ${t.flush}`);
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
     for (const x of c.redistribute) L.push(redistText(x, 'rip'));
     L.push('!');
   }
@@ -436,6 +437,7 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
         ` default-information originate${o.always ? ' always' : ''} metric ${o.metric} metric-type ${o.metricType}`,
       );
     }
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
     for (const x of c.redistribute) L.push(redistText(x, 'ospf'));
     L.push('!');
   }
@@ -450,6 +452,7 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
         ` default-information originate${o.always ? ' always' : ''} metric ${o.metric} metric-type ${o.metricType}`,
       );
     }
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
     L.push('!');
   }
   for (const c of Object.values(r.eigrp)) {
@@ -459,6 +462,7 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     for (const n of c.networks) L.push(` network ${n.prefix} ${n.wildcard}`);
     if (!c.autoSummary) L.push(' no auto-summary');
     if (c.variance !== 1) L.push(` variance ${c.variance}`);
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
     for (const x of c.redistribute) L.push(redistText(x, 'eigrp'));
     L.push('!');
   }
@@ -477,6 +481,7 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
       if (n.shutdown) L.push(` neighbor ${n.ip} shutdown`);
     }
     for (const n of c.networks) L.push(` network ${n.prefix} mask ${prefixMaskText(n.plen)}`);
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
     for (const x of c.redistribute) L.push(redistText(x, 'bgp'));
     L.push('!');
   }

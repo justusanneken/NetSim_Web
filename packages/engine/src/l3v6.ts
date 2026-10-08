@@ -25,7 +25,7 @@ import type { DeviceCtx } from './ctx';
 import { failPing } from './diag';
 import { ifaceUp, isVirtualIface } from './ifaces';
 import type { Base } from './l3';
-import type { RibEntry } from './rib';
+import { lookupRibAll, pickPath, type RibEntry } from './rib';
 import { routingRx6 } from './routing';
 import type {
   Device,
@@ -67,7 +67,7 @@ export interface Node6 {
   forwarding: boolean;
   hopLimit: number;
   rib: RibEntry[];
-  lookup(dst: Ipv6Addr): NextHop6 | undefined;
+  lookup(dst: Ipv6Addr, src?: Ipv6Addr): NextHop6 | undefined;
 }
 
 export type SendResult6 = { ok: true } | { ok: false; reason: 'noRoute' | 'tooBig' };
@@ -205,6 +205,9 @@ export function lookupRib6(rib: RibEntry[], dst: Ipv6Addr): RibEntry | undefined
   return best;
 }
 
+export const lookupRibPaths6 = (rib: RibEntry[], dst: Ipv6Addr): RibEntry[] =>
+  lookupRibAll(rib, dst, (e, d) => ipv6Network(d, e.plen) === e.prefix);
+
 export function routerNode6(ifaces: Iface6[], cfg: L3Cfg): Node6 {
   const rib = buildRib6(cfg, ifaces);
   const forwarding = cfg.ipv6Routing;
@@ -213,12 +216,13 @@ export function routerNode6(ifaces: Iface6[], cfg: L3Cfg): Node6 {
     forwarding,
     hopLimit: 255,
     rib,
-    lookup(dst) {
+    lookup(dst, src) {
       if (isLinkLocalIpv6(dst) || isMulticastIpv6(dst)) {
         const i = ifaces[0];
         return i ? { nextHop: dst, iface: i } : undefined;
       }
-      const e = lookupRib6(rib, dst);
+      const paths = lookupRibPaths6(rib, dst);
+      const e = paths.length ? pickPath(paths, src, dst) : undefined;
       const iface = e?.ifaceId ? ifaces.find((i) => i.id === e.ifaceId) : undefined;
       if (!e || !iface) return undefined;
       return { nextHop: e.type === 'C' || !e.nextHop ? dst : e.nextHop, iface };
@@ -350,7 +354,7 @@ export function ip6SendVia(ctx: DeviceCtx, n: Ip6Host, hop: NextHop6, pkt: Ipv6P
 }
 
 export function ip6Send(ctx: DeviceCtx, n: Ip6Host, pkt: Ipv6Pdu): SendResult6 {
-  const hop = n.v6.lookup(pkt.dst);
+  const hop = n.v6.lookup(pkt.dst, pkt.src);
   if (!hop) return { ok: false, reason: 'noRoute' };
   return ip6SendVia(ctx, n, hop, pkt);
 }
@@ -720,7 +724,7 @@ function forward6(ctx: DeviceCtx, n: Ip6Host, ifaceIn: Iface6, base: Base, pkt: 
     sendIcmp6Error(ctx, n, 'time-exceeded', 0, pkt, srcFor6(ifaceIn, pkt.src));
     return;
   }
-  const hop = n.v6.lookup(pkt.dst);
+  const hop = n.v6.lookup(pkt.dst, pkt.src);
   if (!hop) {
     ctx.log({
       ...base,

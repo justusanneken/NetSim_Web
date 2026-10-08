@@ -35,9 +35,13 @@ export interface RipRoute {
   changed: boolean;
   origin: 'rip' | 'network' | 'redistributed' | 'default';
   tag: number;
+  /** Gleichwertige Zusatzpfade (ECMP) mit derselben Metrik. */
+  alts?: { nextHop: string; ifaceId: string; updatedAt: number }[];
 }
 
 export interface RipCfg {
+  /** `maximum-paths` (ECMP). */
+  maxPaths?: number;
   networks: string[];
   passive: string[];
   /** `no passive-interface X` bei `passive-interface default`. */
@@ -126,6 +130,8 @@ export interface OspfExternal {
 }
 
 export interface OspfCfg {
+  /** `maximum-paths` (ECMP). */
+  maxPaths?: number;
   pid: number;
   routerId?: string;
   networks: OspfNetworkStmt[];
@@ -215,6 +221,8 @@ export interface EigrpTopo {
 }
 
 export interface EigrpCfg {
+  /** `maximum-paths` (ECMP). */
+  maxPaths?: number;
   asn: number;
   routerId?: string;
   networks: { prefix: string; wildcard: string }[];
@@ -278,6 +286,8 @@ export interface BgpNbrCfg {
 }
 
 export interface BgpCfg {
+  /** `maximum-paths` (ECMP). */
+  maxPaths?: number;
   asn: number;
   routerId?: string;
   neighbors: Record<string, BgpNbrCfg>;
@@ -335,6 +345,9 @@ export interface RoutingCfg {
 }
 
 export const newRouting = (): RoutingCfg => ({ ospf: {}, ospf6: {}, eigrp: {}, debug: [] });
+
+/** `maximum-paths`: IGPs Default 4, BGP Default 1. */
+export const maxPathsOf = (c: { maxPaths?: number }, def = 4): number => c.maxPaths ?? def;
 
 export const isPassive = (
   c: { passive: string[]; unpassive: string[]; passiveDefault: boolean },

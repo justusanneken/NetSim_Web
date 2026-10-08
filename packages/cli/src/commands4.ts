@@ -400,7 +400,7 @@ export function addPhase4(r: Registry<CliSession>): void {
       touch(s);
     },
   });
-  for (const w of ['maximum-paths', 'distance']) {
+  for (const w of ['distance']) {
     r.add({
       modes: [...RIP, 'config-ospf', 'config-eigrp'],
       only: 'l3',

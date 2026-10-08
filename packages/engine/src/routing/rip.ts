@@ -20,7 +20,7 @@ import {
   setBg,
   type Rt,
 } from './core';
-import { isPassive, type RipCfg, type RipRoute } from './types';
+import { isPassive, maxPathsOf, type RipCfg, type RipRoute } from './types';
 
 export const RIP_GROUP = '224.0.0.9';
 const MAX_ENTRIES = 25;
@@ -179,15 +179,19 @@ function installRip(rt: Rt): boolean {
   if (!c) return installRoutes(rt, 'rip', []);
   const out = Object.values(c.routes)
     .filter((r) => r.origin === 'rip' && r.metric < INF && r.nextHop && r.ifaceId)
-    .map((r) => ({
-      proto: 'R' as const,
-      prefix: r.prefix,
-      plen: r.plen,
-      ad: AD.rip as number,
-      metric: r.metric,
-      nextHop: r.nextHop,
-      ifaceId: r.ifaceId as string,
-    }));
+    .flatMap((r) =>
+      [{ nextHop: r.nextHop as string, ifaceId: r.ifaceId as string }, ...(r.alts ?? [])]
+        .slice(0, maxPathsOf(c))
+        .map((p) => ({
+          proto: 'R' as const,
+          prefix: r.prefix,
+          plen: r.plen,
+          ad: AD.rip as number,
+          metric: r.metric,
+          nextHop: p.nextHop,
+          ifaceId: p.ifaceId,
+        })),
+    );
   return installRoutes(rt, 'rip', out);
 }
 
@@ -272,7 +276,27 @@ function ripAge(rt: Rt, c: RipCfg): void {
   let changed = false;
   for (const [k, r] of Object.entries(c.routes)) {
     if (r.origin !== 'rip') continue;
-    if (r.metric < INF && r.updatedAt !== undefined && now - r.updatedAt > c.timers.invalid * SEC) {
+    if (r.alts?.some((a) => now - a.updatedAt > c.timers.invalid * SEC)) {
+      r.alts = r.alts.filter((a) => now - a.updatedAt <= c.timers.invalid * SEC);
+      changed = true;
+    }
+    if (
+      r.metric < INF &&
+      r.updatedAt !== undefined &&
+      now - r.updatedAt > c.timers.invalid * SEC &&
+      r.alts?.length
+    ) {
+      const a = r.alts[0] as NonNullable<RipRoute['alts']>[number];
+      r.nextHop = a.nextHop;
+      r.ifaceId = a.ifaceId;
+      r.updatedAt = a.updatedAt;
+      r.alts = r.alts.slice(1);
+      changed = true;
+    } else if (
+      r.metric < INF &&
+      r.updatedAt !== undefined &&
+      now - r.updatedAt > c.timers.invalid * SEC
+    ) {
       r.metric = INF;
       r.changed = true;
       r.flushAt = now + (c.timers.flush - c.timers.invalid) * SEC;
@@ -295,7 +319,19 @@ function ripIfaceDown(rt: Rt, ifaceId: string): void {
   if (!c) return;
   let changed = false;
   for (const r of Object.values(c.routes)) {
-    if (r.origin === 'rip' && r.ifaceId === ifaceId && r.metric < INF) {
+    if (r.alts?.some((a) => a.ifaceId === ifaceId)) {
+      r.alts = r.alts.filter((a) => a.ifaceId !== ifaceId);
+      changed = true;
+    }
+    if (r.origin === 'rip' && r.ifaceId === ifaceId && r.metric < INF && r.alts?.length) {
+      // gleichwertiger Zusatzpfad übernimmt
+      const a = r.alts[0] as NonNullable<RipRoute['alts']>[number];
+      r.nextHop = a.nextHop;
+      r.ifaceId = a.ifaceId;
+      r.updatedAt = a.updatedAt;
+      r.alts = r.alts.slice(1);
+      changed = true;
+    } else if (r.origin === 'rip' && r.ifaceId === ifaceId && r.metric < INF) {
       r.metric = INF;
       r.changed = true;
       r.flushAt = rt.ctx.now + (c.timers.flush - c.timers.invalid) * SEC;
@@ -366,6 +402,7 @@ export function ripRx(rt: Rt, iface: Iface, base: Base, ip: Ipv4Pdu, pdu: RipPdu
     if (cur.nextHop === nh && cur.ifaceId === iface.id) {
       if (metric !== cur.metric) {
         cur.metric = metric;
+        cur.alts = undefined;
         cur.changed = true;
         cur.flushAt = metric >= INF ? now + (c.timers.flush - c.timers.invalid) * SEC : undefined;
         changed = true;
@@ -380,8 +417,22 @@ export function ripRx(rt: Rt, iface: Iface, base: Base, ip: Ipv4Pdu, pdu: RipPdu
       cur.ifaceId = iface.id;
       cur.updatedAt = now;
       cur.flushAt = undefined;
+      cur.alts = undefined;
       cur.changed = true;
       changed = true;
+    } else {
+      // gleichwertiger bzw. schlechterer Zusatzpfad (ECMP)
+      const alt = cur.alts?.find((a) => a.nextHop === nh && a.ifaceId === iface.id);
+      if (metric === cur.metric && metric < INF) {
+        if (alt) alt.updatedAt = now;
+        else if ((cur.alts?.length ?? 0) + 1 < maxPathsOf(c)) {
+          cur.alts = [...(cur.alts ?? []), { nextHop: nh, ifaceId: iface.id, updatedAt: now }];
+          changed = true;
+        }
+      } else if (alt) {
+        cur.alts = cur.alts?.filter((a) => a !== alt);
+        changed = true;
+      }
     }
   }
   if (changed) {

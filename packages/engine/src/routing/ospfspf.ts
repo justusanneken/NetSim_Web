@@ -23,7 +23,8 @@ export interface SpfRoute {
   cost: number;
   /** Bereich, in dem die Route gelernt wurde (für ABR-Summaries). */
   area: string;
-  nh?: Nh;
+  /** Gleichwertige Next Hops (ECMP). */
+  nhs: Nh[];
   asbrCost?: number;
   /** Direkt angeschlossen: nur für Summaries, nicht für die RIB. */
   connected?: boolean;
@@ -34,7 +35,7 @@ export interface SpfAsbr {
   cost: number;
   area: string;
   viaInter: boolean;
-  nh?: Nh;
+  nhs: Nh[];
 }
 
 export interface SpfResult {
@@ -45,7 +46,19 @@ export interface SpfResult {
 
 interface Vertex {
   cost: number;
-  nh?: Nh;
+  nhs: Nh[];
+}
+
+const nhKey = (n: Nh): string => `${n.ifaceId}|${n.addr ?? ''}`;
+export function mergeNhs(a: Nh[], b: Nh[]): Nh[] {
+  const seen = new Set(a.map(nhKey));
+  const out = [...a];
+  for (const n of b)
+    if (!seen.has(nhKey(n))) {
+      seen.add(nhKey(n));
+      out.push(n);
+    }
+  return out;
 }
 
 const live = (rt: Rt, c: OspfCfg, area: string, l: OspfLsa): boolean =>
@@ -79,14 +92,15 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
     const done = new Set<string>();
     const root = `r:${myRid}`;
     if (!routers.has(myRid)) continue;
-    dist.set(root, { cost: 0 });
+    dist.set(root, { cost: 0, nhs: [] });
 
     const linkAddr = (rid: string, netId: string): string | undefined =>
       routers.get(rid)?.links.find((l) => l.kind === 'transit' && l.neighbor === netId)?.addr;
 
-    const relax = (key: string, cost: number, nh: Nh | undefined): void => {
+    const relax = (key: string, cost: number, nhs: Nh[]): void => {
       const cur = dist.get(key);
-      if (!cur || cost < cur.cost) dist.set(key, { cost, nh });
+      if (!cur || cost < cur.cost) dist.set(key, { cost, nhs });
+      else if (cost === cur.cost && !done.has(key)) cur.nhs = mergeNhs(cur.nhs, nhs);
     };
 
     for (;;) {
@@ -110,24 +124,25 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
           if (link.kind === 'p2p' && link.neighbor) {
             const nb = routers.get(link.neighbor);
             if (!nb?.links.some((l) => l.kind === 'p2p' && l.neighbor === rid)) continue;
-            let nh = best.nh;
+            let nhs = best.nhs;
             if (isRoot) {
+              nhs = [];
               for (const [ifaceId, ifs] of Object.entries(c.ifs)) {
                 const n = ifs.neighbors[link.neighbor];
-                if (n && ifs.state === 'p2p') nh = { ifaceId, addr: n.ip };
+                if (n && ifs.state === 'p2p') nhs.push({ ifaceId, addr: n.ip });
               }
             }
-            relax(`r:${link.neighbor}`, best.cost + link.cost, nh);
+            relax(`r:${link.neighbor}`, best.cost + link.cost, nhs);
           } else if (link.kind === 'transit' && link.neighbor) {
             if (!networks.has(link.neighbor)) continue;
-            let nh = best.nh;
+            let nhs = best.nhs;
             if (isRoot) {
               const ifaceId = Object.entries(c.ifs).find(
                 ([, ifs]) => ifs.area === area && ifs.drAddr === link.neighbor,
               )?.[0];
-              nh = ifaceId ? { ifaceId } : undefined;
+              nhs = ifaceId ? [{ ifaceId }] : [];
             }
-            relax(`n:${link.neighbor}`, best.cost + link.cost, nh);
+            relax(`n:${link.neighbor}`, best.cost + link.cost, nhs);
           }
         }
       } else {
@@ -138,9 +153,10 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
           if (rid === myRid) continue;
           if (!routers.get(rid)?.links.some((l) => l.kind === 'transit' && l.neighbor === netId))
             continue;
-          let nh = best.nh;
-          if (nh && nh.addr === undefined) nh = { ifaceId: nh.ifaceId, addr: linkAddr(rid, netId) };
-          relax(`r:${rid}`, best.cost, nh);
+          const nhs = best.nhs.map((nh) =>
+            nh.addr === undefined ? { ifaceId: nh.ifaceId, addr: linkAddr(rid, netId) } : nh,
+          );
+          relax(`r:${rid}`, best.cost, nhs);
         }
       }
     }
@@ -152,7 +168,7 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
         if (rid === myRid) continue;
         const body = routers.get(rid);
         if (!body) continue;
-        if (body.asbr) asbrs.push({ rid, cost: v.cost, area, viaInter: false, nh: v.nh });
+        if (body.asbr) asbrs.push({ rid, cost: v.cost, area, viaInter: false, nhs: v.nhs });
         for (const l of body.links) {
           if (l.kind !== 'stub' || l.prefix === undefined || l.plen === undefined) continue;
           if (connected.has(`${l.prefix}/${l.plen}`)) continue;
@@ -162,12 +178,12 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
             type: 'intra',
             cost: v.cost + l.cost,
             area,
-            nh: v.nh,
+            nhs: v.nhs,
           });
         }
       } else {
         const net = networks.get(k.slice(2));
-        if (!net || v.nh?.addr === undefined) continue;
+        if (!net || v.nhs.length === 0 || v.nhs.some((x) => x.addr === undefined)) continue;
         if (connected.has(`${net.prefix}/${net.plen}`)) continue;
         all.push({
           prefix: net.prefix,
@@ -175,7 +191,7 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
           type: 'intra',
           cost: v.cost,
           area,
-          nh: v.nh,
+          nhs: v.nhs,
         });
       }
     }
@@ -194,7 +210,7 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
           type: 'inter',
           cost: abr.cost + l.body.metric,
           area,
-          nh: abr.nh,
+          nhs: abr.nhs,
         });
       } else if (l.body.type === 4) {
         asbrs.push({
@@ -202,7 +218,7 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
           cost: abr.cost + l.body.metric,
           area,
           viaInter: true,
-          nh: abr.nh,
+          nhs: abr.nhs,
         });
       }
     }
@@ -217,6 +233,7 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
         type: 'intra',
         cost: ifCost(rt, iface, c),
         area,
+        nhs: [],
         connected: true,
       });
     }
@@ -235,7 +252,7 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
       type: l.body.eType === 1 ? 'e1' : 'e2',
       cost: l.body.eType === 1 ? via.cost + l.body.metric : l.body.metric,
       area: via.area,
-      nh: via.nh,
+      nhs: via.nhs,
       asbrCost: via.cost,
     });
   }
@@ -251,10 +268,16 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
       (rank[r.type] === rank[cur.type] &&
         (r.cost < cur.cost || (r.cost === cur.cost && (r.asbrCost ?? 0) < (cur.asbrCost ?? 0))))
     )
-      best.set(k, r);
+      best.set(k, { ...r, nhs: [...r.nhs] });
+    else if (
+      rank[r.type] === rank[cur.type] &&
+      r.cost === cur.cost &&
+      (r.asbrCost ?? 0) === (cur.asbrCost ?? 0)
+    )
+      cur.nhs = mergeNhs(cur.nhs, r.nhs);
   }
   const candidates = [...best.values()];
-  const routes = candidates.filter((r) => !r.connected && r.nh?.addr !== undefined);
+  const routes = candidates.filter((r) => !r.connected && r.nhs.some((n) => n.addr !== undefined));
   void inNet;
   return { routes, candidates, asbrs };
 }

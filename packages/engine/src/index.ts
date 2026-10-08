@@ -7,7 +7,15 @@ export { EngineService } from './service';
 export type { PingOptions } from './devices/host';
 export type { DeviceCtx, LogInput } from './ctx';
 export * from './view';
-export { buildRib, lookupRib, networkOf, prefixMask, type RibEntry } from './rib';
+export {
+  buildRib,
+  lookupRib,
+  lookupRibPaths,
+  pickPath,
+  networkOf,
+  prefixMask,
+  type RibEntry,
+} from './rib';
 export { listIfaces, ifaceName, ifaceUp, vlanActive, subId, sviId, type Iface } from './ifaces';
 export { aclEval } from './acl';
 export { newSys, newSwitchPort } from './defaults';

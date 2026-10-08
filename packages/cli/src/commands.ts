@@ -9,6 +9,7 @@ import { secretHash, type7Decrypt } from './secrets';
 import { CliError, type CliSession } from './session';
 import { addPhase3 } from './commands3';
 import { addPhase4 } from './commands4';
+import { addGaps } from './commandsGaps';
 import * as show from './show';
 
 const U: ModeId[] = ['user', 'priv'];
@@ -1019,5 +1020,6 @@ export function buildRegistry(): Registry<CliSession> {
 
   addPhase3(r);
   addPhase4(r);
+  addGaps(r);
   return r;
 }

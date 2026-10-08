@@ -20,7 +20,14 @@ import {
   wildcardMatch,
   type Rt,
 } from './core';
-import { isPassive, type EigrpCfg, type EigrpNbr, type EigrpPath, type EigrpTopo } from './types';
+import {
+  isPassive,
+  maxPathsOf,
+  type EigrpCfg,
+  type EigrpNbr,
+  type EigrpPath,
+  type EigrpTopo,
+} from './types';
 
 export const EIGRP_GROUP = '224.0.0.10';
 const HELLO = 5;
@@ -548,19 +555,34 @@ export function eigrpRecompute(rt: Rt): boolean {
     flushAdv(rt, c);
     const routes = [];
     for (const t of Object.values(c.topology)) {
-      const p = t.paths.find((x) => x.via === t.succ);
-      if (!p || p.via === 'local') continue;
-      const ext = !!p.external;
-      routes.push({
-        proto: 'D' as const,
-        sub: ext ? 'EX' : undefined,
-        prefix: t.prefix,
-        plen: t.plen,
-        ad: ext ? AD.eigrpExt : AD.eigrp,
-        metric: t.fd,
-        nextHop: p.via,
-        ifaceId: p.ifaceId,
-      });
+      const p0 = t.paths.find((x) => x.via === t.succ);
+      if (!p0 || p0.via === 'local') continue;
+      // Successors (gleiche Distanz) + Feasible Successors innerhalb der Variance
+      const variance = Math.max(1, c.variance);
+      const usable = t.paths
+        .filter(
+          (p) =>
+            p.via !== 'local' &&
+            (p.dist === t.fd || (variance > 1 && p.rd < t.fd && p.dist <= variance * t.fd)),
+        )
+        .sort((a, b) => a.dist - b.dist || a.via.localeCompare(b.via))
+        .slice(0, maxPathsOf(c));
+      if (!usable.some((p) => p === p0)) usable.unshift(p0);
+      const unequal = usable.some((p) => p.dist !== t.fd);
+      for (const p of usable) {
+        const ext = !!p.external;
+        routes.push({
+          proto: 'D' as const,
+          sub: ext ? 'EX' : undefined,
+          prefix: t.prefix,
+          plen: t.plen,
+          ad: ext ? AD.eigrpExt : AD.eigrp,
+          metric: p.dist,
+          nextHop: p.via,
+          ifaceId: p.ifaceId,
+          share: unequal ? Math.max(1, Math.floor((t.fd * 100) / p.dist)) : undefined,
+        });
+      }
     }
     if (installRoutes(rt, `eigrp:${c.asn}`, routes as never)) changed = true;
   }

@@ -15,7 +15,7 @@ import {
 } from './core';
 import { lookupRib } from '../rib';
 import type { Iface } from '../ifaces';
-import type { BgpCfg, BgpNbrCfg, BgpPath } from './types';
+import { maxPathsOf, type BgpCfg, type BgpNbrCfg, type BgpPath } from './types';
 
 const HOLD = 180;
 const KEEPALIVE = 60;
@@ -367,30 +367,50 @@ export function bgpRecompute(rt: Rt): boolean {
     }
   }
   const loc: Record<string, BgpPath> = {};
+  const multi: Record<string, BgpPath[]> = {};
   for (const [k, list] of cand) {
     let best = list[0] as BgpPath;
     for (const p of list.slice(1)) if (betterPath(rt, c, p, best)) best = p;
     loc[k] = best;
+    const max = maxPathsOf(c, 1);
+    if (max > 1 && !best.local) {
+      const eq = list.filter(
+        (p) =>
+          p !== best &&
+          !p.local &&
+          p.weight === best.weight &&
+          (p.attrs.localPref ?? c.defaultLocalPref) ===
+            (best.attrs.localPref ?? c.defaultLocalPref) &&
+          p.attrs.asPath.length === best.attrs.asPath.length &&
+          p.attrs.origin === best.attrs.origin &&
+          (p.attrs.med ?? 0) === (best.attrs.med ?? 0) &&
+          p.ebgp === best.ebgp &&
+          p.attrs.nextHop !== best.attrs.nextHop,
+      );
+      if (eq.length) multi[k] = [best, ...eq.slice(0, max - 1)];
+    }
   }
   const locChanged = JSON.stringify(loc) !== JSON.stringify(c.locRib);
   c.locRib = loc;
 
   // Routen installieren
   const routes = [];
-  for (const p of Object.values(loc)) {
-    if (p.local) continue;
-    const e = lookupRib(rib, p.attrs.nextHop);
-    if (!e?.ifaceId) continue;
-    routes.push({
-      proto: 'B' as const,
-      sub: undefined,
-      prefix: p.prefix,
-      plen: p.plen,
-      ad: p.ebgp ? AD.ebgp : AD.ibgp,
-      metric: p.attrs.med ?? 0,
-      nextHop: e.type === 'C' ? p.attrs.nextHop : (e.nextHop ?? p.attrs.nextHop),
-      ifaceId: e.ifaceId,
-    });
+  for (const [k, best] of Object.entries(loc)) {
+    for (const p of multi[k] ?? [best]) {
+      if (p.local) continue;
+      const e = lookupRib(rib, p.attrs.nextHop);
+      if (!e?.ifaceId) continue;
+      routes.push({
+        proto: 'B' as const,
+        sub: undefined,
+        prefix: p.prefix,
+        plen: p.plen,
+        ad: p.ebgp ? AD.ebgp : AD.ibgp,
+        metric: p.attrs.med ?? 0,
+        nextHop: e.type === 'C' ? p.attrs.nextHop : (e.nextHop ?? p.attrs.nextHop),
+        ifaceId: e.ifaceId,
+      });
+    }
   }
   let changed = installRoutes(rt, 'bgp', routes);
   if (advertise(rt, c)) changed = true;

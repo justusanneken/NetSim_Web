@@ -31,7 +31,7 @@ import { routingResetRuntime, routingSync } from './routing';
 import { buildRib6, listIfaces6 } from './l3v6';
 import { hostV6 } from './devices/host';
 import { ifaceName, listIfaces, sviId, subId } from './ifaces';
-import { buildRib, networkOf, type RibEntry } from './rib';
+import { buildRib, installedRoutes, networkOf, type RibEntry } from './rib';
 import { hubRx } from './devices/hub';
 import {
   activeMacTable,
@@ -794,7 +794,9 @@ export class Engine {
   routingTable6(deviceId: string): RibEntry[] {
     const dev = this.l3(deviceId);
     if (!dev) return [];
-    return buildRib6(dev.config, listIfaces6(dev, dev.config)).filter((e) => e.type !== 'L');
+    return installedRoutes(buildRib6(dev.config, listIfaces6(dev, dev.config))).filter(
+      (e) => e.type !== 'L',
+    );
   }
 
   /** IPv6-Nachbar-Cache. */
@@ -822,7 +824,7 @@ export class Engine {
   /** Routing-Tabelle eines Routers bzw. L3-Switches. */
   routingTable(deviceId: string): RibEntry[] {
     const dev = this.l3(deviceId);
-    return dev ? buildRib(dev.config, listIfaces(dev, dev.config)) : [];
+    return dev ? installedRoutes(buildRib(dev.config, listIfaces(dev, dev.config))) : [];
   }
 
   // ------------------------------------------------------------ Switch-Konfiguration

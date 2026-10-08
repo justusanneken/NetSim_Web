@@ -507,6 +507,8 @@ export interface DynRoute {
   ifaceId: string;
   /** Installationszeit (µs virtuelle Zeit). */
   since?: number;
+  /** Ungleiche Lastverteilung (EIGRP-Variance): relatives Gewicht. */
+  share?: number;
 }
 
 /** Gemeinsamer L3-Zustand von Router und L3-fähigen Switches. */
