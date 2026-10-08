@@ -164,7 +164,9 @@ export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): s
   const lines = (list: RibEntry[], width: number): string[] => {
     const r = list[0] as RibEntry;
     const star = r.plen === 0 ? '*' : '';
-    const code = `${r.type}${r.sub ? ' ' + r.sub : ''}${star}`.padEnd(width);
+    const code = (
+      r.sub ? (star ? `${r.type}*${r.sub}` : `${r.type} ${r.sub}`) : `${r.type}${star}`
+    ).padEnd(width);
     const head = `${code}${r.prefix}/${r.plen} `;
     return list.map((x, i) =>
       i === 0 ? `${head}${where(x)}` : `${' '.repeat(head.length)}${where(x)}`,

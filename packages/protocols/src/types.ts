@@ -242,8 +242,8 @@ export interface HsrpPdu {
 }
 
 export interface OspfLsaHeader {
-  /** 1 Router, 2 Network, 3 Summary, 4 ASBR-Summary, 5 AS-External. */
-  type: 1 | 2 | 3 | 4 | 5;
+  /** 1 Router, 2 Network, 3 Summary, 4 ASBR-Summary, 5 AS-External, 7 NSSA-External. */
+  type: 1 | 2 | 3 | 4 | 5 | 7;
   id: string;
   advRouter: string;
   seq: number;
@@ -274,7 +274,21 @@ export type OspfLsaBody =
       eType: 1 | 2;
       fwd?: string;
       tag: number;
+    }
+  | {
+      /** NSSA-External (Typ 7); `p`: Übersetzung in Typ 5 am ABR erlaubt. */
+      type: 7;
+      prefix: string;
+      plen: number;
+      metric: number;
+      eType: 1 | 2;
+      tag: number;
+      p: boolean;
     };
+
+/** OSPF-Authentifizierung: Klartext oder (vereinfachter) MD5-Digest über den gemeinsamen Schlüssel. */
+export type OspfAuth =
+  { type: 'simple'; key: string } | { type: 'md5'; keyId: number; digest: string };
 
 export type OspfLsa = OspfLsaHeader & { body: OspfLsaBody };
 
@@ -283,6 +297,7 @@ export type OspfMsg =
       type: 'hello';
       routerId: string;
       areaId: string;
+      auth?: OspfAuth;
       helloSec: number;
       deadSec: number;
       priority: number;
@@ -291,11 +306,14 @@ export type OspfMsg =
       neighbors: string[];
       /** Subnetzmaske (v2) bzw. Prefixlänge – nur zur Anzeige/Prüfung. */
       plen?: number;
+      /** Options-Bits: E-Bit (normal) / ohne E-Bit (stub) / N-Bit (NSSA). */
+      areaType?: 'normal' | 'stub' | 'nssa';
     }
   | {
       type: 'dbd';
       routerId: string;
       areaId: string;
+      auth?: OspfAuth;
       init: boolean;
       more: boolean;
       master: boolean;
@@ -306,10 +324,17 @@ export type OspfMsg =
       type: 'lsr';
       routerId: string;
       areaId: string;
+      auth?: OspfAuth;
       requests: { type: number; id: string; advRouter: string }[];
     }
-  | { type: 'lsu'; routerId: string; areaId: string; lsas: OspfLsa[] }
-  | { type: 'lsack'; routerId: string; areaId: string; headers: OspfLsaHeader[] };
+  | { type: 'lsu'; routerId: string; areaId: string; auth?: OspfAuth; lsas: OspfLsa[] }
+  | {
+      type: 'lsack';
+      routerId: string;
+      areaId: string;
+      auth?: OspfAuth;
+      headers: OspfLsaHeader[];
+    };
 
 export interface EigrpRoute {
   prefix: string;

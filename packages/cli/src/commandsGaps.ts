@@ -2,6 +2,7 @@ import { K, P, opt, type ModeId, type Registry } from './parser';
 import { CliError, type CliSession } from './session';
 import type { RouterConfig, SwitchConfig } from '@netsim/engine';
 import { addRouteMap } from './cmdRouteMap';
+import { addOspfAreas } from './cmdOspf';
 import * as showGaps from './showGaps';
 
 /**
@@ -52,6 +53,7 @@ export function addGaps(r: Registry<CliSession>): void {
     });
   }
   addRouteMap(r);
+  addOspfAreas(r);
   // ------------------------------------------------------------ show (Policies)
   const SHOW = K('show', 'Show running system information');
   const U: ModeId[] = ['user', 'priv'];

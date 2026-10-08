@@ -330,6 +330,7 @@
   "ospf.nbr.down": "OSPF: neighbor {{rid}} on {{iface}} down – {{reason}}.",
   "ospf.dr": "OSPF {{iface}}: DR {{dr}}, BDR {{bdr}}, state {{state}}.",
   "ospf.mismatch": "OSPF hello from {{rid}} dropped: {{what}} mismatch.",
+  "ospf.authFail": "OSPF packet from {{src}} (router ID {{rid}}) on {{iface}} dropped: authentication failed.",
   "ospf.rx": "OSPF {{type}} from {{src}} (router ID {{rid}}).",
   "ospf.spf": "OSPF {{pid}}: SPF computed, {{routes}} route(s).",
   "rip.expired": "RIP: route {{prefix}} expired (invalid timer).",

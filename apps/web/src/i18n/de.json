@@ -330,6 +330,7 @@
   "ospf.nbr.down": "OSPF: Nachbar {{rid}} an {{iface}} verloren – {{reason}}.",
   "ospf.dr": "OSPF {{iface}}: DR {{dr}}, BDR {{bdr}}, Zustand {{state}}.",
   "ospf.mismatch": "OSPF-Hello von {{rid}} verworfen: {{what}} stimmt nicht überein.",
+  "ospf.authFail": "OSPF-Paket von {{src}} (Router-ID {{rid}}) auf {{iface}} verworfen: Authentifizierung fehlgeschlagen.",
   "ospf.rx": "OSPF {{type}} von {{src}} (Router-ID {{rid}}).",
   "ospf.spf": "OSPF {{pid}}: SPF berechnet, {{routes}} Route(n).",
   "rip.expired": "RIP: Route {{prefix}} abgelaufen (Invalid-Timer).",

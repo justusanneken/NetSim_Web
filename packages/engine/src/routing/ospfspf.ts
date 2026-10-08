@@ -2,6 +2,8 @@ import type { OspfLsa } from '@netsim/protocols';
 import { inNet, type Rt } from './core';
 import {
   MAXAGE,
+  isVl,
+  vlinkOf,
   areasOf,
   effectiveRid,
   ifCost,
@@ -28,6 +30,8 @@ export interface SpfRoute {
   asbrCost?: number;
   /** Direkt angeschlossen: nur für Summaries, nicht für die RIB. */
   connected?: boolean;
+  /** Aus einer NSSA-External-LSA (Typ 7): Anzeige als N1/N2. */
+  nssa?: boolean;
 }
 
 export interface SpfAsbr {
@@ -42,6 +46,8 @@ export interface SpfResult {
   routes: SpfRoute[];
   candidates: SpfRoute[];
   asbrs: SpfAsbr[];
+  /** Kosten eines virtuellen Links haben sich geändert (Router-LSA neu erzeugen). */
+  vlChanged: boolean;
 }
 
 interface Vertex {
@@ -71,7 +77,12 @@ const rank = { intra: 0, inter: 1, e1: 2, e2: 3 } as const;
 export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
   const myRid = effectiveRid(rt, c);
   const parts = participants(rt, c);
-  const areas = areasOf(parts);
+  // Bei virtuellen Links zuerst die Transit-Bereiche, den Backbone zuletzt
+  const areas = areasOf(parts).sort((a, b) =>
+    c.vlinks?.length ? Number(a === '0') - Number(b === '0') : 0,
+  );
+  const areaDist = new Map<string, Map<string, Vertex>>();
+  let vlChanged = false;
   const isAbr = areas.length > 1;
   const all: SpfRoute[] = [];
   const asbrs: SpfAsbr[] = [];
@@ -129,7 +140,19 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
               nhs = [];
               for (const [ifaceId, ifs] of Object.entries(c.ifs)) {
                 const n = ifs.neighbors[link.neighbor];
-                if (n && ifs.state === 'p2p') nhs.push({ ifaceId, addr: n.ip });
+                if (!n || ifs.state !== 'p2p') continue;
+                if (isVl(ifaceId)) {
+                  // Virtueller Link: Next Hops des Pfads zum Peer durch die Transit-Area
+                  const v = vlinkOf(c, ifaceId);
+                  const t = v && areaDist.get(v.area)?.get(`r:${link.neighbor}`);
+                  if (v && t) {
+                    if (v.cost !== t.cost) {
+                      v.cost = t.cost;
+                      vlChanged = true;
+                    }
+                    nhs = mergeNhs(nhs, t.nhs);
+                  }
+                } else nhs.push({ ifaceId, addr: n.ip });
               }
             }
             relax(`r:${link.neighbor}`, best.cost + link.cost, nhs);
@@ -160,6 +183,8 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
         }
       }
     }
+
+    areaDist.set(area, dist);
 
     // Routen aus den erreichten Knoten
     for (const [k, v] of dist) {
@@ -257,6 +282,28 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
     });
   }
 
+  // NSSA-Externe (Typ 7): ASBR muss im selben Bereich erreichbar sein
+  for (const area of areas) {
+    for (const l of Object.values(c.lsdb[area] ?? {})) {
+      if (l.advRouter === myRid || l.body.type !== 7 || l.age >= MAXAGE) continue;
+      const via = asbrs
+        .filter((a) => a.rid === l.advRouter && a.area === area && !a.viaInter)
+        .sort((a, b) => a.cost - b.cost)[0];
+      if (!via) continue;
+      if (connected.has(`${l.body.prefix}/${l.body.plen}`)) continue;
+      all.push({
+        prefix: l.body.prefix,
+        plen: l.body.plen,
+        type: l.body.eType === 1 ? 'e1' : 'e2',
+        cost: l.body.eType === 1 ? via.cost + l.body.metric : l.body.metric,
+        area,
+        nhs: via.nhs,
+        asbrCost: via.cost,
+        nssa: true,
+      });
+    }
+  }
+
   // beste Route je Präfix
   const best = new Map<string, SpfRoute>();
   for (const r of all) {
@@ -279,5 +326,5 @@ export function spfRun(rt: Rt, c: OspfCfg): SpfResult {
   const candidates = [...best.values()];
   const routes = candidates.filter((r) => !r.connected && r.nhs.some((n) => n.addr !== undefined));
   void inNet;
-  return { routes, candidates, asbrs };
+  return { routes, candidates, asbrs, vlChanged };
 }

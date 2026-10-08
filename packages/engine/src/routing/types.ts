@@ -118,13 +118,42 @@ export interface OspfIfState {
 }
 
 export interface OspfIfCfg {
-  pid: number;
-  area: string;
+  /** `ip ospf PID area A`; ohne Angabe gilt die Zuordnung über `network`-Anweisungen. */
+  pid?: number;
+  area?: string;
   cost?: number;
   priority?: number;
   helloSec?: number;
   deadSec?: number;
   network?: 'broadcast' | 'point-to-point';
+  /** `ip ospf authentication [message-digest|null]` (überschreibt die Area-Einstellung). */
+  auth?: 'simple' | 'md5' | 'null';
+  /** `ip ospf authentication-key` (Klartext). */
+  authKey?: string;
+  /** `ip ospf message-digest-key ID md5 KEY`. */
+  md5Keys?: Record<number, string>;
+}
+
+export interface OspfAreaCfg {
+  id: string;
+  type: 'normal' | 'stub' | 'nssa';
+  /** Totally stubby / NSSA no-summary: keine Typ-3-Summaries (nur Default). */
+  noSummary: boolean;
+  /** Kosten der vom ABR eingespeisten Default-Route. */
+  defaultCost?: number;
+  /** `area N authentication [message-digest]`. */
+  auth?: 'simple' | 'md5';
+  /** NSSA: ABR erzeugt Typ-7-Default (`area N nssa default-information-originate`). */
+  nssaDefaultOriginate?: boolean;
+}
+
+export interface OspfVlink {
+  /** Transit-Area. */
+  area: string;
+  rid: string;
+  // ---- Laufzeit
+  /** Kosten des Pfads zum Peer durch die Transit-Area (aus der letzten SPF). */
+  cost?: number;
 }
 
 export interface OspfAreaRange {
@@ -157,6 +186,9 @@ export interface OspfCfg {
   defaultOriginate?: { always: boolean; metric: number; metricType: 1 | 2 };
   redistribute: RedistCfg[];
   ranges: OspfAreaRange[];
+  /** Bereichstypen (stub/nssa), Authentifizierung je Area. */
+  areas?: Record<string, OspfAreaCfg>;
+  vlinks?: OspfVlink[];
   /** Ob dies ein OSPFv3-Prozess ist (IPv6-Adressen). */
   v6: boolean;
   // ---- Laufzeit

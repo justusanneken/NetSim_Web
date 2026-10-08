@@ -94,7 +94,14 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
   if (c.ripSplitHorizon === false) out.push(' no ip split-horizon');
   const o = c.ospf;
   if (o) {
-    out.push(` ip ospf ${o.pid} area ${area(o.area)}`);
+    if (o.area !== undefined) out.push(` ip ospf ${o.pid ?? 1} area ${area(o.area)}`);
+    if (o.auth)
+      out.push(
+        ` ip ospf authentication${o.auth === 'md5' ? ' message-digest' : o.auth === 'null' ? ' null' : ''}`,
+      );
+    if (o.authKey !== undefined) out.push(` ip ospf authentication-key ${o.authKey}`);
+    for (const [id, key] of Object.entries(o.md5Keys ?? {}))
+      out.push(` ip ospf message-digest-key ${id} md5 ${key}`);
     if (o.cost !== undefined) out.push(` ip ospf cost ${o.cost}`);
     if (o.priority !== undefined) out.push(` ip ospf priority ${o.priority}`);
     if (o.helloSec !== undefined) out.push(` ip ospf hello-interval ${o.helloSec}`);
@@ -120,7 +127,7 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
     if (v6.raSuppress) out.push(' ipv6 nd ra suppress');
     const v = v6.ospf;
     if (v) {
-      out.push(` ipv6 ospf ${v.pid} area ${area(v.area)}`);
+      if (v.area !== undefined) out.push(` ipv6 ospf ${v.pid ?? 1} area ${area(v.area)}`);
       if (v.cost !== undefined) out.push(` ipv6 ospf cost ${v.cost}`);
       if (v.priority !== undefined) out.push(` ipv6 ospf priority ${v.priority}`);
       if (v.helloSec !== undefined) out.push(` ipv6 ospf hello-interval ${v.helloSec}`);
@@ -439,6 +446,17 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     if (c.refBwMbps !== 100) L.push(` auto-cost reference-bandwidth ${c.refBwMbps}`);
     passiveLines(d, c, L);
     for (const n of c.networks) L.push(` network ${n.prefix} ${n.wildcard} area ${n.area}`);
+    for (const a of Object.values(c.areas ?? {})) {
+      const id = a.id;
+      if (a.type === 'stub') L.push(` area ${id} stub${a.noSummary ? ' no-summary' : ''}`);
+      if (a.type === 'nssa')
+        L.push(
+          ` area ${id} nssa${a.noSummary ? ' no-summary' : ''}${a.nssaDefaultOriginate ? ' default-information-originate' : ''}`,
+        );
+      if (a.defaultCost !== undefined) L.push(` area ${id} default-cost ${a.defaultCost}`);
+      if (a.auth) L.push(` area ${id} authentication${a.auth === 'md5' ? ' message-digest' : ''}`);
+    }
+    for (const v of c.vlinks ?? []) L.push(` area ${v.area} virtual-link ${v.rid}`);
     for (const g of c.ranges)
       L.push(
         ` area ${g.area} range ${g.prefix} ${prefixMaskText(g.plen)}${g.notAdvertise ? ' not-advertise' : ''}`,

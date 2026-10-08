@@ -200,15 +200,27 @@ export function showOspf(e: Engine, d: D, pid?: number): string[] {
     const areas = [...new Set(Object.values(c.ifs).map((i) => i.area))].sort();
     if (areas.length > 1) out.push(' It is an area border router');
     out.push(` Reference bandwidth unit is ${c.refBwMbps} mbps`);
+    const kinds = areas.map((a) => c.areas?.[a]?.type ?? 'normal');
     out.push(
-      ` Number of areas in this router is ${areas.length}. ${areas.length} normal 0 stub 0 nssa`,
+      ` Number of areas in this router is ${areas.length}. ${kinds.filter((k) => k === 'normal').length} normal ${kinds.filter((k) => k === 'stub').length} stub ${kinds.filter((k) => k === 'nssa').length} nssa`,
     );
     for (const a of areas) {
+      const ac = c.areas?.[a];
       out.push(`    Area ${a === '0' ? 'BACKBONE(0)' : a}`);
       out.push(
         `        Number of interfaces in this area is ${Object.values(c.ifs).filter((i) => i.area === a).length}`,
       );
-      out.push('        Area has no authentication');
+      if (ac?.type === 'stub')
+        out.push(`        It is a stub area${ac.noSummary ? ', no summary LSA in this area' : ''}`);
+      if (ac?.type === 'nssa')
+        out.push(`        It is a NSSA area${ac.noSummary ? ', no summary LSA in this area' : ''}`);
+      out.push(
+        ac?.auth === 'md5'
+          ? '        Area has message digest authentication'
+          : ac?.auth === 'simple'
+            ? '        Area has simple password authentication'
+            : '        Area has no authentication',
+      );
       out.push(`        SPF algorithm last executed ${clock(e.state.now - c.lastSpf)}.000 ago`);
       out.push(`        SPF algorithm executed ${c.spfRuns} times`);
       out.push(`        Number of LSA ${Object.keys(c.lsdb[a] ?? {}).length}`);
@@ -695,4 +707,25 @@ export function showDebugging(d: D): string[] {
     gre: 'Tunnel debugging is on',
   };
   return ['', ...tags.map((t) => names[t] ?? `${t} debugging is on`)];
+}
+
+export function showOspfVirtualLinks(e: Engine, d: D): string[] {
+  const cfg = l3(d);
+  const out: string[] = [];
+  if (!cfg) return out;
+  for (const c of Object.values(cfg.routing.ospf)) {
+    for (const v of c.vlinks ?? []) {
+      const ifs = c.ifs[`vl-${v.rid.replaceAll('.', '_')}`];
+      const n = ifs ? Object.values(ifs.neighbors)[0] : undefined;
+      out.push(
+        `Virtual Link OSPF_VL0 to router ${v.rid} is ${n?.state === 'full' ? 'up' : 'down'}`,
+        `  Run as demand circuit`,
+        `  DoNotAge LSA allowed.`,
+        `  Transit area ${v.area}, cost of using ${v.cost ?? 'unknown'}`,
+        `  Adjacency State ${n ? n.state.toUpperCase() : 'DOWN'}`,
+      );
+    }
+  }
+  void e;
+  return out;
 }

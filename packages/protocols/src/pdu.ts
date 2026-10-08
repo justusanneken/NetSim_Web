@@ -323,6 +323,10 @@ function describeRouting(p: RoutingPdu): HeaderField[] {
       for (const l of m.lsas)
         out.push(f('LSA', `type ${l.type} id ${l.id} adv ${l.advRouter} seq ${l.seq}`));
     else out.push(f('Acked', m.headers.length));
+    if (m.auth)
+      out.push(f('Auth', m.auth.type === 'simple' ? 'simple password' : `MD5 key ${m.auth.keyId}`));
+    if (m.type === 'hello' && m.areaType && m.areaType !== 'normal')
+      out.push(f('Area type', m.areaType));
     return out;
   }
   if (p.proto === 'eigrp') return describeEigrp(p.msg);

@@ -963,7 +963,7 @@ export function addPhase4(r: Registry<CliSession>): void {
     s: CliSession,
     v6: boolean,
     f: (o: NonNullable<IfaceCfg['ospf']>) => void,
-    pid?: number,
+    _pid?: number,
   ): void => {
     for (const id of targets(s)) {
       s.engine.ensureIface(s.deviceId, id);
@@ -971,10 +971,10 @@ export function addPhase4(r: Registry<CliSession>): void {
       if (!ic) continue;
       if (v6) {
         ic.v6 ??= { enabled: false, addrs: [], autoconfig: false, slaac: [] };
-        ic.v6.ospf ??= { pid: pid ?? 1, area: '0' };
+        ic.v6.ospf ??= {};
         f(ic.v6.ospf);
       } else {
-        ic.ospf ??= { pid: pid ?? 1, area: '0' };
+        ic.ospf ??= {};
         f(ic.ospf);
       }
     }
