@@ -299,6 +299,11 @@ export function buildRegistry(): Registry<CliSession> {
     run: (s) => {
       const { enableSecret, enablePassword } = s.sys;
       if (!enableSecret && enablePassword === undefined) {
+        // IOS: ohne Enable-Passwort ist der privilegierte Modus nur an der Console erreichbar
+        if (s.remote) {
+          s.out('% No password set');
+          return;
+        }
         s.mode = 'priv';
         return;
       }
@@ -404,6 +409,18 @@ export function buildRegistry(): Registry<CliSession> {
       s.monitor = !s.negated;
     },
     negatable: true,
+  });
+  // IOS-Schreibweise der Negation: `terminal no monitor`
+  r.add({
+    modes: U,
+    slots: [
+      K('terminal', 'Set terminal line parameters'),
+      K('no', 'Negate a command or set its defaults'),
+      K('monitor', 'Copy debug output to the current terminal line'),
+    ],
+    run: (s) => {
+      s.monitor = false;
+    },
   });
 
   // --- show
@@ -793,6 +810,7 @@ export function buildRegistry(): Registry<CliSession> {
   };
   r.add({
     modes: CF,
+    negatable: true,
     slots: [
       K('interface', 'Select an interface to configure'),
       P('if', 'iface', 'IFNAME', 'Interface name'),
@@ -800,6 +818,13 @@ export function buildRegistry(): Registry<CliSession> {
     run: (s, a) => {
       const ref = resolveIface(s.device, a.if as string);
       if (!ref) throw new CliError('% Invalid interface');
+      if (s.negated) {
+        // `no interface Loopback5` usw.: nur virtuelle Schnittstellen lassen sich löschen
+        if (ref.kind === 'phys' || ref.kind === 'po') throw new CliError('% Invalid interface');
+        delete s.device.config.ifaces[ref.id];
+        s.engine.routingChanged(s.deviceId);
+        return;
+      }
       if (ref.kind === 'po') {
         s.ifaces = [ref.id];
         s.mode = 'config-if';

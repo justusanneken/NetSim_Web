@@ -660,6 +660,15 @@ function syncLocals(rt: Rt, c: EigrpCfg): boolean {
         ifs.some((i) => netOf(i.ip, maskLen(i.mask)) === s.prefix && maskLen(i.mask) === s.plen)
       )
         continue;
+      // IOS: ohne Startmetrik sind aus OSPF/RIP/BGP übernommene Routen unerreichbar (nur connected,
+      // static und andere EIGRP-Prozesse bringen eine Metrik mit)
+      const seeded =
+        s.set?.eigrpMetric !== undefined ||
+        red.bw !== undefined ||
+        red.source === 'connected' ||
+        red.source === 'static' ||
+        red.source === 'eigrp';
+      if (!seeded) continue;
       const bandwidth = s.set?.eigrpMetric?.bw ?? red.bw ?? 100_000;
       const delay = s.set?.eigrpMetric?.delay ?? red.delay ?? 10;
       want.set(key(s.prefix, s.plen), {

@@ -10,6 +10,7 @@ const hostOf = (d: Device): HostConfig | undefined =>
 
 const JOIN_RETRY_US = 3_000_000;
 const REFRESH_US = 30_000_000;
+const LOST_US = 3 * REFRESH_US + 5_000_000;
 
 /**
  * Lightweight-AP: tritt dem WLC bei (CAPWAP vereinfacht: UDP 5246, `join` → `join-ok` mit den WLANs) und
@@ -19,6 +20,11 @@ export function capwapTick(ctx: DeviceCtx, dev: Device): void {
   const h = hostOf(dev);
   const ap = h?.ap;
   if (!h || !ap?.wlc) return;
+  // Lightweight-AP ohne Controller (lokaler Modus): WLANs abschalten, erneut beitreten
+  if (ap.managed && ctx.now - (ap.managed.seenAt ?? ap.managed.joinedAt) > LOST_US) {
+    ap.managed = undefined;
+    ctx.requestWifiSync();
+  }
   const node = ipNodeOf(ctx, dev);
   if (node && node.ifaces.length > 0) {
     udpRequest(ctx, node, {
@@ -70,6 +76,6 @@ export function capwapReply(ctx: DeviceCtx, dev: Device, server: string, body: s
       msg: { key: 'wlc.joined', params: { wlc: server, wlans: wlans.length } },
     });
   }
-  ap.managed = { wlc: server, wlans, joinedAt: ap.managed?.joinedAt ?? ctx.now };
+  ap.managed = { wlc: server, wlans, joinedAt: ap.managed?.joinedAt ?? ctx.now, seenAt: ctx.now };
   if (changed) ctx.requestWifiSync();
 }

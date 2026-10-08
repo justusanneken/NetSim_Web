@@ -92,7 +92,8 @@ export class RemoteLoginShell implements Shell {
     const c = this.engine.p5.connState(this.fromId, this.key);
     const reply = c?.reply;
     if (reply?.op === 'login-ok' && c) {
-      const target = deviceByIp(this.engine, this.dst);
+      const byId = this.engine.getDevice(String(c.banner?.args.dev ?? ''));
+      const target = byId ?? deviceByIp(this.engine, this.dst);
       if (!target) {
         this.finish();
         return '% Connection closed\n';

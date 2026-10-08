@@ -104,7 +104,13 @@ export function remoteServer(proto: 'telnet' | 'ssh'): TcpServer {
       conn.vty = idx;
       return {
         op: 'banner',
-        args: { auth: vtyAuthMode(cfg), hostname: cfg.sys.hostname },
+        // `dev`: annehmendes Gerät (NAT, HSRP-VIP, doppelte Adressen) – die Sitzung läuft dort
+        args: {
+          auth: vtyAuthMode(cfg),
+          hostname: cfg.sys.hostname,
+          dev: dev.id,
+          sk: connKey(conn),
+        },
         body: proto === 'telnet' ? cfg.sys.bannerMotd : undefined,
       };
     },

@@ -90,6 +90,7 @@ export class Phase5 {
   /** Laufzeitzustand der Dienste beim Ausschalten/Zurücksetzen verwerfen. */
   powerOff(dev: Device): void {
     const c = dev.config;
+    this.dropRemotePeers(dev);
     if (c.kind === 'host' || c.kind === 'router' || c.kind === 'switch') c.appc = undefined;
     if (c.kind === 'host') {
       if (c.ap) {
@@ -103,6 +104,25 @@ export class Phase5 {
       if (c.sys.mgmt) c.sys.mgmt.sessions = [];
       if (c.kind === 'router' && c.fw) c.fw.conns = [];
     } else if (c.kind === 'bridge') c.macTable = {};
+  }
+
+  /**
+   * Telnet/SSH: verschwindet der Client (aus, entfernt, zurückgesetzt), räumt die Gegenstelle ihre vty-Sitzung
+   * sofort ab (Vereinfachung statt exec-timeout), damit keine Leitungen dauerhaft belegt bleiben.
+   */
+  private dropRemotePeers(dev: Device): void {
+    const c = dev.config;
+    if (c.kind !== 'host' && c.kind !== 'router' && c.kind !== 'switch') return;
+    for (const conn of Object.values(c.appc?.conns ?? {})) {
+      if (conn.role !== 'c' || (conn.proto !== 'telnet' && conn.proto !== 'ssh')) continue;
+      const peer = this.cli(String(conn.banner?.args.dev ?? ''));
+      const sk = String(conn.banner?.args.sk ?? '');
+      const sconn = peer?.config.appc?.conns[sk];
+      if (!peer || !sconn) continue;
+      delete peer.config.appc?.conns[sk];
+      const m = peer.config.sys.mgmt;
+      if (m && sconn.vty !== undefined) m.sessions = m.sessions.filter((x) => x.line !== sconn.vty);
+    }
   }
 
   timer(ctx: DeviceCtx, dev: Device, name: string): void {

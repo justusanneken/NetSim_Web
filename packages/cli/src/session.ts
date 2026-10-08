@@ -71,8 +71,14 @@ export class CliSession implements Shell {
   monitor = false;
   /** Phase 5: Telnet-/SSH-Sitzung (vty) statt Console. */
   remote?: { vty: number; user: string; from: string; proto: 'telnet' | 'ssh' };
-  /** Phase 5: Sitzung beendet (`exit` in einer vty-Sitzung). */
-  closed = false;
+  private ended = false;
+  /** Phase 5: Sitzung beendet (`exit` in einer vty-Sitzung oder Zielgerät weg/aus/neu geladen). */
+  get closed(): boolean {
+    return this.ended || this.remoteGone();
+  }
+  set closed(v: boolean) {
+    this.ended = v;
+  }
   /** Phase 5: Zugriff auf die Terminal-Schicht für `telnet`/`ssh`. */
   nest?: ShellNest;
   private pending: Pending | undefined;
@@ -92,6 +98,7 @@ export class CliSession implements Shell {
 
   /** `debug`-Meldungen dieses Geräts seit dem letzten Aufruf (IOS-Zeitstempel). */
   poll(): string {
+    if (this.remoteGone()) return '';
     const log = this.engine.log;
     if (this.debugCursor > log.length) this.debugCursor = 0;
     const cfg = this.device.config;
@@ -205,7 +212,23 @@ export class CliSession implements Shell {
     );
   }
 
+  /** vty-Sitzung noch vorhanden? (Zielgerät entfernt, ausgeschaltet oder neu geladen → nein) */
+  private remoteGone(): boolean {
+    if (!this.remote) return false;
+    const d = this.engine.getDevice(this.deviceId);
+    if (!d || !isCliDevice(d) || !d.powered) return true;
+    const vty = this.remote.vty;
+    return !mgmtOf((d.config as RouterConfig | SwitchConfig).sys).sessions.some(
+      (x) => x.line === vty,
+    );
+  }
+
   input(raw: string): string {
+    if (this.remoteGone()) {
+      this.closed = true;
+      this.pending = undefined;
+      return '';
+    }
     if (this.pending) {
       const p = this.pending;
       this.pending = undefined;
