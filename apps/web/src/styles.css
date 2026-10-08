@@ -748,3 +748,52 @@ button.link {
 .form.inline3 input {
   min-width: 0;
 }
+
+.event.proto-UDP {
+  border-left-color: #6e7781;
+  background: color-mix(in srgb, #6e7781 8%, transparent);
+}
+.event.proto-TCP {
+  border-left-color: #0969da;
+  background: color-mix(in srgb, #0969da 8%, transparent);
+}
+.event.proto-DHCP {
+  border-left-color: #bc4c00;
+  background: color-mix(in srgb, #bc4c00 8%, transparent);
+}
+.event.proto-DNS {
+  border-left-color: #0a7e8c;
+  background: color-mix(in srgb, #0a7e8c 8%, transparent);
+}
+.event.proto-HTTP {
+  border-left-color: #8250df;
+  background: color-mix(in srgb, #8250df 8%, transparent);
+}
+.event.proto-STP {
+  border-left-color: #e16f00;
+  background: color-mix(in srgb, #e16f00 8%, transparent);
+}
+.event.proto-VTP {
+  border-left-color: #9a6700;
+  background: color-mix(in srgb, #9a6700 8%, transparent);
+}
+.event.proto-NAT {
+  border-left-color: #116329;
+  background: color-mix(in srgb, #116329 8%, transparent);
+}
+.event.proto-ACL {
+  border-left-color: #cf222e;
+  background: color-mix(in srgb, #cf222e 8%, transparent);
+}
+
+.browser-view {
+  margin-top: 8px;
+  border: 1px solid var(--border, #d0d7de);
+  min-height: 160px;
+  padding: 8px;
+  overflow: auto;
+}
+.browser-view pre {
+  white-space: pre-wrap;
+  margin: 0;
+}

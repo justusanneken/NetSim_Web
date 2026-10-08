@@ -39,7 +39,10 @@ describe('Inter-VLAN-Routing', () => {
     ok(e.setSwitchport(sw, 'p1', { accessVlan: 20 }));
     converge(e, 45);
     expect(ping(e, a, '10.0.20.10')).toBe('reply');
-    const rib = e.routingTable(r).filter((x) => x.type === 'C').map((x) => x.prefix);
+    const rib = e
+      .routingTable(r)
+      .filter((x) => x.type === 'C')
+      .map((x) => x.prefix);
     expect(rib).toEqual(['10.0.10.0', '10.0.20.0']);
     // Frames zum Router sind getaggt
     expect(e.log.some((l) => l.atDeviceName === 'R1' && l.frame?.vlan?.vid === 10)).toBe(true);
@@ -101,7 +104,15 @@ describe('DHCP', () => {
     link(e, r, 'p0', sw, 'p23');
     ifaceUp(e, r, 'p0', '10.0.1.1');
     const d = l3Cfg(e, r).dhcp;
-    d.pools.push({ name: 'LAN', network: '10.0.1.0', mask: '255.255.255.0', router: '10.0.1.1', dns: ['10.0.1.53'], domain: 'lab.local', leaseSec: 3600 });
+    d.pools.push({
+      name: 'LAN',
+      network: '10.0.1.0',
+      mask: '255.255.255.0',
+      router: '10.0.1.1',
+      dns: ['10.0.1.53'],
+      domain: 'lab.local',
+      leaseSec: 3600,
+    });
     d.excluded.push({ from: '10.0.1.1', to: '10.0.1.9' });
     const pcs = [0, 1, 2].map((i) => {
       const id = host(e, `PC${i}`, '');
@@ -122,11 +133,22 @@ describe('DHCP', () => {
     expect(new Set(ips).size).toBe(3);
     expect(ips.every((x) => Number(x?.split('.')[3]) >= 10)).toBe(true);
     const c0 = hostCfg(e, pcs[0] as string);
-    expect(c0).toMatchObject({ mask: '255.255.255.0', gateway: '10.0.1.1', dnsServers: ['10.0.1.53'] });
+    expect(c0).toMatchObject({
+      mask: '255.255.255.0',
+      gateway: '10.0.1.1',
+      dnsServers: ['10.0.1.53'],
+    });
     expect(c0.dhcpClient.state).toBe('bound');
     expect(Object.keys(l3Cfg(e, r).dhcp.bindings)).toHaveLength(3);
     const keys = e.log.map((l) => l.msg.key);
-    for (const k of ['dhcp.discover', 'dhcp.offer', 'dhcp.gotOffer', 'dhcp.ack', 'dhcp.gotAck', 'dhcp.bound']) {
+    for (const k of [
+      'dhcp.discover',
+      'dhcp.offer',
+      'dhcp.gotOffer',
+      'dhcp.ack',
+      'dhcp.gotAck',
+      'dhcp.bound',
+    ]) {
       expect(keys).toContain(k);
     }
     // Netz funktioniert
@@ -151,7 +173,10 @@ describe('DHCP', () => {
 
   it('Pool erschöpft; Konflikterkennung per ARP (Decline) markiert die Adresse', () => {
     const { e, r, pcs } = dhcpLab();
-    l3Cfg(e, r).dhcp.excluded = [{ from: '10.0.1.1', to: '10.0.1.10' }, { from: '10.0.1.12', to: '10.0.1.254' }];
+    l3Cfg(e, r).dhcp.excluded = [
+      { from: '10.0.1.1', to: '10.0.1.10' },
+      { from: '10.0.1.12', to: '10.0.1.254' },
+    ];
     // Ein Fremdgerät benutzt bereits .11 (statisch, nicht ausgeschlossen)
     const squat = host(e, 'Squat', '10.0.1.11');
     const sw = Object.values(e.state.devices).find((d) => d.type === 'switch-l2')?.id as string;
@@ -180,7 +205,14 @@ describe('DHCP', () => {
     rtCfg(e, r).ifaces.p1!.helpers = ['10.0.1.10'];
     const sc = hostCfg(e, srv).services;
     sc.dhcp.enabled = true;
-    sc.dhcp.pools.push({ name: 'LAN2', network: '10.0.2.0', mask: '255.255.255.0', router: '10.0.2.1', dns: ['10.0.1.10'], leaseSec: 3600 });
+    sc.dhcp.pools.push({
+      name: 'LAN2',
+      network: '10.0.2.0',
+      mask: '255.255.255.0',
+      router: '10.0.2.1',
+      dns: ['10.0.1.10'],
+      leaseSec: 3600,
+    });
     sc.dhcp.excluded.push({ from: '10.0.2.1', to: '10.0.2.99' });
     e.runAll();
     ok(e.setHostDhcp(pc, true));
@@ -225,8 +257,16 @@ describe('DNS und HTTP', () => {
 
   it('HTTP-GET per IP: Handshake, Antwort 200, 404; Browser-Zustand', () => {
     const { e, cli } = web();
-    expect(get(e, cli, 'http://10.0.0.10/')).toMatchObject({ status: 'done', code: 200, body: '<h1>Hallo</h1>' });
-    expect(get(e, cli, '10.0.0.10/info')).toMatchObject({ status: 'done', code: 200, body: '<p>Info</p>' });
+    expect(get(e, cli, 'http://10.0.0.10/')).toMatchObject({
+      status: 'done',
+      code: 200,
+      body: '<h1>Hallo</h1>',
+    });
+    expect(get(e, cli, '10.0.0.10/info')).toMatchObject({
+      status: 'done',
+      code: 200,
+      body: '<p>Info</p>',
+    });
     expect(get(e, cli, 'http://10.0.0.10/nope')).toMatchObject({ status: 'done', code: 404 });
     const keys = e.log.map((l) => l.msg.key);
     expect(keys).toContain('tcp.syn');
@@ -244,7 +284,10 @@ describe('DNS und HTTP', () => {
     get(e, cli, 'http://www.lab.local/info');
     expect(e.log.filter((l) => l.msg.key === 'dns.answer')).toHaveLength(n); // Cache
     expect(get(e, cli, 'http://web.lab.local/')).toMatchObject({ status: 'done', code: 200 });
-    expect(get(e, cli, 'http://gibtsnicht.lab.local/')).toMatchObject({ status: 'failed', error: 'http.err.dns' });
+    expect(get(e, cli, 'http://gibtsnicht.lab.local/')).toMatchObject({
+      status: 'failed',
+      error: 'http.err.dns',
+    });
     const r = e.resolveName(cli, 'www.lab.local');
     expect(r.ok && r.value.cached).toBe('10.0.0.10');
   });
@@ -252,12 +295,21 @@ describe('DNS und HTTP', () => {
   it('Fehlerfälle: kein DNS-Server, Port geschlossen (RST), unerreichbar, Server aus', () => {
     const { e, srv, cli } = web();
     ok(e.setDnsServers(cli, []));
-    expect(get(e, cli, 'http://www.lab.local/')).toMatchObject({ status: 'failed', error: 'http.err.noDns' });
+    expect(get(e, cli, 'http://www.lab.local/')).toMatchObject({
+      status: 'failed',
+      error: 'http.err.noDns',
+    });
     ok(e.setService(srv, { http: { enabled: false } }));
-    expect(get(e, cli, 'http://10.0.0.10/')).toMatchObject({ status: 'failed', error: 'http.err.refused' });
+    expect(get(e, cli, 'http://10.0.0.10/')).toMatchObject({
+      status: 'failed',
+      error: 'http.err.refused',
+    });
     expect(get(e, cli, 'http://10.9.9.9/')).toMatchObject({ status: 'failed' });
     ok(e.setService(srv, { http: { enabled: true, https: false } }));
-    expect(get(e, cli, 'https://10.0.0.10/')).toMatchObject({ status: 'failed', error: 'http.err.refused' });
+    expect(get(e, cli, 'https://10.0.0.10/')).toMatchObject({
+      status: 'failed',
+      error: 'http.err.refused',
+    });
     ok(e.setService(srv, { http: { enabled: true, https: true } }));
     expect(get(e, cli, 'https://10.0.0.10/')).toMatchObject({ status: 'done', code: 200 });
     e.setPower(srv, false);
@@ -296,16 +348,27 @@ describe('ACL', () => {
       name: 'BLOCK',
       type: 'extended',
       entries: [
-        aclEntry({ action: 'deny', proto: 'tcp', src: ANY, dst: hostMatch('10.0.2.10'), dstPort: eq(80) }),
+        aclEntry({
+          action: 'deny',
+          proto: 'tcp',
+          src: ANY,
+          dst: hostMatch('10.0.2.10'),
+          dstPort: eq(80),
+        }),
         aclEntry({ action: 'permit', proto: 'ip', src: ANY, dst: ANY }),
       ],
     };
     cfg.ifaces.p0!.aclIn = 'BLOCK';
     ok(e.httpGet(cli, 'http://10.0.2.10/'));
     e.runAll();
-    expect(hostCfg(e, cli).requests[0]).toMatchObject({ status: 'failed', error: 'http.err.blocked' });
+    expect(hostCfg(e, cli).requests[0]).toMatchObject({
+      status: 'failed',
+      error: 'http.err.blocked',
+    });
     expect(ping(e, cli, '10.0.2.10')).toBe('reply');
-    expect(cfg.acls.BLOCK?.entries.map((x) => x.matches)).toEqual([1, 5].map((n, i) => (i === 0 ? 1 : cfg.acls.BLOCK?.entries[1]?.matches ?? n)));
+    expect(cfg.acls.BLOCK?.entries.map((x) => x.matches)).toEqual(
+      [1, 5].map((n, i) => (i === 0 ? 1 : (cfg.acls.BLOCK?.entries[1]?.matches ?? n))),
+    );
     expect(cfg.acls.BLOCK?.entries[0]?.matches).toBe(1);
     expect(e.log.some((l) => l.msg.key === 'acl.deny' && l.proto === 'ACL')).toBe(true);
     // ohne ACL wieder erreichbar
@@ -318,14 +381,24 @@ describe('ACL', () => {
   it('Standard-ACL (Quelle), Ausgangs-ACL, implizites Deny, established', () => {
     const { e, r, cli, srv } = aclLab();
     const cfg = rtCfg(e, r);
-    cfg.acls['1'] = { name: '1', type: 'standard', entries: [aclEntry({ action: 'permit', src: net('10.0.1.0', '0.0.0.255') })] };
+    cfg.acls['1'] = {
+      name: '1',
+      type: 'standard',
+      entries: [aclEntry({ action: 'permit', src: net('10.0.1.0', '0.0.0.255') })],
+    };
     cfg.ifaces.p1!.aclOut = '1';
     expect(ping(e, cli, '10.0.2.10')).toBe('reply');
     cfg.acls['1']!.entries[0]!.src = hostMatch('10.0.1.99');
     expect(ping(e, cli, '10.0.2.10')).toBe('unreachable'); // implizites deny
     // established: Server darf nur Antworten schicken
     cfg.ifaces.p1!.aclOut = undefined;
-    cfg.acls.EST = { name: 'EST', type: 'extended', entries: [aclEntry({ action: 'permit', proto: 'tcp', src: ANY, dst: ANY, established: true })] };
+    cfg.acls.EST = {
+      name: 'EST',
+      type: 'extended',
+      entries: [
+        aclEntry({ action: 'permit', proto: 'tcp', src: ANY, dst: ANY, established: true }),
+      ],
+    };
     cfg.ifaces.p1!.aclIn = 'EST';
     ok(e.httpGet(cli, 'http://10.0.2.10/'));
     e.runAll();
@@ -347,7 +420,11 @@ describe('ACL', () => {
       ok(e.httpGet(cli, 'http://10.0.2.10/'));
       e.runAll();
     }
-    expect(hostCfg(e, cli).requests.slice(-4).map((x) => x.status)).toEqual(['failed', 'done', 'failed', 'done']);
+    expect(
+      hostCfg(e, cli)
+        .requests.slice(-4)
+        .map((x) => x.status),
+    ).toEqual(['failed', 'done', 'failed', 'done']);
   });
 });
 
@@ -371,7 +448,11 @@ describe('NAT / PAT', () => {
     const cfg = rtCfg(e, r);
     cfg.ifaces.p0!.natSide = 'inside';
     cfg.ifaces.p1!.natSide = 'outside';
-    cfg.acls['1'] = { name: '1', type: 'standard', entries: [aclEntry({ action: 'permit', src: net('192.168.1.0', '0.0.0.255') })] };
+    cfg.acls['1'] = {
+      name: '1',
+      type: 'standard',
+      entries: [aclEntry({ action: 'permit', src: net('192.168.1.0', '0.0.0.255') })],
+    };
     converge(e, 35);
     return { e, r, srv, pcs, cfg };
   }
@@ -392,7 +473,9 @@ describe('NAT / PAT', () => {
     expect(cfg.nat.table.filter((x) => x.proto === 'icmp')).toHaveLength(3);
     expect(cfg.nat.hits).toBeGreaterThan(0);
     // Der Server sieht nur die Adresse des Routers
-    const seen = e.log.filter((l) => l.atDeviceName === 'Web' && l.msg.key === 'tcp.syn').map((l) => l.msg.params?.peer);
+    const seen = e.log
+      .filter((l) => l.atDeviceName === 'Web' && l.msg.key === 'tcp.syn')
+      .map((l) => l.msg.params?.peer);
     expect(new Set(seen)).toEqual(new Set(['203.0.113.1']));
     void srv;
   });
@@ -404,12 +487,19 @@ describe('NAT / PAT', () => {
     expect(cfg.nat.table.some((x) => x.proto === 'icmp')).toBe(true);
     e.runUntil(e.state.now + 61_000_000);
     ping(e, pcs[1] as string, '203.0.113.10'); // löst die Bereinigung aus
-    expect(cfg.nat.table.filter((x) => x.proto === 'icmp' && x.insideLocal.ip === '192.168.1.10')).toHaveLength(0);
+    expect(
+      cfg.nat.table.filter((x) => x.proto === 'icmp' && x.insideLocal.ip === '192.168.1.10'),
+    ).toHaveLength(0);
   });
 
   it('dynamisches NAT mit Pool (ohne Overload): eine Außenadresse je Client', () => {
     const { e, pcs, cfg } = natLab();
-    cfg.nat.pools.P = { name: 'P', start: '203.0.113.100', end: '203.0.113.101', mask: '255.255.255.0' };
+    cfg.nat.pools.P = {
+      name: 'P',
+      start: '203.0.113.100',
+      end: '203.0.113.101',
+      mask: '255.255.255.0',
+    };
     cfg.nat.rules.push({ kind: 'dynamic', acl: '1', pool: 'P', overload: false });
     // Der Server braucht eine Route zurück in den Pool: Router antwortet per Proxy – hier genügt Connected-Netz
     expect(ping(e, pcs[0] as string, '203.0.113.10')).toBe('reply');
@@ -428,7 +518,9 @@ describe('NAT / PAT', () => {
     ok(e.httpGet(srv, 'http://203.0.113.50/'));
     e.runAll();
     expect(hostCfg(e, srv).requests[0]).toMatchObject({ status: 'done', code: 200 });
-    expect(cfg.nat.table.every((x) => x.kind === 'static' && x.insideGlobal.ip === '203.0.113.50')).toBe(true);
+    expect(
+      cfg.nat.table.every((x) => x.kind === 'static' && x.insideGlobal.ip === '203.0.113.50'),
+    ).toBe(true);
     // Der Inside-Host sieht die echte Außenadresse des Clients
     expect(e.log.some((l) => l.msg.key === 'nat.in')).toBe(true);
   });
@@ -436,7 +528,14 @@ describe('NAT / PAT', () => {
   it('Port-Forwarding (static tcp 80 → 8080) und Nicht-übersetzte Pakete', () => {
     const { e, srv, pcs, cfg } = natLab('198.51.100');
     hostCfg(e, pcs[0] as string).services.http.enabled = true;
-    cfg.nat.rules.push({ kind: 'static', local: '192.168.1.10', global: '203.0.113.50', proto: 'tcp', lport: 80, gport: 80 });
+    cfg.nat.rules.push({
+      kind: 'static',
+      local: '192.168.1.10',
+      global: '203.0.113.50',
+      proto: 'tcp',
+      lport: 80,
+      gport: 80,
+    });
     ok(e.httpGet(srv, 'http://203.0.113.50/'));
     e.runAll();
     expect(hostCfg(e, srv).requests[0]).toMatchObject({ status: 'done', code: 200 });

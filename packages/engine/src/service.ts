@@ -113,6 +113,70 @@ export class EngineService {
     this.ctl.markDirty();
     return r;
   }
+  // ---- Phase 3: Switch, L3, Dienste
+  createSubIface(id: string, portId: string, vlan: number): Result<string> {
+    const r = this.ctl.engine.createSubIface(id, portId, vlan);
+    this.ctl.markDirty();
+    return r;
+  }
+  createSvi(id: string, vlan: number): Result<string> {
+    const r = this.ctl.engine.createSvi(id, vlan);
+    this.ctl.markDirty();
+    return r;
+  }
+  addVlan(id: string, vid: number, name?: string): Result<true> {
+    const r = this.ctl.engine.addVlan(id, vid, name);
+    this.ctl.markDirty();
+    return r;
+  }
+  removeVlan(id: string, vid: number): Result<true> {
+    const r = this.ctl.engine.removeVlan(id, vid);
+    this.ctl.markDirty();
+    return r;
+  }
+  setVtp(id: string, patch: Parameters<Engine['setVtp']>[1]): Result<true> {
+    const r = this.ctl.engine.setVtp(id, patch);
+    this.ctl.markDirty();
+    return r;
+  }
+  setSwitchport(
+    id: string,
+    portId: string,
+    patch: Parameters<Engine['setSwitchport']>[2],
+  ): Result<true> {
+    const r = this.ctl.engine.setSwitchport(id, portId, patch);
+    this.ctl.markDirty();
+    return r;
+  }
+  setStp(id: string, patch: Parameters<Engine['setStp']>[1]): Result<true> {
+    const r = this.ctl.engine.setStp(id, patch);
+    this.ctl.markDirty();
+    return r;
+  }
+  clearErrdisable(id: string, portId: string): void {
+    this.ctl.engine.clearErrdisable(id, portId);
+    this.ctl.markDirty();
+  }
+  setHostDhcp(id: string, on: boolean): Result<true> {
+    const r = this.ctl.engine.setHostDhcp(id, on);
+    this.ctl.markDirty();
+    return r;
+  }
+  setDnsServers(id: string, servers: string[]): Result<true> {
+    const r = this.ctl.engine.setDnsServers(id, servers);
+    this.ctl.markDirty();
+    return r;
+  }
+  setService(id: string, patch: Parameters<Engine['setService']>[1]): Result<true> {
+    const r = this.ctl.engine.setService(id, patch);
+    this.ctl.markDirty();
+    return r;
+  }
+  httpGet(id: string, url: string): Result<number> {
+    const r = this.ctl.engine.httpGet(id, url);
+    this.ctl.markDirty();
+    return r;
+  }
   trace(id: string, dst: string): Result<number> {
     const r = this.ctl.engine.trace(id, dst);
     this.ctl.markDirty();

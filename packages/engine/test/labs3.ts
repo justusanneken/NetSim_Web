@@ -1,4 +1,4 @@
-import { Engine, type Device, type L3Cfg, type RouterConfig, type SwitchConfig } from '../src';
+import { type Engine, type Device, type L3Cfg, type RouterConfig, type SwitchConfig } from '../src';
 import { converge } from './helpers';
 
 export const ok = (r: { ok: boolean; error?: string }): void => {
@@ -10,11 +10,24 @@ export const swCfg = (e: Engine, id: string): SwitchConfig => dev(e, id).config 
 export const rtCfg = (e: Engine, id: string): RouterConfig => dev(e, id).config as RouterConfig;
 export const l3Cfg = (e: Engine, id: string): L3Cfg => dev(e, id).config as unknown as L3Cfg;
 
-export function link(e: Engine, a: string, ap: string, b: string, bp: string, cable: 'straight' | 'crossover' = 'straight'): void {
+export function link(
+  e: Engine,
+  a: string,
+  ap: string,
+  b: string,
+  bp: string,
+  cable: 'straight' | 'crossover' = 'straight',
+): void {
   ok(e.connect({ deviceId: a, portId: ap }, { deviceId: b, portId: bp }, cable));
 }
 
-export function host(e: Engine, name: string, ip: string, gw?: string, mask = '255.255.255.0'): string {
+export function host(
+  e: Engine,
+  name: string,
+  ip: string,
+  gw?: string,
+  mask = '255.255.255.0',
+): string {
   const id = e.addDevice('pc', { name });
   if (ip) ok(e.setHostIp(id, ip, mask, gw));
   return id;
@@ -26,7 +39,12 @@ export const pingStatus = (e: Engine, id: string, idx = -1): string | undefined 
   return c.pings.at(idx)?.status;
 };
 
-export function ping(e: Engine, from: string, dst: string, opts?: Parameters<Engine['ping']>[2]): string | undefined {
+export function ping(
+  e: Engine,
+  from: string,
+  dst: string,
+  opts?: Parameters<Engine['ping']>[2],
+): string | undefined {
   const r = e.ping(from, dst, opts);
   if (!r.ok) return r.error;
   e.runAll();
@@ -65,7 +83,13 @@ export function aclEntry(e: Partial<AclEntry> & Pick<AclEntry, 'action'>): AclEn
 }
 
 /** Router-Schnittstelle konfigurieren und aktivieren. */
-export function ifaceUp(e: Engine, r: string, id: string, ip: string, mask = '255.255.255.0'): void {
+export function ifaceUp(
+  e: Engine,
+  r: string,
+  id: string,
+  ip: string,
+  mask = '255.255.255.0',
+): void {
   ok(e.ensureIface(r, id));
   ok(e.setInterfaceIp(r, id, ip, mask));
   const portId = id.split('.')[0] as string;

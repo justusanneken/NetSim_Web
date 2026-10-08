@@ -28,11 +28,18 @@ ICON_PATHS.router = [
   'M20 16l4-4 4 4M20 32l4 4 4-4M16 20l-4 4 4 4M32 20l4 4-4 4',
 ];
 
+ICON_PATHS['switch-l3'] = [
+  'M4 14h40v20H4z',
+  'M9 21h5v6H9zM17 21h5v6h-5zM25 21h5v6h-5zM33 21h5v6h-5z',
+  'M24 14V8M18 11l6-5 6 5',
+];
+
 export const ICON_FALLBACK = ['M6 6h36v36H6z', 'M6 6l36 36M42 6L6 42'];
 
 export const DEVICE_COLORS: Partial<Record<DeviceType, string>> = {
   pc: '#2f6fed',
   'switch-l2': '#1a8f6f',
+  'switch-l3': '#0b7285',
   hub: '#b7791f',
   router: '#d9480f',
   laptop: '#2f6fed',

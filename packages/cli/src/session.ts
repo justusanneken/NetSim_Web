@@ -172,7 +172,8 @@ export class CliSession implements Shell {
   private env(): Env {
     const d = this.device;
     return {
-      family: d.config.kind === 'router' ? 'router' : d.type === 'switch-l3' ? 'switch-l3' : 'switch',
+      family:
+        d.config.kind === 'router' ? 'router' : d.type === 'switch-l3' ? 'switch-l3' : 'switch',
       iface: (t) => resolveIface(d, t) !== undefined,
     };
   }

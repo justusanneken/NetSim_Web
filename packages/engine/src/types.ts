@@ -230,7 +230,14 @@ export interface NatPool {
 }
 
 export type NatRule =
-  | { kind: 'static'; local: Ipv4Addr; global: Ipv4Addr; proto?: 'tcp' | 'udp'; lport?: number; gport?: number }
+  | {
+      kind: 'static';
+      local: Ipv4Addr;
+      global: Ipv4Addr;
+      proto?: 'tcp' | 'udp';
+      lport?: number;
+      gport?: number;
+    }
   | { kind: 'dynamic'; acl: string; pool: string; overload: boolean }
   | { kind: 'interface'; acl: string; ifaceId: string };
 
@@ -255,6 +262,8 @@ export interface NatCfg {
   hits: number;
   misses: number;
   nextPort: number;
+  /** `ip nat translation timeout` (Sekunden) für UDP/TCP/IP-Einträge. */
+  timeoutSec?: number;
 }
 
 export interface DhcpPool {
@@ -344,7 +353,10 @@ export interface HostConfig extends IpCore {
   /** Offene DNS-Anfragen: Anfrage-ID → Name + wartende HTTP-/Ping-Aufträge. */
   dnsPending: Record<number, { name: string; reqId?: number; started: number }>;
   /** Abgeschlossene Namensauflösungen (für `nslookup`). */
-  dnsResults: Record<number, { name: string; rcode: number; answers: DnsRecord[]; done: boolean; error?: string }>;
+  dnsResults: Record<
+    number,
+    { name: string; rcode: number; answers: DnsRecord[]; done: boolean; error?: string }
+  >;
   nextDnsId: number;
   nextPort: number;
   tcp: Record<string, TcpConn>;

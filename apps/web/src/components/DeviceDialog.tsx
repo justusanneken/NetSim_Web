@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DeviceView } from '@netsim/engine';
 import { DeviceConfig, HostIpConfig } from './DevicePanel';
+import { Browser } from './PanelServices';
 import { TerminalView } from './TerminalView';
 import { useStore } from '../store';
 
@@ -79,8 +80,16 @@ export function DeviceDialog() {
                 >
                   {t('desktop.cmd')}
                 </button>
+                <button
+                  className={sub === 'browser' ? 'active' : ''}
+                  onClick={() => setTab('desktop:browser')}
+                >
+                  {t('desktop.browser')}
+                </button>
               </div>
-              {sub === 'cmd' ? (
+              {sub === 'browser' ? (
+                <Browser dev={dev} />
+              ) : sub === 'cmd' ? (
                 <TerminalView key={dev.id} deviceId={dev.id} label={t('desktop.cmd')} />
               ) : (
                 <div className="scroll pad">

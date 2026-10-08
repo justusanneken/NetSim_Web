@@ -5,7 +5,11 @@ import { blockedPorts, converge, host, link, noShut, ok, ping, swCfg } from './l
 /** Ring aus drei Switches (S1–S2–S3–S1), je ein PC an S1 und S2. */
 function ring(mode: 'pvst' | 'rapid-pvst' = 'pvst') {
   const e = new Engine({ seed: 1 });
-  const s = ['S1', 'S2', 'S3'].map((n) => e.addDevice('switch-l2', { name: n })) as [string, string, string];
+  const s = ['S1', 'S2', 'S3'].map((n) => e.addDevice('switch-l2', { name: n })) as [
+    string,
+    string,
+    string,
+  ];
   for (const x of s) ok(e.setStp(x, { mode }));
   link(e, s[0], 'p22', s[1], 'p23', 'crossover');
   link(e, s[1], 'p22', s[2], 'p23', 'crossover');
@@ -54,7 +58,9 @@ describe('Spanning Tree', () => {
     const { e, s } = ring();
     ok(e.setStp(s[2], { vlan: 1, priority: 4096 }));
     converge(e, 60);
-    expect(swCfg(e, s[0]).stp.instances[1]?.rootId).toBe(`${String(4097).padStart(5, '0')}.${e.getDevice(s[2])?.ports[0]?.mac}`);
+    expect(swCfg(e, s[0]).stp.instances[1]?.rootId).toBe(
+      `${String(4097).padStart(5, '0')}.${e.getDevice(s[2])?.ports[0]?.mac}`,
+    );
     expect(swCfg(e, s[2]).stp.instances[1]?.rootCost).toBe(0);
   });
 
@@ -161,7 +167,9 @@ describe('EtherChannel', () => {
     link(e, extra, 'p0', e.addDevice('switch-l2', { name: 'X' }), 'p0');
     void extra2;
     expect(ping(e, a, '10.0.0.2', { count: 4 })).toBe('reply');
-    const used = ['p22', 'p23'].filter((p) => (e.getDevice(s1)?.ports.find((x) => x.id === p)?.counters.outPkts ?? 0) > 0);
+    const used = ['p22', 'p23'].filter(
+      (p) => (e.getDevice(s1)?.ports.find((x) => x.id === p)?.counters.outPkts ?? 0) > 0,
+    );
     expect(used.length).toBeGreaterThanOrEqual(1);
     e.setPortAdmin(s1, 'p22', false);
     converge(e, 60);
@@ -186,7 +194,11 @@ describe('Port-Security', () => {
     ok(e.setSwitchport(sw, 'p0', { portfast: true }));
     ok(e.setSwitchport(sw, 'p1', { portfast: true }));
     converge(e, 5);
-    ok(e.setSwitchport(sw, 'p0', { psec: { enabled: true, max: 1, violation, sticky, macs: [], dynMacs: [], violations: 0 } }));
+    ok(
+      e.setSwitchport(sw, 'p0', {
+        psec: { enabled: true, max: 1, violation, sticky, macs: [], dynMacs: [], violations: 0 },
+      }),
+    );
     return { e, sw, a, b, srv };
   }
 

@@ -45,7 +45,9 @@ describe('VLAN und Trunk', () => {
     const { e, a, b } = twoSwitches();
     e.log.length = 0;
     ping(e, a, '10.0.10.2');
-    expect(e.log.some((l) => l.atDeviceName === 'B' && l.msg.key.startsWith('host.arp'))).toBe(false);
+    expect(e.log.some((l) => l.atDeviceName === 'B' && l.msg.key.startsWith('host.arp'))).toBe(
+      false,
+    );
     void b;
   });
 
@@ -64,7 +66,9 @@ describe('VLAN und Trunk', () => {
     converge(e);
     expect(ping(e, b, '10.0.20.2')).toBe('unreachable');
     void d;
-    expect(e.log.some((l) => l.msg.key === 'switch.vlanNotAllowed' || l.msg.key === 'switch.noVlan')).toBe(true);
+    expect(
+      e.log.some((l) => l.msg.key === 'switch.vlanNotAllowed' || l.msg.key === 'switch.noVlan'),
+    ).toBe(true);
   });
 
   it('DTP: desirable/auto handelt Trunk aus, auto/auto nicht', () => {
@@ -92,7 +96,8 @@ describe('VLAN und Trunk', () => {
       [s2, 'p23'],
       [s2, 'p22'],
       [s3, 'p22'],
-    ] as const) ok(e.setSwitchport(s, p, { mode: 'trunk' }));
+    ] as const)
+      ok(e.setSwitchport(s, p, { mode: 'trunk' }));
     ok(e.setVtp(s1, { mode: 'server', domain: 'lab' }));
     ok(e.setVtp(s2, { mode: 'transparent', domain: 'lab' }));
     ok(e.setVtp(s3, { mode: 'client', domain: 'lab' }));

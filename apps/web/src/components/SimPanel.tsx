@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { FixedSizeList, type ListChildComponentProps } from 'react-window';
 import type { LogEntry } from '@netsim/engine';
 import { formatTime, translateMsg } from '../format';
-import { ALL_PROTOS, sim, useStore } from '../store';
+import { ALL_PROTOS, sim, useStore, type ProtoFilter } from '../store';
 
 const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 20];
 const ROW_H = 26;
@@ -43,7 +43,10 @@ export function SimPanel() {
   const listRef = useRef<FixedSizeList>(null);
   const size = useSize(bodyRef);
 
-  const rows = useMemo(() => log.filter((l) => filters[l.proto]), [log, filters]);
+  const rows = useMemo(
+    () => log.filter((l) => filters[l.proto as ProtoFilter] !== false),
+    [log, filters],
+  );
 
   useEffect(() => {
     if (follow && rows.length > 0) listRef.current?.scrollToItem(rows.length - 1);

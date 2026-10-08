@@ -34,7 +34,10 @@ export function dnsRx(
       kind: 'rx',
       proto: 'DNS',
       status: 'ok',
-      msg: { key: ans.length ? 'dns.answer' : 'dns.nxdomain', params: { name: q.question.name, count: ans.length } },
+      msg: {
+        key: ans.length ? 'dns.answer' : 'dns.nxdomain',
+        params: { name: q.question.name, count: ans.length },
+      },
     });
     const rep: DnsPdu = { ...q, response: true, rcode: ans.length ? 0 : 3, answers: ans };
     sendUdp(ctx, node, { src: iface.ip, dst: ip.src, sport: 53, dport: udp.srcPort, app: rep });
@@ -50,9 +53,13 @@ export function dnsRx(
       kind: 'rx',
       proto: 'DNS',
       status: q.rcode === 0 ? 'ok' : 'drop',
-      msg: { key: q.rcode === 0 ? 'dns.resolved' : 'dns.failed', params: { name: pend.name, ip: a?.data ?? '' } },
+      msg: {
+        key: q.rcode === 0 ? 'dns.resolved' : 'dns.failed',
+        params: { name: pend.name, ip: a?.data ?? '' },
+      },
     });
-    if (a) h.dnsCache[pend.name.toLowerCase()] = { ip: a.data, expiresAt: ctx.now + a.ttl * 1_000_000 };
+    if (a)
+      h.dnsCache[pend.name.toLowerCase()] = { ip: a.data, expiresAt: ctx.now + a.ttl * 1_000_000 };
     h.dnsResults[q.id] = { name: pend.name, rcode: q.rcode, answers: q.answers, done: true };
     onDnsDone(ctx, node, h, pend.reqId, a?.data, q.rcode === 0 ? undefined : 'http.err.dns');
     return true;
@@ -75,7 +82,14 @@ export function dnsResolve(
   const id = h.nextDnsId++;
   h.dnsPending[id] = { name, reqId, started: ctx.now };
   h.dnsResults[id] = { name, rcode: -1, answers: [], done: false };
-  const q: DnsPdu = { kind: 'dns', id, response: false, rcode: 0, question: { name, type: 'A' }, answers: [] };
+  const q: DnsPdu = {
+    kind: 'dns',
+    id,
+    response: false,
+    rcode: 0,
+    question: { name, type: 'A' },
+    answers: [],
+  };
   const sport = h.nextPort++;
   const r = sendUdp(ctx, node, { dst: server, sport, dport: 53, app: q });
   if (!r.ok) {
@@ -93,8 +107,19 @@ export function dnsTimer(ctx: DeviceCtx, node: IpNode, h: HostConfig, name: stri
   const pend = h.dnsPending[id];
   if (!pend) return true;
   delete h.dnsPending[id];
-  h.dnsResults[id] = { name: pend.name, rcode: -1, answers: [], done: true, error: 'http.err.dnsTimeout' };
-  ctx.log({ kind: 'error', proto: 'DNS', status: 'error', msg: { key: 'dns.timeout', params: { name: pend.name } } });
+  h.dnsResults[id] = {
+    name: pend.name,
+    rcode: -1,
+    answers: [],
+    done: true,
+    error: 'http.err.dnsTimeout',
+  };
+  ctx.log({
+    kind: 'error',
+    proto: 'DNS',
+    status: 'error',
+    msg: { key: 'dns.timeout', params: { name: pend.name } },
+  });
   onDnsDone(ctx, node, h, pend.reqId, undefined, 'http.err.dnsTimeout');
   return true;
 }

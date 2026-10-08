@@ -1,9 +1,10 @@
+import { isValidIpv4 } from '@netsim/protocols';
 import type { Device, Engine, HostConfig, PingResult } from '@netsim/engine';
 import { winMac } from './format';
 import type { Shell } from './shell';
 import { waitFor } from './util';
 
-const NOT_YET = ['nslookup', 'netstat', 'telnet', 'ssh', 'ftp', 'tftp'];
+const NOT_YET = ['netstat', 'telnet', 'ssh', 'ftp', 'tftp'];
 
 const ms = (us: number): string => (us < 1000 ? '<1ms' : `${Math.round(us / 1000)}ms`);
 
@@ -53,11 +54,16 @@ export class HostShell implements Shell {
       case 'arp':
         this.arp(args, out);
         break;
+      case 'nslookup':
+        this.nslookup(args, out);
+        break;
       case 'cls':
         return '\x1b[2J\x1b[H';
       case 'help':
       case '?':
-        out.push('Available commands: ping, tracert, ipconfig [/all], arp -a, cls, help');
+        out.push(
+          'Available commands: ping, tracert, ipconfig [/all|/release|/renew], nslookup, arp -a, cls, help',
+        );
         break;
       default:
         if (NOT_YET.includes(c)) out.push(`The command '${c}' is not available in this version.`);
@@ -85,9 +91,43 @@ export class HostShell implements Shell {
     return undefined;
   }
 
+  /** Löst einen Namen über DNS auf (blockiert bis zur Antwort); liefert die IP oder `undefined`. */
+  private resolve(name: string): string | undefined {
+    if (isValidIpv4(name)) return name;
+    const r = this.engine.resolveName(this.deviceId, name);
+    if (!r.ok) return undefined;
+    if (r.value.cached) return r.value.cached;
+    const id = r.value.id;
+    if (id === undefined) return undefined;
+    const cfg = this.dev.config;
+    waitFor(this.engine, () => cfg.dnsResults[id]?.done === true);
+    return cfg.dnsResults[id]?.answers[0]?.data;
+  }
+
+  private nslookup(args: string[], out: string[]): void {
+    const name = args[0];
+    if (!name) return void out.push('Usage: nslookup name');
+    const cfg = this.dev.config;
+    const server = cfg.dnsServers[0];
+    out.push(`Server:  ${server ?? 'UnKnown'}`, `Address:  ${server ?? '0.0.0.0'}`, '');
+    const ip = this.resolve(name);
+    if (!ip)
+      return void out.push(`*** ${server ?? 'UnKnown'} can't find ${name}: Non-existent domain`);
+    out.push('Non-authoritative answer:', `Name:    ${name}`, `Address:  ${ip}`);
+  }
+
   private ping(args: string[], out: string[]): void {
-    const dst = this.target(args);
+    let dst = this.target(args);
     if (!dst) return void out.push('Usage: ping [-n count] [-l size] [-f] target_name');
+    const name = dst;
+    if (!isValidIpv4(dst)) {
+      const ip = this.resolve(dst);
+      if (!ip)
+        return void out.push(
+          `Ping request could not find host ${dst}. Please check the name and try again.`,
+        );
+      dst = ip;
+    }
     const count = this.flagValue(args, '-n') ?? 4;
     const size = this.flagValue(args, '-l') ?? 32;
     const df = args.some((a) => a.toLowerCase() === '-f');
@@ -100,7 +140,7 @@ export class HostShell implements Shell {
       );
       return;
     }
-    out.push(`Pinging ${dst} with ${size} bytes of data:`, '');
+    out.push(`Pinging ${name === dst ? dst : `${name} [${dst}]`} with ${size} bytes of data:`, '');
     if (this.deferred()) {
       out.push(
         'Simulation mode: packets were queued. Step through the events in the simulation panel.',
@@ -181,8 +221,39 @@ export class HostShell implements Shell {
     const cfg = this.dev.config;
     const port = this.dev.ports[0];
     if (flag === '/release' || flag === '/renew') {
+      if (flag === '/release' && !cfg.dhcpClient.enabled) {
+        out.push(
+          'The operation failed as no adapter is in the state permissible for this operation.',
+        );
+        return;
+      }
+      if (flag === '/renew' && !cfg.dhcpClient.enabled && cfg.ip) {
+        out.push(
+          'The operation failed as no adapter is in the state permissible for this operation.',
+        );
+        return;
+      }
+      this.engine.setHostDhcp(this.deviceId, false);
+      cfg.ip = undefined;
+      cfg.mask = undefined;
+      cfg.gateway = undefined;
+      if (flag === '/renew') {
+        this.engine.setHostDhcp(this.deviceId, true);
+        if (!this.deferred())
+          waitFor(
+            this.engine,
+            () => cfg.dhcpClient.state === 'bound' || this.engine.queueLength === 0,
+          );
+        if (!cfg.ip)
+          return void out.push(
+            'An error occurred while renewing interface FastEthernet0: unable to contact your DHCP server.',
+          );
+      }
       out.push(
-        'The operation failed as no adapter is in the state permissible for this operation.',
+        '',
+        'Windows IP Configuration',
+        '',
+        `   IPv4 Address....................: ${cfg.ip ?? '0.0.0.0'}`,
       );
       return;
     }
@@ -191,7 +262,8 @@ export class HostShell implements Shell {
     out.push('   Connection-specific DNS Suffix..: ');
     if (all) {
       out.push(`   Physical Address................: ${winMac(port?.mac ?? '')}`);
-      out.push('   DHCP Enabled....................: No');
+      out.push(`   DHCP Enabled....................: ${cfg.dhcpClient.enabled ? 'Yes' : 'No'}`);
+      out.push(`   DNS Servers.....................: ${cfg.dnsServers.join(', ')}`);
     }
     out.push(`   IPv4 Address....................: ${cfg.ip ?? '0.0.0.0'}`);
     out.push(`   Subnet Mask.....................: ${cfg.mask ?? '0.0.0.0'}`);

@@ -421,7 +421,7 @@ export function buildRegistry(): Registry<CliSession> {
   );
   r.add({
     modes: U,
-    only: 'router',
+    only: 'l3',
     slots: [
       SHOW,
       K('ip', 'IP information'),
@@ -806,7 +806,11 @@ export function buildRegistry(): Registry<CliSession> {
     run: (s, a) => {
       const refs = resolveRange(s.device, a.range as string);
       if (!refs) throw new CliError('% Invalid interface range');
-      enter(s, refs.map((x) => x.id), 'config-if-range');
+      enter(
+        s,
+        refs.map((x) => x.id),
+        'config-if-range',
+      );
     },
   });
   r.add({

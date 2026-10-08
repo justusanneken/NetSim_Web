@@ -15,18 +15,31 @@ function advert(dev: SwitchDev): VtpPdu {
 }
 
 /** VTP-Advertisement auf allen (oder allen außer einem) Trunk-Ports senden. */
-export function vtpSend(ctx: DeviceCtx, dev: SwitchDev, except?: string, msg: VtpPdu = advert(dev)): void {
+export function vtpSend(
+  ctx: DeviceCtx,
+  dev: SwitchDev,
+  except?: string,
+  msg: VtpPdu = advert(dev),
+): void {
   const cfg = dev.config;
-  if (cfg.vtp.mode === 'transparent' && msg.domain === cfg.vtp.domain && except === undefined) return;
+  if (cfg.vtp.mode === 'transparent' && msg.domain === cfg.vtp.domain && except === undefined)
+    return;
   for (const p of dev.ports) {
     if (p.id === except || !p.operUp || !cfg.operTrunk[p.id]) continue;
-    const frame: Frame = { kind: 'ethernet', src: p.mac, dst: MAC_VTP, etherType: ETHERTYPE.vtp, payload: msg };
+    const frame: Frame = {
+      kind: 'ethernet',
+      src: p.mac,
+      dst: MAC_VTP,
+      etherType: ETHERTYPE.vtp,
+      payload: msg,
+    };
     ctx.send(p.id, frame, ctx.processingUs);
   }
 }
 
 export function vtpTimer(ctx: DeviceCtx, dev: SwitchDev, name: string): void {
-  if (name === 'vtp:periodic' && dev.config.vtp.mode !== 'transparent' && dev.config.vtp.domain) vtpSend(ctx, dev);
+  if (name === 'vtp:periodic' && dev.config.vtp.mode !== 'transparent' && dev.config.vtp.domain)
+    vtpSend(ctx, dev);
 }
 
 export function vtpRx(ctx: DeviceCtx, dev: SwitchDev, portId: string, m: VtpPdu, base: Base): void {
@@ -38,7 +51,13 @@ export function vtpRx(ctx: DeviceCtx, dev: SwitchDev, portId: string, m: VtpPdu,
   }
   if (vtp.domain === '') {
     vtp.domain = m.domain;
-    ctx.log({ ...base, kind: 'info', proto: 'VTP', status: 'info', msg: { key: 'vtp.domainLearned', params: { domain: m.domain } } });
+    ctx.log({
+      ...base,
+      kind: 'info',
+      proto: 'VTP',
+      status: 'info',
+      msg: { key: 'vtp.domainLearned', params: { domain: m.domain } },
+    });
   }
   if (m.domain !== vtp.domain || m.revision <= vtp.revision) return;
   cfg.vlans = Object.fromEntries(m.vlans.map((v) => [v.id, { name: v.name }]));

@@ -26,7 +26,14 @@ import { l3Ping, l3Timer, l3Trace, routerRx, type L3Dev } from './devices/l3dev'
 import { ifaceName, listIfaces, sviId, subId } from './ifaces';
 import { buildRib, networkOf, type RibEntry } from './rib';
 import { hubRx } from './devices/hub';
-import { activeMacTable, switchPortDown, switchRx, switchStart, switchTimer, type SwitchDev } from './devices/switch';
+import {
+  activeMacTable,
+  switchPortDown,
+  switchRx,
+  switchStart,
+  switchTimer,
+  type SwitchDev,
+} from './devices/switch';
 import { stpPortsChanged } from './devices/stp';
 import { vtpSend } from './devices/vtp';
 import { heapPop, heapPush, heapRemove } from './heap';
@@ -343,7 +350,11 @@ export class Engine {
     dev.powered = on;
     if (!on) {
       heapRemove(this.state.queue, (e) => e.deviceId === deviceId);
-      if (dev.config.kind === 'host' || dev.config.kind === 'router' || dev.config.kind === 'switch')
+      if (
+        dev.config.kind === 'host' ||
+        dev.config.kind === 'router' ||
+        dev.config.kind === 'switch'
+      )
         resetIpRuntime(dev.config);
       if (dev.config.kind === 'switch') {
         dev.config.macTable = {};
@@ -386,6 +397,9 @@ export class Engine {
     const dev = this.state.devices[deviceId];
     if (!dev || dev.config.kind !== 'host') return { ok: false, error: 'ip.notAHost' };
     const cfg = dev.config;
+    if (cfg.dhcpClient.enabled && dev.powered)
+      this.withCtx(dev, (ctx) => hostDhcp(ctx, cfg, false));
+    else cfg.dhcpClient.enabled = false;
     if (ip === '') {
       cfg.ip = undefined;
       cfg.mask = undefined;
@@ -429,7 +443,9 @@ export class Engine {
     if (!isValidIpv4(dst)) return { ok: false, error: 'ip.invalidIp' };
     const cfg = dev.config;
     return this.withCtx(dev, (ctx) =>
-      cfg.kind === 'host' ? hostTrace(ctx, cfg, dst, maxHops) : l3Trace(ctx, dev as L3Dev, dst, maxHops),
+      cfg.kind === 'host'
+        ? hostTrace(ctx, cfg, dst, maxHops)
+        : l3Trace(ctx, dev as L3Dev, dst, maxHops),
     );
   }
 
@@ -437,7 +453,9 @@ export class Engine {
 
   private l3(deviceId: string): L3Dev | undefined {
     const d = this.state.devices[deviceId];
-    return d && (d.config.kind === 'router' || d.config.kind === 'switch') ? (d as L3Dev) : undefined;
+    return d && (d.config.kind === 'router' || d.config.kind === 'switch')
+      ? (d as L3Dev)
+      : undefined;
   }
 
   /** L3-Schnittstelle anlegen (Subinterface `p0.10`, SVI `vlan10`); physische existieren implizit. */
@@ -595,7 +613,8 @@ export class Engine {
   addVlan(deviceId: string, vid: number, name?: string): Result<true> {
     const dev = this.sw(deviceId);
     if (!dev) return { ok: false, error: 'sw.notASwitch' };
-    if (!Number.isInteger(vid) || vid < 1 || vid > 4094) return { ok: false, error: 'sw.invalidVlan' };
+    if (!Number.isInteger(vid) || vid < 1 || vid > 4094)
+      return { ok: false, error: 'sw.invalidVlan' };
     if (dev.config.vtp.mode === 'client') return { ok: false, error: 'sw.vtpClient' };
     const cur = dev.config.vlans[vid];
     const n = name ?? cur?.name ?? `VLAN${String(vid).padStart(4, '0')}`;
@@ -617,7 +636,10 @@ export class Engine {
     return { ok: true, value: true };
   }
 
-  setVtp(deviceId: string, patch: { mode?: 'server' | 'client' | 'transparent'; domain?: string }): Result<true> {
+  setVtp(
+    deviceId: string,
+    patch: { mode?: 'server' | 'client' | 'transparent'; domain?: string },
+  ): Result<true> {
     const dev = this.sw(deviceId);
     if (!dev) return { ok: false, error: 'sw.notASwitch' };
     const vtp = dev.config.vtp;
@@ -642,7 +664,10 @@ export class Engine {
     return { ok: true, value: true };
   }
 
-  setStp(deviceId: string, patch: { mode?: 'pvst' | 'rapid-pvst'; vlan?: number; priority?: number }): Result<true> {
+  setStp(
+    deviceId: string,
+    patch: { mode?: 'pvst' | 'rapid-pvst'; vlan?: number; priority?: number },
+  ): Result<true> {
     const dev = this.sw(deviceId);
     if (!dev) return { ok: false, error: 'sw.notASwitch' };
     if (patch.mode) {
@@ -803,8 +828,10 @@ export class Engine {
     };
     const compat = (a?: string, b?: string): boolean =>
       (a === 'on' && b === 'on') ||
-      ((a === 'active' || a === 'passive') && (b === 'active' || (b === 'passive' && a === 'active'))) ||
-      ((a === 'desirable' || a === 'auto') && (b === 'desirable' || (b === 'auto' && a === 'desirable')));
+      ((a === 'active' || a === 'passive') &&
+        (b === 'active' || (b === 'passive' && a === 'active'))) ||
+      ((a === 'desirable' || a === 'auto') &&
+        (b === 'desirable' || (b === 'auto' && a === 'desirable')));
     for (const dev of Object.values(this.state.devices)) {
       if (dev.config.kind !== 'switch') continue;
       const cfg = dev.config;
@@ -815,11 +842,15 @@ export class Engine {
         let t = pc.mode === 'trunk';
         if (pc.mode === 'dynamic-auto' || pc.mode === 'dynamic-desirable') {
           const peer = peerPort(dev, p.id);
-          const pm = peer?.dev.config.kind === 'switch' ? peer.dev.config.ports[peer.port.id]?.mode : undefined;
+          const pm =
+            peer?.dev.config.kind === 'switch'
+              ? peer.dev.config.ports[peer.port.id]?.mode
+              : undefined;
           if (pm) {
-            t = pc.mode === 'dynamic-desirable'
-              ? pm === 'trunk' || pm === 'dynamic-desirable' || pm === 'dynamic-auto'
-              : pm === 'trunk' || pm === 'dynamic-desirable';
+            t =
+              pc.mode === 'dynamic-desirable'
+                ? pm === 'trunk' || pm === 'dynamic-desirable' || pm === 'dynamic-auto'
+                : pm === 'trunk' || pm === 'dynamic-desirable';
           }
         }
         if (t) trunk[p.id] = true;
@@ -842,7 +873,11 @@ export class Engine {
             const theirs = qc?.kind === 'switch' ? qc.ports[q?.port.id as string] : undefined;
             return theirs?.channel !== undefined && compat(mine?.channelMode, theirs.channelMode);
           }) &&
-          new Set(peers.map((q) => (q?.dev.config.kind === 'switch' ? q.dev.config.ports[q.port.id]?.channel : -1))).size === 1;
+          new Set(
+            peers.map((q) =>
+              q?.dev.config.kind === 'switch' ? q.dev.config.ports[q.port.id]?.channel : -1,
+            ),
+          ).size === 1;
         if (ok) bundles[Number(n)] = members;
       }
       cfg.operTrunk = trunk;
@@ -852,7 +887,13 @@ export class Engine {
         bundles,
         dev.ports.map((p) => p.operUp),
         Object.keys(cfg.vlans),
-        Object.values(cfg.ports).map((q) => [q.accessVlan, q.allowed, q.portfast, q.routed, q.nativeVlan]),
+        Object.values(cfg.ports).map((q) => [
+          q.accessVlan,
+          q.allowed,
+          q.portfast,
+          q.routed,
+          q.nativeVlan,
+        ]),
       ]);
       if (this.switchSig.get(dev.id) !== sig) {
         this.switchSig.set(dev.id, sig);
@@ -947,7 +988,8 @@ export class Engine {
 
   /** Anzahl der Vordergrund-Ereignisse (ohne periodische Hintergrund-Timer wie STP). */
   get queueLength(): number {
-    return this.state.queue.filter((e) => !(e.kind === 'timer' && e.payload.name.startsWith('bg:'))).length;
+    return this.state.queue.filter((e) => !(e.kind === 'timer' && e.payload.name.startsWith('bg:')))
+      .length;
   }
 
   peekNextTime(): number | undefined {

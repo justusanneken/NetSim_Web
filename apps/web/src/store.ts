@@ -14,7 +14,23 @@ export type Tool = 'select' | 'hand' | 'cable' | 'delete' | 'pdu';
 export type CableChoice = CableType | 'auto';
 export type Theme = 'light' | 'dark';
 
-export const ALL_PROTOS = ['ETH', 'ARP', 'ICMP', 'LINK', 'CSMA', 'SYS'] as const;
+export const ALL_PROTOS = [
+  'ETH',
+  'ARP',
+  'ICMP',
+  'UDP',
+  'TCP',
+  'DHCP',
+  'DNS',
+  'HTTP',
+  'STP',
+  'VTP',
+  'NAT',
+  'ACL',
+  'LINK',
+  'CSMA',
+  'SYS',
+] as const;
 export type ProtoFilter = (typeof ALL_PROTOS)[number];
 
 export interface Anim {
@@ -116,7 +132,7 @@ export const useStore = create<UiState>((set, get) => ({
   cableStart: null,
   pduSource: null,
   portPicker: null,
-  filters: { ETH: true, ARP: true, ICMP: true, LINK: true, CSMA: true, SYS: true },
+  filters: Object.fromEntries(ALL_PROTOS.map((p) => [p, true])) as Record<ProtoFilter, boolean>,
   showPortLabels: false,
   colorblind: loadPref('netsim.cb', ['0', '1'], '0') === '1',
   theme: loadPref('netsim.theme', ['light', 'dark'], 'light'),

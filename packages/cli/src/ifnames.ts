@@ -18,7 +18,9 @@ export function resolveIface(dev: Device, text: string): IfRef | undefined {
   const sub = /^(.*)\.(\d{1,4})$/.exec(t);
   if (sub) {
     const p = resolvePort(dev.ports, sub[1] as string);
-    return p && dev.config.kind === 'router' ? { id: `${p.id}.${Number(sub[2])}`, kind: 'sub' } : undefined;
+    return p && dev.config.kind === 'router'
+      ? { id: `${p.id}.${Number(sub[2])}`, kind: 'sub' }
+      : undefined;
   }
   const p = resolvePort(dev.ports, t);
   return p ? { id: p.id, kind: 'phys' } : undefined;
@@ -41,7 +43,8 @@ export function resolveRange(dev: Device, text: string): IfRef[] | undefined {
     const b = resolveIface(dev, endText);
     const pb = dev.ports.findIndex((p) => p.id === b?.id);
     if (!b || pb < pa) return undefined;
-    for (let i = pa; i <= pb; i++) out.push({ id: (dev.ports[i] as { id: string }).id, kind: 'phys' });
+    for (let i = pa; i <= pb; i++)
+      out.push({ id: (dev.ports[i] as { id: string }).id, kind: 'phys' });
   }
   return out;
 }
@@ -55,7 +58,11 @@ export function ifDisplay(dev: Device, id: string): string {
 }
 
 export const ifShort = (dev: Device, id: string): string =>
-  id.startsWith('vlan') ? `Vl${id.slice(4)}` : id.startsWith('po') ? `Po${id.slice(2)}` : shortName(ifDisplay(dev, id));
+  id.startsWith('vlan')
+    ? `Vl${id.slice(4)}`
+    : id.startsWith('po')
+      ? `Po${id.slice(2)}`
+      : shortName(ifDisplay(dev, id));
 
 /** 1,3,5-7 → [1,3,5,6,7] */
 export function parseVlanList(text: string): number[] {
@@ -72,7 +79,7 @@ export function parseVlanList(text: string): number[] {
 export function compressVlans(vlans: number[]): string {
   const v = [...new Set(vlans)].sort((x, y) => x - y);
   const parts: string[] = [];
-  for (let i = 0; i < v.length; ) {
+  for (let i = 0; i < v.length;) {
     let j = i;
     while (v[j + 1] === (v[j] as number) + 1) j++;
     parts.push(j > i ? `${v[i]}-${v[j]}` : String(v[i]));
@@ -82,4 +89,11 @@ export function compressVlans(vlans: number[]): string {
 }
 
 export const IFM: ModeId[] = ['config-if', 'config-subif', 'config-if-range'];
-export const SUBMODES: ModeId[] = [...IFM, 'config-line', 'config-vlan', 'dhcp-config', 'config-std-nacl', 'config-ext-nacl'];
+export const SUBMODES: ModeId[] = [
+  ...IFM,
+  'config-line',
+  'config-vlan',
+  'dhcp-config',
+  'config-std-nacl',
+  'config-ext-nacl',
+];

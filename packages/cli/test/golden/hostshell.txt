@@ -33,6 +33,7 @@ FastEthernet0 Connection:(default port)
    Connection-specific DNS Suffix..: 
    Physical Address................: 02-00-00-00-00-04
    DHCP Enabled....................: No
+   DNS Servers.....................: 
    IPv4 Address....................: 10.0.1.10
    Subnet Mask.....................: 255.255.255.0
    Default Gateway.................: 10.0.1.1

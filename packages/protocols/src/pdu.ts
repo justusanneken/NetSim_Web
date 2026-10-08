@@ -5,7 +5,6 @@ import {
   type EthernetPdu,
   type HeaderField,
   type HttpPdu,
-  type IcmpPdu,
   type Ipv4Pdu,
   type LayerView,
   type Pdu,

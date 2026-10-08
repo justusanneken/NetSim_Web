@@ -63,7 +63,7 @@ describe('Host-Eingabeaufforderung (Abnahme Phase 2: ping + tracert)', () => {
     expect(sh.input('')).toBe('');
     expect(sh.input('help')).toContain('ping, tracert');
     expect(sh.input('foo')).toContain("'foo' is not recognized");
-    expect(sh.input('nslookup x')).toContain('not available in this version');
+    expect(sh.input('netstat')).toContain('not available in this version');
     expect(sh.input('ping')).toContain('Usage');
     expect(sh.input('tracert')).toContain('Usage');
     expect(sh.input('arp')).toContain('Usage');

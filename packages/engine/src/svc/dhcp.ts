@@ -43,9 +43,16 @@ function excluded(srv: DhcpServerCfg, ip: Ipv4Addr): boolean {
   return srv.excluded.some((e) => n >= num(e.from) && n <= num(e.to));
 }
 
-function allocate(srv: DhcpServerCfg, pool: DhcpPool, mac: string, now: number): Ipv4Addr | undefined {
+function allocate(
+  srv: DhcpServerCfg,
+  pool: DhcpPool,
+  mac: string,
+  now: number,
+): Ipv4Addr | undefined {
   purge(srv, now);
-  const have = Object.entries(srv.bindings).find(([, b]) => b.mac === mac && b.poolName === pool.name);
+  const have = Object.entries(srv.bindings).find(
+    ([, b]) => b.mac === mac && b.poolName === pool.name,
+  );
   if (have) return have[0];
   const plen = maskToPrefix(pool.mask) ?? 24;
   const net = num(pool.network) & (plen === 0 ? 0 : (0xffffffff << (32 - plen)) >>> 0);
@@ -54,7 +61,8 @@ function allocate(srv: DhcpServerCfg, pool: DhcpPool, mac: string, now: number):
   const to = pool.rangeEnd ? num(pool.rangeEnd) : bcast - 1;
   for (let n = from; n <= to; n++) {
     const ip = formatIpv4(n >>> 0);
-    if (excluded(srv, ip) || srv.bindings[ip] || srv.conflicts.includes(ip) || ip === pool.router) continue;
+    if (excluded(srv, ip) || srv.bindings[ip] || srv.conflicts.includes(ip) || ip === pool.router)
+      continue;
     return ip;
   }
   return undefined;
@@ -118,13 +126,28 @@ function serve(
   const ref = req.giaddr !== '0.0.0.0' ? req.giaddr : iface.ip;
   const pool = poolFor(srv, ref);
   const serverId = iface.ip;
-  const log = (key: string, params: Record<string, string | number>, status: 'ok' | 'drop' = 'ok'): void =>
-    ctx.log({ ...base, kind: status === 'ok' ? 'rx' : 'drop', proto: 'DHCP', status, msg: { key, params } });
+  const log = (
+    key: string,
+    params: Record<string, string | number>,
+    status: 'ok' | 'drop' = 'ok',
+  ): void =>
+    ctx.log({
+      ...base,
+      kind: status === 'ok' ? 'rx' : 'drop',
+      proto: 'DHCP',
+      status,
+      msg: { key, params },
+    });
   if (!pool) return log('dhcp.noPool', { mac: req.chaddr }, 'drop');
   if (req.op === 'discover') {
     const ip = allocate(srv, pool, req.chaddr, ctx.now);
     if (!ip) return log('dhcp.exhausted', { pool: pool.name }, 'drop');
-    srv.bindings[ip] = { mac: req.chaddr, poolName: pool.name, expiresAt: ctx.now + OFFER_HOLD_US, offered: true };
+    srv.bindings[ip] = {
+      mac: req.chaddr,
+      poolName: pool.name,
+      expiresAt: ctx.now + OFFER_HOLD_US,
+      offered: true,
+    };
     log('dhcp.offer', { ip, mac: req.chaddr });
     sendReply(ctx, node, iface, req, reply('offer', req, pool, ip, serverId));
   } else if (req.op === 'request') {
@@ -136,9 +159,17 @@ function serve(
     }
     purge(srv, ctx.now);
     const b = srv.bindings[want];
-    const free = !b && sameSubnet(pool.network, want, pool.mask) && !excluded(srv, want) && !srv.conflicts.includes(want);
+    const free =
+      !b &&
+      sameSubnet(pool.network, want, pool.mask) &&
+      !excluded(srv, want) &&
+      !srv.conflicts.includes(want);
     if ((b && b.mac === req.chaddr) || free) {
-      srv.bindings[want] = { mac: req.chaddr, poolName: pool.name, expiresAt: ctx.now + pool.leaseSec * 1_000_000 };
+      srv.bindings[want] = {
+        mac: req.chaddr,
+        poolName: pool.name,
+        expiresAt: ctx.now + pool.leaseSec * 1_000_000,
+      };
       log('dhcp.ack', { ip: want, mac: req.chaddr });
       sendReply(ctx, node, iface, req, reply('ack', req, pool, want, serverId));
     } else {
@@ -219,9 +250,9 @@ export function dhcpRx(
     return true;
   }
   if (!fromClient) {
-    if (node.l3 && udp.dstPort === 67 && ip.dst !== '255.255.255.255') return relayDown(ctx, node, base, app);
+    if (node.l3 && udp.dstPort === 67 && ip.dst !== '255.255.255.255')
+      return relayDown(ctx, node, base, app);
     if (node.host && udp.dstPort === 68) return clientRx(ctx, node, node.host, base, app);
   }
   return false;
 }
-

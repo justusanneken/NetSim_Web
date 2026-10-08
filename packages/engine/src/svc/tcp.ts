@@ -42,7 +42,12 @@ const reqOf = (h: HostConfig, id: number | undefined): HttpRequest | undefined =
 
 // ------------------------------------------------------------------ Client (HTTP)
 
-export function parseUrl(url: string): { https: boolean; host: string; port: number; path: string } {
+export function parseUrl(url: string): {
+  https: boolean;
+  host: string;
+  port: number;
+  path: string;
+} {
   const m = /^(?:(https?):\/\/)?([^/:]+)(?::(\d+))?(\/.*)?$/i.exec(url.trim());
   const https = m?.[1]?.toLowerCase() === 'https';
   return {
@@ -90,7 +95,14 @@ export function onDnsDone(
   connect(ctx, node, h, req, addr, parseUrl(req.url).port);
 }
 
-function connect(ctx: DeviceCtx, node: IpNode, h: HostConfig, req: HttpRequest, addr: Ipv4Addr, rport: number): void {
+function connect(
+  ctx: DeviceCtx,
+  node: IpNode,
+  h: HostConfig,
+  req: HttpRequest,
+  addr: Ipv4Addr,
+  rport: number,
+): void {
   req.addr = addr;
   req.status = 'connecting';
   const lport = h.nextPort++;
@@ -141,7 +153,11 @@ export function tcpTimer(ctx: DeviceCtx, node: IpNode, h: HostConfig, name: stri
 }
 
 /** ICMP-Fehler zu einem eigenen TCP-Segment. */
-export function tcpIcmpError(h: HostConfig, orig: { dst: Ipv4Addr; sport?: number; dport?: number }, blocked: boolean): void {
+export function tcpIcmpError(
+  h: HostConfig,
+  orig: { dst: Ipv4Addr; sport?: number; dport?: number },
+  blocked: boolean,
+): void {
   if (orig.sport === undefined || orig.dport === undefined) return;
   const c = h.tcp[key(orig.sport, orig.dst, orig.dport)];
   if (c) failConn(h, c, blocked ? 'http.err.blocked' : 'http.err.unreachable');
@@ -160,7 +176,11 @@ export function tcpRx(
 ): void {
   const k = key(t.dstPort, ip.src, t.srcPort);
   const c = h.tcp[k];
-  const log = (kk: string, status: 'ok' | 'drop' | 'info' = 'ok', params: Record<string, string | number> = {}): void =>
+  const log = (
+    kk: string,
+    status: 'ok' | 'drop' | 'info' = 'ok',
+    params: Record<string, string | number> = {},
+  ): void =>
     ctx.log({ ...base, kind: status === 'drop' ? 'drop' : 'rx', status, msg: { key: kk, params } });
   const reply = (f: Partial<TcpFlags>, seq: number, ack: number, app?: HttpPdu): void =>
     segment(ctx, node, iface.ip, ip.src, {
@@ -188,7 +208,12 @@ export function tcpRx(
       log('tcp.established', 'ok', { peer: ip.src, port: t.srcPort });
       const req = reqOf(h, c.pending?.reqId);
       if (req) req.status = 'waiting';
-      const get: HttpPdu = { kind: 'http', method: 'GET', path: c.pending?.path ?? '/', host: c.pending?.host ?? '' };
+      const get: HttpPdu = {
+        kind: 'http',
+        method: 'GET',
+        path: c.pending?.path ?? '/',
+        host: c.pending?.host ?? '',
+      };
       segment(ctx, node, iface.ip, ip.src, {
         srcPort: c.lport,
         dstPort: c.rport,
@@ -234,7 +259,15 @@ export function tcpRx(
     }
     const isn = h.nextIsn;
     h.nextIsn += 1000;
-    h.tcp[k] = { state: 'established', lport: t.dstPort, raddr: ip.src, rport: t.srcPort, seq: isn + 1, ack: t.seq + 1, retries: 0 };
+    h.tcp[k] = {
+      state: 'established',
+      lport: t.dstPort,
+      raddr: ip.src,
+      rport: t.srcPort,
+      seq: isn + 1,
+      ack: t.seq + 1,
+      retries: 0,
+    };
     log('tcp.syn', 'ok', { peer: ip.src, port: t.dstPort });
     reply({ syn: true, ack: true }, isn, t.seq + 1);
     return;
@@ -255,8 +288,13 @@ function serveHttp(
   log: (k: string, s?: 'ok' | 'drop' | 'info', p?: Record<string, string | number>) => void,
 ): void {
   const path = t.app?.path ?? '/';
-  const page = h.services.http.pages[path] ?? (path === '/index.html' ? h.services.http.pages['/'] : undefined);
-  const resp: HttpPdu = page !== undefined ? { kind: 'http', status: 200, body: page } : { kind: 'http', status: 404, body: '<h1>404 Not Found</h1>' };
+  const page =
+    h.services.http.pages[path] ??
+    (path === '/index.html' ? h.services.http.pages['/'] : undefined);
+  const resp: HttpPdu =
+    page !== undefined
+      ? { kind: 'http', status: 200, body: page }
+      : { kind: 'http', status: 404, body: '<h1>404 Not Found</h1>' };
   log('http.request', 'ok', { path, code: resp.status ?? 0 });
   segment(ctx, node, iface.ip, ip.src, {
     srcPort: t.dstPort,

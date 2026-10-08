@@ -6,7 +6,7 @@ import { useStore, type CableChoice } from '../store';
 
 const CATEGORIES: { id: string; devices: DeviceType[] }[] = [
   { id: 'end', devices: ['pc', 'laptop', 'server'] },
-  { id: 'network', devices: ['router', 'switch-l2', 'hub'] },
+  { id: 'network', devices: ['router', 'switch-l2', 'switch-l3', 'hub'] },
 ];
 const CABLES: CableChoice[] = ['auto', 'straight', 'crossover'];
 

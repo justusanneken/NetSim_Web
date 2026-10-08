@@ -4,10 +4,22 @@ import type { Iface } from './ifaces';
 import type { L3Cfg, NatCfg, NatEntry, NatRule } from './types';
 
 const FOREVER = Number.MAX_SAFE_INTEGER;
-const TIMEOUT_US = { icmp: 60_000_000, udp: 300_000_000, tcp: 86_400_000_000, ip: 300_000_000 };
+/** Idle-Timeout dynamischer Einträge; `ip nat translation timeout` überschreibt die Defaults (außer ICMP). */
+const timeoutUs = (nat: NatCfg, proto: 'icmp' | 'udp' | 'tcp' | 'ip'): number =>
+  nat.timeoutSec !== undefined && proto !== 'icmp'
+    ? nat.timeoutSec * 1_000_000
+    : DEFAULT_TIMEOUT_US[proto];
+
+const DEFAULT_TIMEOUT_US = {
+  icmp: 60_000_000,
+  udp: 300_000_000,
+  tcp: 86_400_000_000,
+  ip: 300_000_000,
+};
 
 export function natPurge(nat: NatCfg, now: number): void {
-  if (nat.table.some((e) => e.expiresAt <= now)) nat.table = nat.table.filter((e) => e.expiresAt > now);
+  if (nat.table.some((e) => e.expiresAt <= now))
+    nat.table = nat.table.filter((e) => e.expiresAt > now);
 }
 
 function setPorts(ip: Ipv4Pdu, src?: number, dst?: number): Ipv4Pdu {
@@ -36,7 +48,9 @@ function poolAddrs(nat: NatCfg, name: string): Ipv4Addr[] {
 }
 
 const used = (nat: NatCfg, proto: NatEntry['proto'], ip: Ipv4Addr, port: number): boolean =>
-  nat.table.some((e) => e.proto === proto && e.insideGlobal.ip === ip && e.insideGlobal.port === port);
+  nat.table.some(
+    (e) => e.proto === proto && e.insideGlobal.ip === ip && e.insideGlobal.port === port,
+  );
 
 function createDynamic(
   l3: L3Cfg,
@@ -70,7 +84,7 @@ function createDynamic(
     insideGlobal: { ip: gip, port: gport },
     outside: { ip: ip.dst, port: k.dport },
     kind: 'dynamic',
-    expiresAt: now + TIMEOUT_US[k.proto],
+    expiresAt: now + timeoutUs(nat, k.proto),
   };
 }
 
@@ -97,7 +111,8 @@ export function natInside2Outside(
     for (const r of nat.rules) {
       if (r.kind === 'static') {
         if (r.local !== ip.src) continue;
-        if (r.proto && (r.proto !== k.proto || (r.lport !== undefined && r.lport !== k.sport))) continue;
+        if (r.proto && (r.proto !== k.proto || (r.lport !== undefined && r.lport !== k.sport)))
+          continue;
         e = {
           proto: k.proto,
           insideLocal: { ip: ip.src, port: k.sport },
@@ -121,14 +136,18 @@ export function natInside2Outside(
       return { pkt: ip };
     }
     nat.table.push(e);
-  } else if (e.kind === 'dynamic') e.expiresAt = now + TIMEOUT_US[e.proto];
+  } else if (e.kind === 'dynamic') e.expiresAt = now + timeoutUs(nat, e.proto);
   nat.hits++;
   const pkt = setPorts({ ...structuredClone(ip), src: e.insideGlobal.ip }, e.insideGlobal.port);
   return { pkt, entry: e };
 }
 
 /** Outside → Inside: Zieladresse (und Port) zurückübersetzen (Antworten bzw. Static NAT). */
-export function natOutside2Inside(l3: L3Cfg, ip: Ipv4Pdu, now: number): { pkt: Ipv4Pdu; entry?: NatEntry } {
+export function natOutside2Inside(
+  l3: L3Cfg,
+  ip: Ipv4Pdu,
+  now: number,
+): { pkt: Ipv4Pdu; entry?: NatEntry } {
   const nat = l3.nat;
   natPurge(nat, now);
   if (ip.fragOffset > 0) return { pkt: ip };
@@ -144,7 +163,8 @@ export function natOutside2Inside(l3: L3Cfg, ip: Ipv4Pdu, now: number): { pkt: I
   if (!e) {
     for (const r of nat.rules) {
       if (r.kind !== 'static' || r.global !== ip.dst) continue;
-      if (r.proto && (r.proto !== k.proto || (r.gport !== undefined && r.gport !== k.dport))) continue;
+      if (r.proto && (r.proto !== k.proto || (r.gport !== undefined && r.gport !== k.dport)))
+        continue;
       e = {
         proto: k.proto,
         insideLocal: { ip: r.local, port: r.lport ?? k.dport },
@@ -156,10 +176,14 @@ export function natOutside2Inside(l3: L3Cfg, ip: Ipv4Pdu, now: number): { pkt: I
       nat.table.push(e);
       break;
     }
-  } else if (e.kind === 'dynamic') e.expiresAt = now + TIMEOUT_US[e.proto];
+  } else if (e.kind === 'dynamic') e.expiresAt = now + timeoutUs(nat, e.proto);
   if (!e) return { pkt: ip };
   nat.hits++;
-  const pkt = setPorts({ ...structuredClone(ip), dst: e.insideLocal.ip }, undefined, e.insideLocal.port);
+  const pkt = setPorts(
+    { ...structuredClone(ip), dst: e.insideLocal.ip },
+    undefined,
+    e.insideLocal.port,
+  );
   return { pkt, entry: e };
 }
 
@@ -170,7 +194,17 @@ export function natHasInbound(l3: L3Cfg, ip: Ipv4Pdu, now: number): boolean {
   const k = l4Of(ip);
   return (
     l3.nat.table.some(
-      (x) => x.proto === k.proto && x.insideGlobal.ip === ip.dst && x.insideGlobal.port === k.dport && x.outside.ip === ip.src,
-    ) || l3.nat.rules.some((r) => r.kind === 'static' && r.global === ip.dst && (!r.proto || (r.proto === k.proto && (r.gport === undefined || r.gport === k.dport))))
+      (x) =>
+        x.proto === k.proto &&
+        x.insideGlobal.ip === ip.dst &&
+        x.insideGlobal.port === k.dport &&
+        x.outside.ip === ip.src,
+    ) ||
+    l3.nat.rules.some(
+      (r) =>
+        r.kind === 'static' &&
+        r.global === ip.dst &&
+        (!r.proto || (r.proto === k.proto && (r.gport === undefined || r.gport === k.dport))),
+    )
   );
 }

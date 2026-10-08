@@ -55,8 +55,11 @@ test('Phase 1: platzieren, verkabeln, pingen, Event-Liste', async ({ page }) => 
   // Ping PC0 → 10.0.0.2
   await clickDevice(page, 160, 140);
   await page.getByLabel('Ziel-IP').fill('10.0.0.2');
-  await page.getByRole('button', { name: 'Senden', exact: true }).click();
-  await expect(page.locator('.ping-list .ping-reply')).toHaveCount(1, { timeout: 15_000 });
+  // Spanning Tree braucht ~30 s (802.1D) bis der Switch-Port weiterleitet → Ping wiederholen
+  await expect(async () => {
+    await page.getByRole('button', { name: 'Senden', exact: true }).click();
+    await expect(page.locator('.ping-list .ping-reply').first()).toBeVisible({ timeout: 6_000 });
+  }).toPass({ timeout: 55_000 });
 
   // Event-Liste: ARP-Flooding sichtbar, MAC-Tabelle des Switches gefüllt
   await expect(page.locator('.event.proto-ARP').first()).toBeVisible();

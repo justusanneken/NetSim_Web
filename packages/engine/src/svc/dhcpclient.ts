@@ -47,7 +47,8 @@ function send(
   if (opts.unicastTo) {
     const pkt = newIpPacket(node, opts.ciaddr ?? '0.0.0.0', opts.unicastTo, udp);
     const real = node.ifaces[0];
-    const gwMac = node.cfg.arpCache[h.gateway ?? opts.unicastTo]?.mac ?? node.cfg.arpCache[opts.unicastTo]?.mac;
+    const gwMac =
+      node.cfg.arpCache[h.gateway ?? opts.unicastTo]?.mac ?? node.cfg.arpCache[opts.unicastTo]?.mac;
     if (real && gwMac) sendDirect(ctx, node, real, gwMac, pkt);
     else sendBroadcast(ctx, node, iface, pkt);
     return;
@@ -65,7 +66,12 @@ export function dhcpStart(ctx: DeviceCtx, node: IpNode, h: HostConfig): void {
   h.mask = undefined;
   h.gateway = undefined;
   send(ctx, node, h, 'discover');
-  ctx.log({ kind: 'info', proto: 'DHCP', status: 'info', msg: { key: 'dhcp.discover', params: { xid: c.xid } } });
+  ctx.log({
+    kind: 'info',
+    proto: 'DHCP',
+    status: 'info',
+    msg: { key: 'dhcp.discover', params: { xid: c.xid } },
+  });
   ctx.setTimer('dhcp:retry', RETRY_US);
 }
 
@@ -80,12 +86,21 @@ export function dhcpStop(ctx: DeviceCtx, node: IpNode, h: HostConfig, release = 
   c.offered = undefined;
 }
 
-export function clientRx(ctx: DeviceCtx, node: IpNode, h: HostConfig, base: Base, m: DhcpPdu): boolean {
+export function clientRx(
+  ctx: DeviceCtx,
+  node: IpNode,
+  h: HostConfig,
+  base: Base,
+  m: DhcpPdu,
+): boolean {
   const c = h.dhcpClient;
   const port = node.dev.ports[0];
   if (!c.enabled || m.xid !== c.xid || m.chaddr !== port?.mac) return false;
-  const log = (key: string, status: 'ok' | 'drop' | 'info' = 'ok', params: Record<string, string | number> = {}): void =>
-    ctx.log({ ...base, kind: 'rx', proto: 'DHCP', status, msg: { key, params } });
+  const log = (
+    key: string,
+    status: 'ok' | 'drop' | 'info' = 'ok',
+    params: Record<string, string | number> = {},
+  ): void => ctx.log({ ...base, kind: 'rx', proto: 'DHCP', status, msg: { key, params } });
   if (m.op === 'offer' && c.state === 'selecting') {
     c.offered = {
       ip: m.yiaddr,
@@ -115,7 +130,14 @@ export function clientRx(ctx: DeviceCtx, node: IpNode, h: HostConfig, base: Base
     ctx.cancelTimer('dhcp:retry');
     const iface = pseudoIface(node);
     if (iface) {
-      const probe = { kind: 'arp' as const, op: 'request' as const, senderMac: iface.mac, senderIp: '0.0.0.0', targetMac: '00:00:00:00:00:00', targetIp: c.offered.ip };
+      const probe = {
+        kind: 'arp' as const,
+        op: 'request' as const,
+        senderMac: iface.mac,
+        senderIp: '0.0.0.0',
+        targetMac: '00:00:00:00:00:00',
+        targetIp: c.offered.ip,
+      };
       node.xmit(ctx, iface, eth(iface.mac, 'ff:ff:ff:ff:ff:ff', probe));
     }
     ctx.setTimer('dhcp:probe', PROBE_US);
@@ -136,7 +158,12 @@ export function dhcpProbeReply(ctx: DeviceCtx, node: IpNode, h: HostConfig, ip: 
   const c = h.dhcpClient;
   if (c.state !== 'probing' || c.offered?.ip !== ip) return false;
   ctx.cancelTimer('dhcp:probe');
-  ctx.log({ kind: 'error', proto: 'DHCP', status: 'error', msg: { key: 'dhcp.clientConflict', params: { ip } } });
+  ctx.log({
+    kind: 'error',
+    proto: 'DHCP',
+    status: 'error',
+    msg: { key: 'dhcp.clientConflict', params: { ip } },
+  });
   send(ctx, node, h, 'decline', { requestedIp: ip, serverId: c.server });
   c.state = 'init';
   ctx.setTimer('dhcp:retry', 10_000_000);
@@ -149,7 +176,8 @@ export function dhcpTimer(ctx: DeviceCtx, node: IpNode, h: HostConfig, name: str
   if (!c.enabled) return true;
   switch (name) {
     case 'dhcp:retry':
-      if (c.state === 'requesting' || c.state === 'selecting' || c.state === 'init') dhcpStart(ctx, node, h);
+      if (c.state === 'requesting' || c.state === 'selecting' || c.state === 'init')
+        dhcpStart(ctx, node, h);
       break;
     case 'dhcp:probe':
       if (c.state === 'probing' && c.offered) {
@@ -159,14 +187,26 @@ export function dhcpTimer(ctx: DeviceCtx, node: IpNode, h: HostConfig, name: str
         h.dnsServers = c.offered.dns ?? [];
         c.state = 'bound';
         c.boundAt = ctx.now;
-        ctx.log({ kind: 'info', proto: 'DHCP', status: 'ok', msg: { key: 'dhcp.bound', params: { ip: h.ip } } });
+        ctx.log({
+          kind: 'info',
+          proto: 'DHCP',
+          status: 'ok',
+          msg: { key: 'dhcp.bound', params: { ip: h.ip } },
+        });
         armLease(ctx, c.leaseSec);
       }
       break;
     case 'dhcp:renew':
       if (c.state === 'bound' && c.server && h.ip) {
         c.state = 'renewing';
-        send(ctx, node, h, 'request', { requestedIp: h.ip, serverId: c.server }, { ciaddr: h.ip, unicastTo: c.server });
+        send(
+          ctx,
+          node,
+          h,
+          'request',
+          { requestedIp: h.ip, serverId: c.server },
+          { ciaddr: h.ip, unicastTo: c.server },
+        );
         ctx.setTimer('dhcp:renewRetry', 5_000_000);
       }
       break;

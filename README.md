@@ -4,7 +4,7 @@ Browserbasierter **Netzwerksimulator** (Simulation, kein Emulator): Geräte plat
 konfigurieren, Pakete senden und Hop für Hop beobachten. Zielgruppe: Auszubildende/Studierende (CCNA-Niveau).
 UI: Deutsch (Default) und Englisch. Eigene Icons, keine Cisco-Marken.
 
-> **Stand: Phase 2 – Layer 3 + CLI-Grundlage.** Siehe [docs/phase-1-plan.md](docs/phase-1-plan.md),
+> **Stand: Phase 3 – Switching, Dienste, Filter** (Phase 2: Layer 3 + CLI-Grundlage). Siehe [docs/phase-1-plan.md](docs/phase-1-plan.md),
 > [docs/phase-2-plan.md](docs/phase-2-plan.md), [docs/coverage-matrix.md](docs/coverage-matrix.md) und
 > [docs/cli-reference.md](docs/cli-reference.md).
 
@@ -29,6 +29,14 @@ Voraussetzungen: Node ≥ 20, pnpm ≥ 10.
 | `packages/cli`       | CLI-Framework (ab Phase 2)                                                           |
 | `apps/web`           | React-UI (Konva, Zustand, i18next), Engine-Worker (Comlink)                          |
 | `docs/`              | Architektur, Entscheidungen, Vereinfachungen, Coverage-Matrix, Erweiterungsanleitung |
+
+## Bedienung (Phase 3)
+
+- **Layer-3-Switch** und Switches: Doppelklick → _Konfiguration_ → VLAN-Tabelle, VTP/STP-Modus, Switchport-Modus je Port;
+  Links blockierter STP-Ports leuchten orange. Router/L3-Switch: Subinterfaces bzw. SVIs im Panel anlegen.
+- **Server:** _Konfiguration_ → Dienste (HTTP/HTTPS, DNS-Einträge, Startseite); DHCP-Pools per CLI (`ip dhcp pool`).
+- **PC:** IP per DHCP beziehen, DNS-Server eintragen, _Desktop → Webbrowser_ (`http://name/`), `nslookup`, `ping name`.
+- Spanning Tree braucht ~30 s virtuelle Zeit, bis Access-Ports weiterleiten (PortFast: sofort).
 
 ## Bedienung (Phase 2)
 

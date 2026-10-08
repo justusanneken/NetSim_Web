@@ -128,7 +128,9 @@ describe('Fragmentierung, DF und PMTUD', () => {
     });
     expect(keys(e.log)).toContain('router.needFrag');
     const err = e.log.find(
-      (l) => l.frame?.payload.kind === 'ipv4' && (l.frame.payload.payload as { nextHopMtu?: number }).nextHopMtu,
+      (l) =>
+        l.frame?.payload.kind === 'ipv4' &&
+        (l.frame.payload.payload as { nextHopMtu?: number }).nextHopMtu,
     );
     expect(err).toBeDefined();
     // Ohne DF fragmentiert der Router
@@ -176,7 +178,9 @@ describe('Routing-Tabelle', () => {
     expect(e.routingTable(r1).some((x) => x.prefix === '192.168.0.0')).toBe(false);
     // Exit-Interface-Route
     e.addStaticRoute(r1, { prefix: '10.9.0.0', mask: '255.255.0.0', outIfaceId: 'p1' });
-    expect(e.routingTable(r1).some((x) => x.prefix === '10.9.0.0' && x.ifaceId === 'p1')).toBe(true);
+    expect(e.routingTable(r1).some((x) => x.prefix === '10.9.0.0' && x.ifaceId === 'p1')).toBe(
+      true,
+    );
     e.removeStaticRoute(r1, { prefix: '10.9.0.0', mask: '255.255.0.0', outIfaceId: 'p1' });
     expect(e.routingTable(r1).some((x) => x.prefix === '10.9.0.0')).toBe(false);
     void pc1;

@@ -38,7 +38,7 @@ describe('i18n', () => {
       for (const m of read(f).matchAll(/showToast\(\s*'([^']+)'/g)) used.add(m[1] as string);
     }
     // dynamische Schlüssel
-    ['pc', 'laptop', 'server', 'router', 'switch-l2', 'hub'].forEach((d) =>
+    ['pc', 'laptop', 'server', 'router', 'switch-l2', 'switch-l3', 'hub'].forEach((d) =>
       used.add(`device.${d}`),
     );
     ['config', 'cli', 'desktop'].forEach((d) => used.add(`dialog.tab.${d}`));

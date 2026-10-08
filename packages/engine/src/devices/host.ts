@@ -51,7 +51,13 @@ export function hostNode(ctx: DeviceCtx, cfg: HostConfig): IpNode {
   };
 }
 
-export function hostRx(ctx: DeviceCtx, cfg: HostConfig, portId: string, frame: Frame, fromId: string): void {
+export function hostRx(
+  ctx: DeviceCtx,
+  cfg: HostConfig,
+  portId: string,
+  frame: Frame,
+  fromId: string,
+): void {
   const node = hostNode(ctx, cfg);
   const port = ctx.port(portId);
   if (frame.vlan) return; // NIC ignoriert getaggte Frames
@@ -61,7 +67,12 @@ export function hostRx(ctx: DeviceCtx, cfg: HostConfig, portId: string, frame: F
     const p = frame.payload;
     const { proto, info } = summarizeFrame(frame);
     if (p.kind === 'arp' && p.op === 'reply' && dhcpProbeReply(ctx, node, cfg, p.senderIp)) return;
-    if (p.kind === 'ipv4' && p.payload.kind === 'udp' && p.payload.dstPort === 68 && cfg.dhcpClient.enabled) {
+    if (
+      p.kind === 'ipv4' &&
+      p.payload.kind === 'udp' &&
+      p.payload.dstPort === 68 &&
+      cfg.dhcpClient.enabled
+    ) {
       const pseudo: Iface = {
         id: port.id,
         kind: 'phys',
@@ -77,7 +88,16 @@ export function hostRx(ctx: DeviceCtx, cfg: HostConfig, portId: string, frame: F
         return;
       }
     }
-    ctx.log({ from: fromId, port, frame, summary: info, proto, kind: 'drop', status: 'drop', msg: { key: 'host.noIp' } });
+    ctx.log({
+      from: fromId,
+      port,
+      frame,
+      summary: info,
+      proto,
+      kind: 'drop',
+      status: 'drop',
+      msg: { key: 'host.noIp' },
+    });
     return;
   }
   ifaceFrameRx(ctx, node, iface, frame, fromId, port);
@@ -105,7 +125,12 @@ export function hostTimer(ctx: DeviceCtx, cfg: HostConfig, name: string): void {
   tcpTimer(ctx, node, cfg, name);
 }
 
-export function hostPing(ctx: DeviceCtx, cfg: HostConfig, dst: Ipv4Addr, opts?: PingOptions): Result<number> {
+export function hostPing(
+  ctx: DeviceCtx,
+  cfg: HostConfig,
+  dst: Ipv4Addr,
+  opts?: PingOptions,
+): Result<number> {
   return startPing(ctx, hostNode(ctx, cfg), dst, opts);
 }
 
@@ -142,4 +167,5 @@ export function resetIpRuntime(cfg: IpCore): void {
   cfg.pingSessions = [];
 }
 
-export const isHostDevice = (d: Device): d is Device & { config: HostConfig } => d.config.kind === 'host';
+export const isHostDevice = (d: Device): d is Device & { config: HostConfig } =>
+  d.config.kind === 'host';

@@ -55,9 +55,7 @@ export interface IpNode {
 }
 
 export type SendResult =
-  | { ok: true }
-  | { ok: false; reason: 'noRoute' }
-  | { ok: false; reason: 'needFrag'; mtu: number };
+  { ok: true } | { ok: false; reason: 'noRoute' } | { ok: false; reason: 'needFrag'; mtu: number };
 
 export type Base = {
   readonly from: string;
@@ -101,7 +99,8 @@ export function newIpPacket(
   };
 }
 
-export const isLocalIp = (node: IpNode, ip: Ipv4Addr): boolean => node.ifaces.some((i) => i.ip === ip);
+export const isLocalIp = (node: IpNode, ip: Ipv4Addr): boolean =>
+  node.ifaces.some((i) => i.ip === ip);
 
 // ------------------------------------------------------------------ Senden
 
@@ -186,7 +185,13 @@ export function sendBroadcast(ctx: DeviceCtx, node: IpNode, iface: Iface, pkt: I
 }
 
 /** Unicast direkt an eine bekannte MAC (z. B. DHCP-Antwort an einen Client ohne IP). */
-export function sendDirect(ctx: DeviceCtx, node: IpNode, iface: Iface, dstMac: string, pkt: Ipv4Pdu): void {
+export function sendDirect(
+  ctx: DeviceCtx,
+  node: IpNode,
+  iface: Iface,
+  dstMac: string,
+  pkt: Ipv4Pdu,
+): void {
   node.xmit(ctx, iface, eth(iface.mac, dstMac, pkt));
 }
 
@@ -245,7 +250,9 @@ export function sendIcmpError(
     },
     nextHopMtu,
   };
-  const pkt = newIpPacket(node, srcIp, off.src, icmp, { ttl: node.forwarding ? 255 : node.defaultTtl });
+  const pkt = newIpPacket(node, srcIp, off.src, icmp, {
+    ttl: node.forwarding ? 255 : node.defaultTtl,
+  });
   ipSend(ctx, node, pkt);
 }
 
@@ -344,10 +351,23 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
   }
 }
 
-function ipRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, ip: Ipv4Pdu, frame: Frame): void {
+function ipRx(
+  ctx: DeviceCtx,
+  node: IpNode,
+  iface: Iface,
+  base: Base,
+  ip: Ipv4Pdu,
+  frame: Frame,
+): void {
   const bcast = ip.dst === '255.255.255.255' || ip.dst === broadcastAddress(iface.ip, iface.mask);
   // Antworten an die übersetzte Adresse (auch die Router-Schnittstellenadresse) zuerst zurückübersetzen
-  if (node.l3 && node.forwarding && iface.cfg.natSide === 'outside' && node.l3.nat.rules.length > 0 && natHasInbound(node.l3, ip, ctx.now)) {
+  if (
+    node.l3 &&
+    node.forwarding &&
+    iface.cfg.natSide === 'outside' &&
+    node.l3.nat.rules.length > 0 &&
+    natHasInbound(node.l3, ip, ctx.now)
+  ) {
     forward(ctx, node, iface, base, ip);
     return;
   }
@@ -379,7 +399,10 @@ function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn:
         kind: 'drop',
         proto: 'ACL',
         status: 'drop',
-        msg: { key: 'acl.deny', params: { acl: ifaceIn.cfg.aclIn, dir: 'in', src: ip.src, dst: ip.dst } },
+        msg: {
+          key: 'acl.deny',
+          params: { acl: ifaceIn.cfg.aclIn, dir: 'in', src: ip.src, dst: ip.dst },
+        },
       });
       sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.admin, ip, ifaceIn.ip);
       return;
@@ -518,7 +541,13 @@ function reassemble(ctx: DeviceCtx, cfg: IpCore, ip: Ipv4Pdu): Ipv4Pdu | undefin
   }
   if (cur < e.total) return undefined;
   delete cfg.reasm[key];
-  return { ...structuredClone(ip), mf: false, fragOffset: 0, dataLen: undefined, payload: e.payload };
+  return {
+    ...structuredClone(ip),
+    mf: false,
+    fragOffset: 0,
+    dataLen: undefined,
+    payload: e.payload,
+  };
 }
 
 function deliverLocal(
@@ -548,12 +577,23 @@ function deliverLocal(
   }
   if (l4.kind === 'tcp') {
     if (node.host && !broadcast) tcpRx(ctx, node, node.host, iface, base, ip, l4);
-    else ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'ip.noService', params: { port: l4.dstPort } } });
+    else
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        status: 'drop',
+        msg: { key: 'ip.noService', params: { port: l4.dstPort } },
+      });
     return;
   }
   if (l4.type === 'echo-request') {
     if (broadcast) {
-      ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'host.icmp.broadcastIgnored' } });
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        status: 'drop',
+        msg: { key: 'host.icmp.broadcastIgnored' },
+      });
       return;
     }
     learn(ctx, node, ip.src, frame.src);

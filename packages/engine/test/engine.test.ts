@@ -56,9 +56,9 @@ describe('Scheduler', () => {
       'reply',
       'reply',
     ]);
-    expect(cfg?.kind === 'host' && cfg.pings.map((p) => Math.round((p.sentAt - t0) / 1e6))).toEqual([
-      0, 1, 2,
-    ]);
+    expect(cfg?.kind === 'host' && cfg.pings.map((p) => Math.round((p.sentAt - t0) / 1e6))).toEqual(
+      [0, 1, 2],
+    );
     expect(e.queueLength).toBe(0);
   });
 

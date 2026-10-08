@@ -7,7 +7,7 @@ export function matchAddr(m: AddrMatch | undefined, ip: Ipv4Addr): boolean {
   const b = parseIpv4(m.ip);
   const w = parseIpv4(m.wildcard);
   if (a === undefined || b === undefined || w === undefined) return false;
-  return (((a ^ b) & ~w) >>> 0) === 0;
+  return ((a ^ b) & ~w) >>> 0 === 0;
 }
 
 export function matchPort(m: PortMatch | undefined, port: number): boolean {
@@ -42,7 +42,12 @@ export function l4Of(ip: Ipv4Pdu): L4Key {
     case 'udp':
       return { proto: 'udp', sport: p.srcPort, dport: p.dstPort, established: false };
     case 'tcp':
-      return { proto: 'tcp', sport: p.srcPort, dport: p.dstPort, established: p.flags.ack || p.flags.rst };
+      return {
+        proto: 'tcp',
+        sport: p.srcPort,
+        dport: p.dstPort,
+        established: p.flags.ack || p.flags.rst,
+      };
   }
 }
 

@@ -4,6 +4,8 @@ import type { DeviceView } from '@netsim/engine';
 import { api } from '../engine/client';
 import { formatTime } from '../format';
 import { selectedDeviceView, useStore } from '../store';
+import { ServicesConfig } from './PanelServices';
+import { SwitchConfig } from './PanelSwitch';
 
 export function DevicePanel() {
   const dev = useStore(selectedDeviceView);
@@ -53,7 +55,9 @@ export function DeviceConfig({ dev }: { dev: DeviceView }) {
       )}
 
       {isHost(dev) && <HostIpConfig dev={dev} />}
-      {dev.type === 'router' && <RouterConfig dev={dev} />}
+      {(dev.type === 'router' || dev.type === 'switch-l3') && <RouterConfig dev={dev} />}
+      {(dev.type === 'switch-l2' || dev.type === 'switch-l3') && <SwitchConfig dev={dev} />}
+      {dev.type === 'server' && <ServicesConfig dev={dev} />}
 
       <h4>{t('panel.ports')}</h4>
       <table className="grid">
@@ -133,6 +137,7 @@ export function HostIpConfig({ dev }: { dev: DeviceView }) {
   const [ip, setIp] = useState(dev.ip ?? '');
   const [mask, setMask] = useState(dev.mask ?? '255.255.255.0');
   const [gw, setGw] = useState(dev.gateway ?? '');
+  const [dns, setDns] = useState((dev.dnsServers ?? []).join(' '));
   const [dst, setDst] = useState('');
   const [count, setCount] = useState(1);
   const showToast = useStore((s) => s.showToast);
@@ -140,6 +145,8 @@ export function HostIpConfig({ dev }: { dev: DeviceView }) {
 
   const apply = async () => {
     const r = await api.setHostIp(dev.id, ip.trim(), mask.trim(), gw.trim() || undefined);
+    const d = await api.setDnsServers(dev.id, dns.split(/[\s,]+/).filter(Boolean));
+    if (!d.ok) return showToast(d.error, d.params);
     if (r.ok) showToast('toast.ipApplied', undefined, 'ok');
     else showToast(r.error, r.params);
   };
@@ -147,6 +154,15 @@ export function HostIpConfig({ dev }: { dev: DeviceView }) {
   return (
     <>
       <h4>{t('panel.ipConfig')}</h4>
+      <label className="inline-check">
+        <input
+          type="checkbox"
+          checked={dev.dhcp !== undefined && dev.dhcp !== 'off'}
+          onChange={(e) => void api.setHostDhcp(dev.id, e.target.checked)}
+        />
+        {t('ip.dhcp')}
+        {dev.dhcp && dev.dhcp !== 'off' && <span className="muted"> ({dev.dhcp})</span>}
+      </label>
       <div className="form">
         <label>
           {t('ip.address')}
@@ -159,6 +175,10 @@ export function HostIpConfig({ dev }: { dev: DeviceView }) {
         <label>
           {t('ip.gateway')}
           <input value={gw} onChange={(e) => setGw(e.target.value)} />
+        </label>
+        <label>
+          {t('ip.dns')}
+          <input value={dns} onChange={(e) => setDns(e.target.value)} placeholder="8.8.8.8" />
         </label>
         <button onClick={() => void apply()}>{t('common.apply')}</button>
       </div>
@@ -243,14 +263,25 @@ function RouterConfig({ dev }: { dev: DeviceView }) {
   return (
     <>
       <h4>{t('router.interfaces')}</h4>
-      {dev.ports.map((p) => (
-        <IfaceRow
-          key={`${p.id}-${dev.ifaces?.[p.id]?.ip ?? ''}`}
-          dev={dev}
-          portId={p.id}
-          onApply={setIp}
-        />
-      ))}
+      {dev.ports
+        .filter((p) => dev.type === 'router' || dev.ifaces?.[p.id])
+        .map((p) => (
+          <IfaceRow
+            key={`${p.id}-${dev.ifaces?.[p.id]?.ip ?? ''}`}
+            dev={dev}
+            portId={p.id}
+            onApply={setIp}
+          />
+        ))}
+      {dev.ifaceList
+        ?.filter((i) => i.kind !== 'phys')
+        .map((i) => (
+          <div className="iface-row" key={`${i.id}-${i.ip ?? ''}`}>
+            <strong>{i.name}</strong>{' '}
+            <span className="mono">{i.ip ? `${i.ip} ${i.mask}` : t('panel.empty')}</span>
+          </div>
+        ))}
+      <SubifAdd dev={dev} />
       <h4>{t('router.staticRoutes')}</h4>
       {dev.staticRoutes && dev.staticRoutes.length > 0 ? (
         <table className="grid">
@@ -261,7 +292,7 @@ function RouterConfig({ dev }: { dev: DeviceView }) {
                   {r.prefix} {r.mask}
                 </td>
                 <td className="mono">
-                  {r.nextHop ?? dev.ports.find((p) => p.id === r.outPortId)?.name}
+                  {r.nextHop ?? dev.ifaceList?.find((i) => i.id === r.outIfaceId)?.name}
                 </td>
                 <td>
                   <button
@@ -306,13 +337,16 @@ function RouterConfig({ dev }: { dev: DeviceView }) {
           <tbody>
             {dev.routes.map((r, i) => (
               <tr key={i}>
-                <td>{r.type}</td>
+                <td>
+                  {r.type}
+                  {r.sub ? ` ${r.sub}` : ''}
+                </td>
                 <td className="mono">
                   {r.prefix}/{r.plen}
                 </td>
                 <td className="mono">
                   {r.type === 'S' ? `[${r.ad}/${r.metric}] ` : ''}
-                  {r.nextHop ?? dev.ports.find((p) => p.id === r.portId)?.name}
+                  {r.nextHop ?? dev.ifaceList?.find((i) => i.id === r.ifaceId)?.name}
                 </td>
               </tr>
             ))}
@@ -370,6 +404,57 @@ function IfaceRow({
         <span />
         <button onClick={() => void onApply(portId, ip, mask)}>{t('common.apply')}</button>
       </div>
+    </div>
+  );
+}
+
+/** Subinterface (Router) bzw. SVI (L3-Switch) anlegen und adressieren. */
+function SubifAdd({ dev }: { dev: DeviceView }) {
+  const { t } = useTranslation();
+  const showToast = useStore((s) => s.showToast);
+  const [port, setPort] = useState(dev.ports[0]?.id ?? 'p0');
+  const [vlan, setVlan] = useState(10);
+  const [ip, setIp] = useState('');
+  const [mask, setMask] = useState('255.255.255.0');
+  const isRouter = dev.type === 'router';
+  const add = async () => {
+    const c = isRouter
+      ? await api.createSubIface(dev.id, port, vlan)
+      : await api.createSvi(dev.id, vlan);
+    if (!c.ok) return showToast(c.error, c.params);
+    if (ip) {
+      const r = await api.setInterfaceIp(dev.id, c.value, ip.trim(), mask.trim());
+      if (!r.ok) showToast(r.error, r.params);
+    }
+  };
+  return (
+    <div className="form inline3" aria-label={isRouter ? t('router.subif') : t('router.svi')}>
+      {isRouter && (
+        <select aria-label={t('port.name')} value={port} onChange={(e) => setPort(e.target.value)}>
+          {dev.ports.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      )}
+      <input
+        type="number"
+        min={1}
+        max={4094}
+        aria-label="VLAN"
+        value={vlan}
+        onChange={(e) => setVlan(Number(e.target.value))}
+        className="narrow"
+      />
+      <input
+        aria-label={t('ip.address')}
+        placeholder="10.0.10.1"
+        value={ip}
+        onChange={(e) => setIp(e.target.value)}
+      />
+      <input aria-label={t('ip.mask')} value={mask} onChange={(e) => setMask(e.target.value)} />
+      <button onClick={() => void add()}>{isRouter ? t('router.subif') : t('router.svi')}</button>
     </div>
   );
 }

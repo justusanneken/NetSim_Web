@@ -17,7 +17,8 @@ const portStatus = (p: Port): { status: string; proto: string } =>
         : { status: 'down', proto: 'down' };
 
 const sw = (d: D): SwitchConfig | undefined => (d.config.kind === 'switch' ? d.config : undefined);
-const l3 = (d: D) => (d.config.kind === 'router' || d.config.kind === 'switch' ? d.config : undefined);
+const l3 = (d: D) =>
+  d.config.kind === 'router' || d.config.kind === 'switch' ? d.config : undefined;
 
 export function ifaceIp(d: D, id: string): { ip: string; mask: string } | undefined {
   const c = l3(d)?.ifaces[id];
@@ -34,9 +35,7 @@ const clock = (t: number): string => {
 
 export function showIpInterfaceBrief(_e: Engine, d: D): string[] {
   const cfg = l3(d);
-  const out = [
-    'Interface              IP-Address      OK? Method Status                Protocol',
-  ];
+  const out = ['Interface              IP-Address      OK? Method Status                Protocol'];
   const row = (name: string, ip: string | undefined, status: string, proto: string): void => {
     out.push(
       `${name.padEnd(23)}${(ip ?? 'unassigned').padEnd(16)}${'YES'.padEnd(4)}${(ip ? 'manual' : 'unset').padEnd(7)}${status.padEnd(22)}${proto}`,
@@ -48,15 +47,26 @@ export function showIpInterfaceBrief(_e: Engine, d: D): string[] {
     for (const [id, c] of Object.entries(cfg?.ifaces ?? {})) {
       if (c.kind !== 'sub' || c.portId !== p.id) continue;
       const up = cfg ? ifaceUp(d, cfg, id, c) : false;
-      row(ifDisplay(d, id), c.ip, up ? 'up' : c.shutdown ? 'administratively down' : 'down', up ? 'up' : 'down');
+      row(
+        ifDisplay(d, id),
+        c.ip,
+        up ? 'up' : c.shutdown ? 'administratively down' : 'down',
+        up ? 'up' : 'down',
+      );
     }
   }
   if (d.config.kind === 'switch') {
     const svis = Object.entries(d.config.ifaces).filter(([, c]) => c.kind === 'svi');
-    if (!svis.some(([id]) => id === 'vlan1')) row('Vlan1', undefined, 'administratively down', 'down');
+    if (!svis.some(([id]) => id === 'vlan1'))
+      row('Vlan1', undefined, 'administratively down', 'down');
     for (const [id, c] of svis) {
       const up = ifaceUp(d, d.config, id, c);
-      row(ifDisplay(d, id), c.ip, up ? 'up' : c.shutdown ? 'administratively down' : 'down', up ? 'up' : 'down');
+      row(
+        ifDisplay(d, id),
+        c.ip,
+        up ? 'up' : c.shutdown ? 'administratively down' : 'down',
+        up ? 'up' : 'down',
+      );
     }
   }
   return out;
@@ -70,7 +80,10 @@ export function showIpInterface(d: D, id: string): string[] {
   const up = port ? port.operUp && port.adminUp : !!cfg && !!c && ifaceUp(d, cfg, id, c);
   const out = [`${name} is ${up ? 'up' : 'down'}, line protocol is ${up ? 'up' : 'down'}`];
   if (c?.ip && c.mask) {
-    out.push(`  Internet address is ${c.ip}/${maskToPrefix(c.mask)}`, '  Broadcast address is 255.255.255.255');
+    out.push(
+      `  Internet address is ${c.ip}/${maskToPrefix(c.mask)}`,
+      '  Broadcast address is 255.255.255.255',
+    );
   } else out.push('  Internet protocol processing disabled');
   for (const h of c?.helpers ?? []) out.push(`  Helper address is ${h}`);
   out.push(`  MTU is ${port?.mtu ?? 1500} bytes`);
@@ -152,7 +165,15 @@ function showRouteEntry(d: D, rib: RibEntry[], target: string): string[] {
     if (!best || r.plen > best.plen || (r.plen === best.plen && r.ad < best.ad)) best = r;
   }
   if (!best) return ['% Network not in table'];
-  const names: Record<string, string> = { C: 'connected', L: 'receive', S: 'static', R: 'rip', O: 'ospf', D: 'eigrp', B: 'bgp' };
+  const names: Record<string, string> = {
+    C: 'connected',
+    L: 'receive',
+    S: 'static',
+    R: 'rip',
+    O: 'ospf',
+    D: 'eigrp',
+    B: 'bgp',
+  };
   const ifn = best.ifaceId ? ifDisplay(d, best.ifaceId) : '';
   const out = [
     `Routing entry for ${best.prefix}/${best.plen}`,
@@ -187,7 +208,9 @@ export function showIpArp(e: Engine, d: D): string[] {
   }
   rows.sort((a, b) => (parseIpv4(a.ip) ?? 0) - (parseIpv4(b.ip) ?? 0));
   for (const r of rows) {
-    out.push(`Internet  ${r.ip.padEnd(16)} ${r.age.padStart(9)}  ${r.mac.padEnd(14)}  ARPA   ${r.port}`);
+    out.push(
+      `Internet  ${r.ip.padEnd(16)} ${r.age.padStart(9)}  ${r.mac.padEnd(14)}  ARPA   ${r.port}`,
+    );
   }
   return out;
 }
@@ -202,8 +225,12 @@ export function showMacTable(e: Engine, d: D): string[] {
     '----    -----------       --------    -----',
   ];
   for (const r of rows) {
-    const port = r.portId.startsWith('po') ? `Po${r.portId.slice(2)}` : shortName(d.ports.find((x) => x.id === r.portId)?.name ?? '');
-    out.push(`${String(r.vlan).padStart(4)}    ${ciscoMac(r.mac).padEnd(15)}   DYNAMIC     ${port}`);
+    const port = r.portId.startsWith('po')
+      ? `Po${r.portId.slice(2)}`
+      : shortName(d.ports.find((x) => x.id === r.portId)?.name ?? '');
+    out.push(
+      `${String(r.vlan).padStart(4)}    ${ciscoMac(r.mac).padEnd(15)}   DYNAMIC     ${port}`,
+    );
   }
   out.push(`Total Mac Addresses for this criterion: ${rows.length}`);
   return out;
@@ -216,7 +243,13 @@ export function showInterface(d: D, p: Port): string[] {
   const a = ifaceIp(d, p.id);
   const c = p.counters;
   const bw = (p.operSpeed || (p.kind === 'ge' ? 1000 : 100)) * 1000;
-  const lineStatus = p.errdisabled ? 'down (err-disabled)' : !p.adminUp ? 'administratively down' : p.operUp ? 'up' : 'down';
+  const lineStatus = p.errdisabled
+    ? 'down (err-disabled)'
+    : !p.adminUp
+      ? 'administratively down'
+      : p.operUp
+        ? 'up'
+        : 'down';
   const desc = isCliDevice(d) ? d.config.sys.descriptions[p.id] : undefined;
   const out = [
     `${p.name} is ${lineStatus}, line protocol is ${s.proto}`,
@@ -231,7 +264,9 @@ export function showInterface(d: D, p: Port): string[] {
     '  Keepalive set (10 sec)',
   );
   if (p.operUp) {
-    out.push(`  ${p.operDuplex === 'full' ? 'Full' : 'Half'}-duplex, ${p.operSpeed}Mb/s, media type is RJ45`);
+    out.push(
+      `  ${p.operDuplex === 'full' ? 'Full' : 'Half'}-duplex, ${p.operSpeed}Mb/s, media type is RJ45`,
+    );
   } else out.push('  Auto-duplex, Auto Speed, media type is RJ45');
   if (d.config.kind === 'router') out.push('  ARP type: ARPA, ARP Timeout 04:00:00');
   out.push(
@@ -249,8 +284,20 @@ export function showInterfacesStatus(_e: Engine, d: D): string[] {
   const cfg = sw(d);
   for (const p of d.ports) {
     const pc = cfg?.ports[p.id];
-    const status = p.errdisabled ? 'err-disabled' : !p.adminUp ? 'disabled' : p.operUp ? 'connected' : 'notconnect';
-    const vlan = !cfg ? '1' : pc?.routed ? 'routed' : cfg.operTrunk[p.id] ? 'trunk' : String(pc?.accessVlan ?? 1);
+    const status = p.errdisabled
+      ? 'err-disabled'
+      : !p.adminUp
+        ? 'disabled'
+        : p.operUp
+          ? 'connected'
+          : 'notconnect';
+    const vlan = !cfg
+      ? '1'
+      : pc?.routed
+        ? 'routed'
+        : cfg.operTrunk[p.id]
+          ? 'trunk'
+          : String(pc?.accessVlan ?? 1);
     const duplex = p.operUp ? `a-${p.operDuplex}` : 'auto';
     const speed = p.operUp ? `a-${p.operSpeed}` : 'auto';
     const type = p.kind === 'ge' ? '10/100/1000BaseTX' : '10/100BaseTX';
@@ -266,7 +313,12 @@ export function showInterfacesSwitchport(d: D, p: Port): string[] {
   const pc = cfg?.ports[p.id];
   if (!cfg || !pc) return [];
   const trunk = cfg.operTrunk[p.id];
-  const mode = pc.mode === 'dynamic-auto' ? 'dynamic auto' : pc.mode === 'dynamic-desirable' ? 'dynamic desirable' : pc.mode;
+  const mode =
+    pc.mode === 'dynamic-auto'
+      ? 'dynamic auto'
+      : pc.mode === 'dynamic-desirable'
+        ? 'dynamic desirable'
+        : pc.mode;
   return [
     `Name: ${shortName(p.name)}`,
     `Switchport: ${pc.routed ? 'Disabled' : 'Enabled'}`,
@@ -302,19 +354,34 @@ export function showVlanBrief(d: D): string[] {
     'VLAN Name                             Status    Ports',
     '---- -------------------------------- --------- -------------------------------',
   ];
-  const ids = Object.keys(cfg.vlans).map(Number).sort((a, b) => a - b);
+  const ids = Object.keys(cfg.vlans)
+    .map(Number)
+    .sort((a, b) => a - b);
   for (const v of ids) {
     const ports = d.ports
       .filter((p) => {
         const pc = cfg.ports[p.id];
-        return pc && !pc.routed && !cfg.operTrunk[p.id] && pc.accessVlan === v && !(pc.channel !== undefined);
+        return (
+          pc &&
+          !pc.routed &&
+          !cfg.operTrunk[p.id] &&
+          pc.accessVlan === v &&
+          !(pc.channel !== undefined)
+        );
       })
       .map((p) => shortName(p.name));
     const lines = wrapPorts(ports);
-    out.push(`${String(v).padEnd(5)}${(cfg.vlans[v]?.name ?? '').padEnd(33)}${'active'.padEnd(10)}${lines[0] ?? ''}`);
+    out.push(
+      `${String(v).padEnd(5)}${(cfg.vlans[v]?.name ?? '').padEnd(33)}${'active'.padEnd(10)}${lines[0] ?? ''}`,
+    );
     for (const l of lines.slice(1)) out.push(`${' '.repeat(48)}${l}`);
   }
-  for (const [v, n] of [[1002, 'fddi-default'], [1003, 'token-ring-default'], [1004, 'fddinet-default'], [1005, 'trnet-default']] as const) {
+  for (const [v, n] of [
+    [1002, 'fddi-default'],
+    [1003, 'token-ring-default'],
+    [1004, 'fddinet-default'],
+    [1005, 'trnet-default'],
+  ] as const) {
     out.push(`${String(v).padEnd(5)}${n.padEnd(33)}${'act/unsup'}`);
   }
   return out;
@@ -328,19 +395,24 @@ export function showTrunk(d: D): string[] {
   const out = ['Port        Mode             Encapsulation  Status        Native vlan'];
   for (const p of trunks) {
     const pc = cfg.ports[p.id];
-    out.push(`${shortName(p.name).padEnd(12)}${(pc?.mode === 'trunk' ? 'on' : 'desirable').padEnd(17)}${'802.1q'.padEnd(15)}${'trunking'.padEnd(14)}${pc?.nativeVlan ?? 1}`);
+    out.push(
+      `${shortName(p.name).padEnd(12)}${(pc?.mode === 'trunk' ? 'on' : 'desirable').padEnd(17)}${'802.1q'.padEnd(15)}${'trunking'.padEnd(14)}${pc?.nativeVlan ?? 1}`,
+    );
   }
   const active = Object.keys(cfg.vlans).map(Number);
   const section = (title: string, f: (allowed: number[]) => string): void => {
     out.push('', `Port        ${title}`);
     for (const p of trunks) {
       const pc = cfg.ports[p.id];
-      const allowed = pc?.allowed === 'all' ? Array.from({ length: 4094 }, (_, i) => i + 1) : (pc?.allowed ?? []);
+      const allowed =
+        pc?.allowed === 'all' ? Array.from({ length: 4094 }, (_, i) => i + 1) : (pc?.allowed ?? []);
       out.push(`${shortName(p.name).padEnd(12)}${f(allowed)}`);
     }
   };
   section('Vlans allowed on trunk', (a) => (a.length === 4094 ? '1-4094' : compressVlans(a)));
-  section('Vlans allowed and active in management domain', (a) => compressVlans(a.filter((v) => active.includes(v))));
+  section('Vlans allowed and active in management domain', (a) =>
+    compressVlans(a.filter((v) => active.includes(v))),
+  );
   section('Vlans in spanning tree forwarding state and not pruned', (a) =>
     compressVlans(
       a.filter((v) => {
@@ -356,7 +428,12 @@ export function showSpanningTree(d: D, vlan?: number): string[] {
   const cfg = sw(d);
   if (!cfg) return [];
   const out: string[] = [];
-  const vlans = vlan !== undefined ? [vlan] : Object.keys(cfg.stp.instances).map(Number).sort((a, b) => a - b);
+  const vlans =
+    vlan !== undefined
+      ? [vlan]
+      : Object.keys(cfg.stp.instances)
+          .map(Number)
+          .sort((a, b) => a - b);
   for (const v of vlans) {
     const inst = cfg.stp.instances[v];
     if (!inst) continue;
@@ -369,27 +446,94 @@ export function showSpanningTree(d: D, vlan?: number): string[] {
     out.push(`  Root ID    Priority    ${prio}`, `             Address     ${rootMac}`);
     if (isRoot) out.push('             This bridge is the root');
     else {
-      const rp = inst.rootPort ? d.ports.find((p) => p.id === (inst.rootPort?.startsWith('po') ? undefined : inst.rootPort)) : undefined;
-      out.push(`             Cost        ${inst.rootCost}`, `             Port        ${rp ? `${d.ports.indexOf(rp) + 1} (${rp.name})` : inst.rootPort}`);
+      const rp = inst.rootPort
+        ? d.ports.find(
+            (p) => p.id === (inst.rootPort?.startsWith('po') ? undefined : inst.rootPort),
+          )
+        : undefined;
+      out.push(
+        `             Cost        ${inst.rootCost}`,
+        `             Port        ${rp ? `${d.ports.indexOf(rp) + 1} (${rp.name})` : inst.rootPort}`,
+      );
     }
     out.push('             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec', '');
     const base = cfg.stp.priority[v] ?? 32768;
     out.push(`  Bridge ID  Priority    ${base + v}  (priority ${base} sys-id-ext ${v})`);
     out.push(`             Address     ${ciscoMac(d.ports[0]?.mac ?? '')}`);
-    out.push('             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec', `             Aging Time  ${cfg.agingSec} sec`, '');
-    out.push('Interface           Role Sts Cost      Prio.Nbr Type', '------------------- ---- --- --------- -------- --------------------------------');
+    out.push(
+      '             Hello Time   2 sec  Max Age 20 sec  Forward Delay 15 sec',
+      `             Aging Time  ${cfg.agingSec} sec`,
+      '',
+    );
+    out.push(
+      'Interface           Role Sts Cost      Prio.Nbr Type',
+      '------------------- ---- --- --------- -------- --------------------------------',
+    );
     for (const [lp, ps] of Object.entries(inst.ports)) {
       const first = lp.startsWith('po') ? undefined : d.ports.find((p) => p.id === lp);
       const name = first ? shortName(first.name) : `Po${lp.slice(2)}`;
       const idx = first ? d.ports.indexOf(first) + 1 : 0;
-      const role = { root: 'Root', designated: 'Desg', alternate: 'Altn', disabled: 'Dis' }[ps.role];
-      const sts = { discarding: 'BLK', listening: 'LIS', learning: 'LRN', forwarding: 'FWD' }[ps.state];
+      const role = { root: 'Root', designated: 'Desg', alternate: 'Altn', disabled: 'Dis' }[
+        ps.role
+      ];
+      const sts = { discarding: 'BLK', listening: 'LIS', learning: 'LRN', forwarding: 'FWD' }[
+        ps.state
+      ];
       const cost = (first?.operSpeed ?? 100) >= 1000 ? 4 : 19;
-      out.push(`${name.padEnd(20)}${role.padEnd(5)}${sts.padEnd(4)}${String(cost).padEnd(10)}${`128.${idx}`.padEnd(9)}${ps.edge ? 'P2p Edge' : 'P2p'}`);
+      out.push(
+        `${name.padEnd(20)}${role.padEnd(5)}${sts.padEnd(4)}${String(cost).padEnd(10)}${`128.${idx}`.padEnd(9)}${ps.edge ? 'P2p Edge' : 'P2p'}`,
+      );
     }
     out.push('');
   }
   return out;
+}
+
+export function showSpanningTreeSummary(d: D): string[] {
+  const cfg = sw(d);
+  if (!cfg) return [];
+  const proto = cfg.stp.mode === 'rapid-pvst' ? 'rapid-pvst' : 'pvst';
+  const out = [`Switch is in ${proto} mode`, 'Root bridge for: ' + rootFor(d, cfg), ''];
+  out.push('Name                   Blocking Listening Learning Forwarding STP Active');
+  out.push('---------------------- -------- --------- -------- ---------- ----------');
+  let tb = 0,
+    tl = 0,
+    tn = 0,
+    tf = 0,
+    n = 0;
+  for (const v of Object.keys(cfg.stp.instances)
+    .map(Number)
+    .sort((a, b) => a - b)) {
+    const ports = Object.values(cfg.stp.instances[v]?.ports ?? {}).filter(
+      (p) => p.role !== 'disabled',
+    );
+    const c = (s: string): number => ports.filter((p) => p.state === s).length;
+    const row = [c('discarding'), c('listening'), c('learning'), c('forwarding'), ports.length];
+    tb += row[0] as number;
+    tl += row[1] as number;
+    tn += row[2] as number;
+    tf += row[3] as number;
+    n++;
+    out.push(
+      `${('VLAN' + String(v).padStart(4, '0')).padEnd(23)}${row.map((x, i) => String(x).padEnd([9, 10, 9, 11, 0][i] as number)).join('')}`.trimEnd(),
+    );
+  }
+  out.push('---------------------- -------- --------- -------- ---------- ----------');
+  out.push(
+    `${(n + ' vlans').padEnd(23)}${String(tb).padEnd(9)}${String(tl).padEnd(10)}${String(tn).padEnd(9)}${String(tf).padEnd(11)}${tb + tl + tn + tf}`,
+  );
+  return out;
+}
+
+function rootFor(d: D, cfg: NonNullable<ReturnType<typeof sw>>): string {
+  const mine = Object.entries(cfg.stp.instances)
+    .filter(
+      ([v, i]) =>
+        i.rootId ===
+        `${String((cfg.stp.priority[Number(v)] ?? 32768) + Number(v)).padStart(5, '0')}.${d.ports[0]?.mac ?? ''}`,
+    )
+    .map(([v]) => 'VLAN' + String(v).padStart(4, '0'));
+  return mine.length ? mine.join(', ') : 'none';
 }
 
 export function showEtherchannel(d: D): string[] {
@@ -418,9 +562,15 @@ export function showEtherchannel(d: D): string[] {
     const mode = cfg.ports[members[0] as string]?.channelMode ?? 'on';
     const proto = mode === 'on' ? '-' : mode === 'active' || mode === 'passive' ? 'LACP' : 'PAgP';
     const ports = members
-      .map((m) => `${shortName(d.ports.find((p) => p.id === m)?.name ?? '')}(${bundled.includes(m) ? 'P' : d.ports.find((p) => p.id === m)?.operUp ? 'I' : 'D'})`)
+      .map(
+        (m) =>
+          `${shortName(d.ports.find((p) => p.id === m)?.name ?? '')}(${bundled.includes(m) ? 'P' : d.ports.find((p) => p.id === m)?.operUp ? 'I' : 'D'})`,
+      )
       .join('   ');
-    out.push(`${String(n).padEnd(7)}Po${n}(${bundled.length ? 'SU' : 'SD'})`.padEnd(30) + `${proto.padEnd(8)}  ${ports}`);
+    out.push(
+      `${String(n).padEnd(7)}Po${n}(${bundled.length ? 'SU' : 'SD'})`.padEnd(30) +
+        `${proto.padEnd(8)}  ${ports}`,
+    );
   }
   return out;
 }
@@ -432,7 +582,13 @@ export function showPortSecurity(d: D, portId?: string): string[] {
     const p = d.ports.find((x) => x.id === portId);
     const ps = cfg.ports[portId]?.psec;
     if (!p || !ps) return [];
-    const status = !ps.enabled ? 'Secure-down' : p.errdisabled ? 'Secure-shutdown' : p.operUp ? 'Secure-up' : 'Secure-down';
+    const status = !ps.enabled
+      ? 'Secure-down'
+      : p.errdisabled
+        ? 'Secure-shutdown'
+        : p.operUp
+          ? 'Secure-up'
+          : 'Secure-down';
     return [
       `Port Security              : ${ps.enabled ? 'Enabled' : 'Disabled'}`,
       `Port Status                : ${status}`,
@@ -457,9 +613,15 @@ export function showPortSecurity(d: D, portId?: string): string[] {
     const ps = cfg.ports[p.id]?.psec;
     if (!ps?.enabled) continue;
     const act = ps.violation[0]?.toUpperCase() + ps.violation.slice(1);
-    out.push(`${shortName(p.name).padStart(12)}${String(ps.max).padStart(15)}${String(ps.macs.length + ps.dynMacs.length).padStart(13)}${String(ps.violations).padStart(19)}${act.padStart(17)}`);
+    out.push(
+      `${shortName(p.name).padStart(12)}${String(ps.max).padStart(15)}${String(ps.macs.length + ps.dynMacs.length).padStart(13)}${String(ps.violations).padStart(19)}${act.padStart(17)}`,
+    );
   }
-  out.push('----------------------------------------------------------------------', 'Total Addresses in System (excluding one mac per port)     : 0', 'Max Addresses limit in System (excluding one mac per port) : 6144');
+  out.push(
+    '----------------------------------------------------------------------',
+    'Total Addresses in System (excluding one mac per port)     : 0',
+    'Max Addresses limit in System (excluding one mac per port) : 6144',
+  );
   return out;
 }
 
@@ -505,9 +667,13 @@ export function showDhcpBinding(e: Engine, d: D): string[] {
     '                Hardware address/',
     '                User name',
   ];
-  for (const [ip, b] of Object.entries(srv?.bindings ?? {}).sort(([a], [c]) => (parseIpv4(a) ?? 0) - (parseIpv4(c) ?? 0))) {
+  for (const [ip, b] of Object.entries(srv?.bindings ?? {}).sort(
+    ([a], [c]) => (parseIpv4(a) ?? 0) - (parseIpv4(c) ?? 0),
+  )) {
     if (b.offered || b.expiresAt <= e.state.now) continue;
-    out.push(`${ip.padEnd(16)}${ciscoMac(b.mac).padEnd(24)}${stamp(b.expiresAt).padEnd(24)}Automatic`);
+    out.push(
+      `${ip.padEnd(16)}${ciscoMac(b.mac).padEnd(24)}${stamp(b.expiresAt).padEnd(24)}Automatic`,
+    );
   }
   return out;
 }
@@ -518,7 +684,9 @@ export function showDhcpPool(e: Engine, d: D): string[] {
   for (const p of srv?.pools ?? []) {
     const plen = maskToPrefix(p.mask) ?? 24;
     const total = Math.max(0, 2 ** (32 - plen) - 2);
-    const leased = Object.values(srv?.bindings ?? {}).filter((b) => b.poolName === p.name && !b.offered && b.expiresAt > e.state.now).length;
+    const leased = Object.values(srv?.bindings ?? {}).filter(
+      (b) => b.poolName === p.name && !b.offered && b.expiresAt > e.state.now,
+    ).length;
     out.push(
       `Pool ${p.name} :`,
       ' Utilization mark (high/low)    : 100 / 0',
@@ -537,7 +705,8 @@ export function showDhcpPool(e: Engine, d: D): string[] {
 
 export function showDhcpConflict(e: Engine, d: D): string[] {
   const out = ['IP address        Detection method   Detection time          VRF'];
-  for (const ip of dhcpOf(d)?.conflicts ?? []) out.push(`${ip.padEnd(18)}${'ARP'.padEnd(19)}${stamp(e.state.now)}`);
+  for (const ip of dhcpOf(d)?.conflicts ?? [])
+    out.push(`${ip.padEnd(18)}${'ARP'.padEnd(19)}${stamp(e.state.now)}`);
   return out;
 }
 
@@ -554,7 +723,9 @@ export function showAccessLists(d: D, name?: string): string[] {
         const m = e.src;
         text = 'any' in m ? `${e.action} any` : `${e.action} ${m.ip}, wildcard bits ${m.wildcard}`;
       }
-      out.push(`    ${e.seq} ${text}${e.matches ? ` (${e.matches} match${e.matches === 1 ? '' : 'es'})` : ''}`);
+      out.push(
+        `    ${e.seq} ${text}${e.matches ? ` (${e.matches} match${e.matches === 1 ? '' : 'es'})` : ''}`,
+      );
     }
   }
   return out;
@@ -564,9 +735,12 @@ export function showNatTranslations(d: D): string[] {
   const cfg = l3(d);
   const out = ['Pro Inside global      Inside local       Outside local      Outside global'];
   for (const t of cfg?.nat.table ?? []) {
-    const ep = (x: { ip: string; port: number }): string => (t.proto === 'ip' ? x.ip : `${x.ip}:${x.port}`);
+    const ep = (x: { ip: string; port: number }): string =>
+      t.proto === 'ip' ? x.ip : `${x.ip}:${x.port}`;
     const out2 = t.proto === 'icmp' ? `${t.outside.ip}:${t.insideGlobal.port}` : ep(t.outside);
-    out.push(`${t.proto.padEnd(4)}${ep(t.insideGlobal).padEnd(19)}${ep(t.insideLocal).padEnd(19)}${(t.proto === 'icmp' ? `${t.outside.ip}:${t.insideLocal.port}` : ep(t.outside)).padEnd(19)}${out2}`);
+    out.push(
+      `${t.proto.padEnd(4)}${ep(t.insideGlobal).padEnd(19)}${ep(t.insideLocal).padEnd(19)}${(t.proto === 'icmp' ? `${t.outside.ip}:${t.insideLocal.port}` : ep(t.outside)).padEnd(19)}${out2}`,
+    );
   }
   return out;
 }
@@ -576,15 +750,29 @@ export function showNatStatistics(d: D): string[] {
   if (!cfg) return [];
   const table = cfg.nat.table;
   const stat = table.filter((t) => t.kind === 'static').length;
-  const out = [`Total active translations: ${table.length} (${stat} static, ${table.length - stat} dynamic; ${table.length - stat} extended)`];
+  const out = [
+    `Total active translations: ${table.length} (${stat} static, ${table.length - stat} dynamic; ${table.length - stat} extended)`,
+  ];
   const inside = Object.entries(cfg.ifaces).filter(([, c]) => c.natSide === 'inside');
   const outside = Object.entries(cfg.ifaces).filter(([, c]) => c.natSide === 'outside');
   out.push('Outside interfaces:', ...outside.map(([id]) => `  ${ifDisplay(d, id)}`));
   out.push('Inside interfaces:', ...inside.map(([id]) => `  ${ifDisplay(d, id)}`));
-  out.push(`Hits: ${cfg.nat.hits}  Misses: ${cfg.nat.misses}`, 'Expired translations: 0', 'Dynamic mappings:');
+  out.push(
+    `Hits: ${cfg.nat.hits}  Misses: ${cfg.nat.misses}`,
+    'Expired translations: 0',
+    'Dynamic mappings:',
+  );
   for (const r of cfg.nat.rules) {
-    if (r.kind === 'dynamic') out.push('-- Inside Source', `[Id: 1] access-list ${r.acl} pool ${r.pool} refcount ${table.length}`);
-    else if (r.kind === 'interface') out.push('-- Inside Source', `[Id: 1] access-list ${r.acl} interface ${ifDisplay(d, r.ifaceId)} refcount ${table.length}`);
+    if (r.kind === 'dynamic')
+      out.push(
+        '-- Inside Source',
+        `[Id: 1] access-list ${r.acl} pool ${r.pool} refcount ${table.length}`,
+      );
+    else if (r.kind === 'interface')
+      out.push(
+        '-- Inside Source',
+        `[Id: 1] access-list ${r.acl} interface ${ifDisplay(d, r.ifaceId)} refcount ${table.length}`,
+      );
   }
   return out;
 }

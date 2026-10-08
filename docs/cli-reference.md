@@ -59,5 +59,26 @@ abgekürzt werden. `no`/`default` stehen bei allen als _negatable_ gekennzeichne
 ## Windows-Eingabeaufforderung (Hosts)
 
 `ping [-n N] [-l SIZE] [-f] ZIEL`, `tracert [-h N] ZIEL`, `ipconfig [/all]`, `arp -a`, `cls`, `help`.
-`ipconfig /release|/renew` melden bis zu DHCP (Phase 3), dass kein passender Adapter existiert.
-`nslookup`, `netstat`, `telnet`, `ssh`, `ftp`, `tftp` folgen mit den jeweiligen Diensten.
+`ipconfig /release|/renew` (DHCP-Client), `nslookup NAME`, `ping NAME`.
+`netstat`, `telnet`, `ssh`, `ftp`, `tftp` sind nicht verfügbar.
+
+## Phase 3 – Switching, Dienste, Filter
+
+**Global (Switch):** `vlan N` (+ `name`), `vtp mode|domain`, `spanning-tree mode (pvst|rapid-pvst)`,
+`spanning-tree vlan N priority P`, `spanning-tree portfast default`, `errdisable recovery cause psecure-violation`,
+`errdisable recovery interval S`, `mac address-table aging-time S`, `ip routing` (L3-Switch).
+
+**Interface / `interface range A - B`:** `interface vlan N`, `interface port-channel N`, `switchport mode
+(access|trunk|dynamic auto|dynamic desirable)`, `switchport access vlan N`, `switchport trunk native vlan N`,
+`switchport trunk allowed vlan LIST|add|remove|all|none`, `switchport port-security [maximum|violation|mac-address
+sticky|mac-address MAC]`, `spanning-tree portfast|bpduguard enable|guard root`, `channel-group N mode
+(on|active|passive|desirable|auto)`, `no switchport` (L3-Switch), `encapsulation dot1Q N` (Subinterface),
+`ip helper-address A`, `ip access-group NAME|N (in|out)`, `ip nat (inside|outside)`.
+
+**Global (L3):** `ip dhcp pool/excluded-address`, `network`, `default-router`, `dns-server`, `lease`,
+`access-list N (permit|deny) …`, `ip access-list (standard|extended) NAME` (+ Einträge, `no SEQ`), `ip nat pool`,
+`ip nat inside source (list|static) …`, `ip nat translation timeout S`.
+
+**Show:** `vlan [brief|id N]`, `interfaces trunk|switchport|status`, `spanning-tree [vlan N|summary]`,
+`etherchannel summary`, `port-security [interface X]`, `vtp status`, `ip dhcp binding|pool|conflict`,
+`access-lists [NAME]`, `ip nat translations|statistics`, `ip interface [brief]`, `ip route`. `clear ip nat translation *`.

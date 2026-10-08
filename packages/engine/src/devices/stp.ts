@@ -2,7 +2,15 @@ import { MAC_PVST, MAC_STP, ETHERTYPE, type BpduPdu, type Frame } from '@netsim/
 import type { DeviceCtx } from '../ctx';
 import type { Base } from '../l3';
 import type { StpInstance, StpPortState } from '../types';
-import { carriesVlan, errdisable, flushMacs, logicalPorts, lpMembers, lpOf, type SwitchDev } from './switch';
+import {
+  carriesVlan,
+  errdisable,
+  flushMacs,
+  logicalPorts,
+  lpMembers,
+  lpOf,
+  type SwitchDev,
+} from './switch';
 
 const HELLO = 2_000_000;
 const MAX_AGE = 20_000_000;
@@ -25,7 +33,17 @@ function portCost(dev: SwitchDev, lp: string): number {
     (a, id) => a + (dev.ports.find((p) => p.id === id)?.operSpeed ?? 0),
     0,
   );
-  return speed >= 10000 ? 2 : speed >= 2000 ? 3 : speed >= 1000 ? 4 : speed >= 200 ? 12 : speed >= 100 ? 19 : 100;
+  return speed >= 10000
+    ? 2
+    : speed >= 2000
+      ? 3
+      : speed >= 1000
+        ? 4
+        : speed >= 200
+          ? 12
+          : speed >= 100
+            ? 19
+            : 100;
 }
 
 function instanceOf(dev: SwitchDev, vlan: number): StpInstance {
@@ -57,13 +75,23 @@ interface Vec {
   port: string;
 }
 const cmp = (a: Vec, b: Vec): number =>
-  a.root.localeCompare(b.root) || a.cost - b.cost || a.bridge.localeCompare(b.bridge) || a.port.localeCompare(b.port);
+  a.root.localeCompare(b.root) ||
+  a.cost - b.cost ||
+  a.bridge.localeCompare(b.bridge) ||
+  a.port.localeCompare(b.port);
 
-const roleText = { root: 'root', designated: 'designated', alternate: 'alternate', disabled: 'disabled' } as const;
+const roleText = {
+  root: 'root',
+  designated: 'designated',
+  alternate: 'alternate',
+  disabled: 'disabled',
+} as const;
 
 function logState(ctx: DeviceCtx, dev: SwitchDev, vlan: number, lp: string, key: string): void {
   const ps = instanceOf(dev, vlan).ports[lp] as StpPortState;
-  const name = lp.startsWith('po') ? `Po${lp.slice(2)}` : (dev.ports.find((p) => p.id === lp)?.name ?? lp);
+  const name = lp.startsWith('po')
+    ? `Po${lp.slice(2)}`
+    : (dev.ports.find((p) => p.id === lp)?.name ?? lp);
   ctx.log({
     kind: 'info',
     proto: 'STP',
@@ -78,7 +106,13 @@ function topologyChange(ctx: DeviceCtx, dev: SwitchDev, vlan: number): void {
   flushMacs(dev.config, { vlan });
 }
 
-function setState(ctx: DeviceCtx, dev: SwitchDev, vlan: number, lp: string, state: StpPortState['state']): void {
+function setState(
+  ctx: DeviceCtx,
+  dev: SwitchDev,
+  vlan: number,
+  lp: string,
+  state: StpPortState['state'],
+): void {
   const ps = instanceOf(dev, vlan).ports[lp] as StpPortState;
   if (ps.state === state) return;
   const wasFwd = ps.state === 'forwarding';
@@ -119,7 +153,11 @@ function recompute(ctx: DeviceCtx, dev: SwitchDev, vlan: number): void {
   for (const lp of lps) {
     const ps = inst.ports[lp] as StpPortState;
     const first = lpMembers(cfg, lp)[0] as string;
-    const want = !lp.startsWith('po') && !!cfg.ports[first]?.portfast && !cfg.operTrunk[first] && !ps.edgeBroken;
+    const want =
+      !lp.startsWith('po') &&
+      !!cfg.ports[first]?.portfast &&
+      !cfg.operTrunk[first] &&
+      !ps.edgeBroken;
     if (want === ps.edge) continue;
     ps.edge = want;
     ps.proposing = false;
@@ -139,8 +177,14 @@ function recompute(ctx: DeviceCtx, dev: SwitchDev, vlan: number): void {
     if (!ps.info || ps.edge) continue;
     const first = lpMembers(cfg, lp)[0] as string;
     if (cfg.ports[first]?.rootguard && ps.info.rootId < own) continue;
-    const vec = { root: ps.info.rootId, cost: ps.info.cost + portCost(dev, lp), bridge: ps.info.bridgeId, port: ps.info.portId };
-    if (!best || cmp(vec, best.vec) < 0 || (cmp(vec, best.vec) === 0 && lp < best.lp)) best = { vec, lp };
+    const vec = {
+      root: ps.info.rootId,
+      cost: ps.info.cost + portCost(dev, lp),
+      bridge: ps.info.bridgeId,
+      port: ps.info.portId,
+    };
+    if (!best || cmp(vec, best.vec) < 0 || (cmp(vec, best.vec) === 0 && lp < best.lp))
+      best = { vec, lp };
   }
   const oldRoot = inst.rootId;
   const oldRootPort = inst.rootPort;
@@ -158,7 +202,10 @@ function recompute(ctx: DeviceCtx, dev: SwitchDev, vlan: number): void {
       kind: 'info',
       proto: 'STP',
       status: 'info',
-      msg: { key: inst.rootId === own ? 'stp.rootSelf' : 'stp.rootChanged', params: { vlan, root: inst.rootId } },
+      msg: {
+        key: inst.rootId === own ? 'stp.rootSelf' : 'stp.rootChanged',
+        params: { vlan, root: inst.rootId },
+      },
     });
   }
   // Rollen
@@ -168,8 +215,18 @@ function recompute(ctx: DeviceCtx, dev: SwitchDev, vlan: number): void {
     let role: StpPortState['role'];
     if (lp === inst.rootPort) role = 'root';
     else if (ps.info && !ps.edge) {
-      const mine: Vec = { root: inst.rootId, cost: inst.rootCost, bridge: own, port: portIdOf(dev, lp) };
-      const theirs: Vec = { root: ps.info.rootId, cost: ps.info.cost, bridge: ps.info.bridgeId, port: ps.info.portId };
+      const mine: Vec = {
+        root: inst.rootId,
+        cost: inst.rootCost,
+        bridge: own,
+        port: portIdOf(dev, lp),
+      };
+      const theirs: Vec = {
+        root: ps.info.rootId,
+        cost: ps.info.cost,
+        bridge: ps.info.bridgeId,
+        port: ps.info.portId,
+      };
       role = cmp(mine, theirs) < 0 ? 'designated' : 'alternate';
       if (cfg.ports[first]?.rootguard && ps.info.rootId < own) role = 'designated';
     } else role = 'designated';
@@ -220,8 +277,15 @@ export function stpPortDown(ctx: DeviceCtx, dev: SwitchDev, lp: string): void {
 
 // ------------------------------------------------------------------ BPDU senden
 
-function frameFor(dev: SwitchDev, vlan: number, lp: string, bpdu: BpduPdu): { portId: string; frame: Frame } | undefined {
-  const members = lpMembers(dev.config, lp).filter((id) => dev.ports.find((p) => p.id === id)?.operUp);
+function frameFor(
+  dev: SwitchDev,
+  vlan: number,
+  lp: string,
+  bpdu: BpduPdu,
+): { portId: string; frame: Frame } | undefined {
+  const members = lpMembers(dev.config, lp).filter(
+    (id) => dev.ports.find((p) => p.id === id)?.operUp,
+  );
   const portId = members[0];
   if (!portId) return undefined;
   const pc = dev.config.ports[portId];
@@ -302,7 +366,12 @@ export function stpRx(
   const local = !cfg.operTrunk[portId];
   if (ps.edge && local) {
     if (pc.bpduguard) {
-      ctx.log({ ...base, kind: 'error', status: 'error', msg: { key: 'stp.bpduGuard', params: { port: base.port?.name ?? portId } } });
+      ctx.log({
+        ...base,
+        kind: 'error',
+        status: 'error',
+        msg: { key: 'stp.bpduGuard', params: { port: base.port?.name ?? portId } },
+      });
       errdisable(ctx, dev, portId, 'bpduguard');
       return;
     }
@@ -311,23 +380,47 @@ export function stpRx(
     ps.state = isRstp(dev) ? 'discarding' : 'listening';
     ps.nextAt = ctx.now + (isRstp(dev) ? RAPID_FALLBACK : FWD_DELAY);
   }
-  const incoming: StpPortState['info'] = { rootId: b.rootId, cost: b.rootCost, bridgeId: b.bridgeId, portId: b.portId, rstp: b.rstp };
+  const incoming: StpPortState['info'] = {
+    rootId: b.rootId,
+    cost: b.rootCost,
+    bridgeId: b.bridgeId,
+    portId: b.portId,
+    rstp: b.rstp,
+  };
   const old = ps.info;
   const sameSender = old && old.bridgeId === b.bridgeId && old.portId === b.portId;
   const inc: Vec = { root: b.rootId, cost: b.rootCost, bridge: b.bridgeId, port: b.portId };
-  const oldVec: Vec | undefined = old && { root: old.rootId, cost: old.cost, bridge: old.bridgeId, port: old.portId };
+  const oldVec: Vec | undefined = old && {
+    root: old.rootId,
+    cost: old.cost,
+    bridge: old.bridgeId,
+    port: old.portId,
+  };
   if (!old || sameSender || (oldVec && cmp(inc, oldVec) <= 0)) {
     ps.info = incoming;
     ps.infoAt = ctx.now;
   }
-  const before = JSON.stringify([inst.rootId, inst.rootPort, ...Object.values(inst.ports).map((x) => x.role)]);
+  const before = JSON.stringify([
+    inst.rootId,
+    inst.rootPort,
+    ...Object.values(inst.ports).map((x) => x.role),
+  ]);
   recompute(ctx, dev, vlan);
-  const changed = before !== JSON.stringify([inst.rootId, inst.rootPort, ...Object.values(inst.ports).map((x) => x.role)]);
+  const changed =
+    before !==
+    JSON.stringify([inst.rootId, inst.rootPort, ...Object.values(inst.ports).map((x) => x.role)]);
   if (changed) {
-    ctx.log({ ...base, kind: 'rx', proto: 'STP', status: 'info', msg: { key: 'stp.bpdu', params: { vlan, root: b.rootId, cost: b.rootCost } } });
+    ctx.log({
+      ...base,
+      kind: 'rx',
+      proto: 'STP',
+      status: 'info',
+      msg: { key: 'stp.bpdu', params: { vlan, root: b.rootId, cost: b.rootCost } },
+    });
   }
   // Topologieänderung
-  if (b.flags.topologyChange && lp === inst.rootPort && inst.tcUntil <= ctx.now) topologyChange(ctx, dev, vlan);
+  if (b.flags.topologyChange && lp === inst.rootPort && inst.tcUntil <= ctx.now)
+    topologyChange(ctx, dev, vlan);
   // RSTP: Proposal / Agreement
   if (isRstp(dev) && b.rstp) {
     if (b.flags.proposal && ps.role === 'root') {
@@ -364,7 +457,11 @@ export function stpTick(ctx: DeviceCtx, dev: SwitchDev): void {
     const vlan = Number(v);
     let again = false;
     for (const [lp, ps] of Object.entries(inst.ports)) {
-      if (ps.info && ps.infoAt !== undefined && ctx.now - ps.infoAt > (rstp ? 3 * HELLO : MAX_AGE)) {
+      if (
+        ps.info &&
+        ps.infoAt !== undefined &&
+        ctx.now - ps.infoAt > (rstp ? 3 * HELLO : MAX_AGE)
+      ) {
         ps.info = undefined;
         ps.infoAt = undefined;
         again = true;
@@ -373,7 +470,8 @@ export function stpTick(ctx: DeviceCtx, dev: SwitchDev): void {
         if (rstp) {
           ps.nextAt = undefined;
           ps.proposing = false;
-          if (ps.role !== 'alternate' && ps.state !== 'forwarding') setState(ctx, dev, vlan, lp, 'forwarding');
+          if (ps.role !== 'alternate' && ps.state !== 'forwarding')
+            setState(ctx, dev, vlan, lp, 'forwarding');
         } else if (ps.state === 'listening') {
           ps.state = 'learning';
           ps.nextAt = ctx.now + FWD_DELAY;

@@ -318,7 +318,7 @@ function LinkShape(props: {
   };
 
   const light = (x: number, y: number) => {
-    const fill = blinking ? BLINK : link.operUp ? UP : DOWN;
+    const fill = blinking ? BLINK : link.stpBlocked ? '#f08c00' : link.operUp ? UP : DOWN;
     // Farbenblind-Modus: Form statt nur Farbe (Kreis = up, Raute = down)
     return colorblind && !link.operUp ? (
       <Rect

@@ -62,7 +62,17 @@ export function listIfaces(dev: Device, cfg: L3Cfg): Iface[] {
     if (!c.ip || !c.mask || !ifaceUp(dev, cfg, id, c)) continue;
     const port = dev.ports.find((p) => p.id === c.portId);
     if (c.kind === 'svi') {
-      out.push({ id, kind: 'svi', portId: '', vlan: c.vlan, mac: baseMac, ip: c.ip, mask: c.mask, mtu: 1500, cfg: c });
+      out.push({
+        id,
+        kind: 'svi',
+        portId: '',
+        vlan: c.vlan,
+        mac: baseMac,
+        ip: c.ip,
+        mask: c.mask,
+        mtu: 1500,
+        cfg: c,
+      });
     } else if (port) {
       out.push({
         id,

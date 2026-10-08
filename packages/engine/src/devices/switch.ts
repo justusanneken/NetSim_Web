@@ -9,7 +9,15 @@ import {
 } from '@netsim/protocols';
 import type { DeviceCtx } from '../ctx';
 import { ifaceFrameRx } from '../l3';
-import { stpPortDown, stpRx, stpTick, stpHello, stpPortsChanged, stpForwarding, stpLearning } from './stp';
+import {
+  stpPortDown,
+  stpRx,
+  stpTick,
+  stpHello,
+  stpPortsChanged,
+  stpForwarding,
+  stpLearning,
+} from './stp';
 import { vtpRx, vtpTimer } from './vtp';
 import { l3Node } from './l3dev';
 import type { Device, MacEntry, SwitchConfig, SwitchPortCfg } from '../types';
@@ -40,7 +48,8 @@ export function logicalPorts(dev: SwitchDev): string[] {
   return [...out];
 }
 
-export const isTrunk = (cfg: SwitchConfig, portId: string): boolean => cfg.operTrunk[portId] === true;
+export const isTrunk = (cfg: SwitchConfig, portId: string): boolean =>
+  cfg.operTrunk[portId] === true;
 
 /** Trägt der (logische) Port dieses VLAN? Access: Zugangs-VLAN; Trunk: Allowed-Liste. */
 export function carriesVlan(cfg: SwitchConfig, lp: string, vlan: number): boolean {
@@ -70,7 +79,10 @@ export function activeMacTable(
 
 export function flushMacs(cfg: SwitchConfig, filter: { vlan?: number; lp?: string } = {}): void {
   for (const [k, e] of Object.entries(cfg.macTable)) {
-    if ((filter.vlan === undefined || e.vlan === filter.vlan) && (filter.lp === undefined || e.portId === filter.lp)) {
+    if (
+      (filter.vlan === undefined || e.vlan === filter.vlan) &&
+      (filter.lp === undefined || e.portId === filter.lp)
+    ) {
       delete cfg.macTable[k];
     }
   }
@@ -89,7 +101,14 @@ export function switchPortDown(ctx: DeviceCtx | undefined, dev: SwitchDev, portI
 // ------------------------------------------------------------------ Ausgabe
 
 /** Frame aus einem logischen Port senden (Tagging, Bundle-Hash). */
-function output(ctx: DeviceCtx, dev: SwitchDev, lp: string, vlan: number, frame: Frame, delay = ctx.processingUs): void {
+function output(
+  ctx: DeviceCtx,
+  dev: SwitchDev,
+  lp: string,
+  vlan: number,
+  frame: Frame,
+  delay = ctx.processingUs,
+): void {
   const cfg = dev.config;
   const members = lpMembers(cfg, lp).filter((id) => dev.ports.find((p) => p.id === id)?.operUp);
   if (members.length === 0) return;
@@ -102,14 +121,19 @@ function output(ctx: DeviceCtx, dev: SwitchDev, lp: string, vlan: number, frame:
   const portId = members[idx] as string;
   const pc = cfg.ports[portId] as SwitchPortCfg;
   const tagged = isTrunk(cfg, portId) && vlan !== pc.nativeVlan;
-  const out: Frame = tagged ? { ...frame, vlan: { vid: vlan, pcp: frame.vlan?.pcp ?? 0 } } : { ...frame, vlan: undefined };
+  const out: Frame = tagged
+    ? { ...frame, vlan: { vid: vlan, pcp: frame.vlan?.pcp ?? 0 } }
+    : { ...frame, vlan: undefined };
   ctx.send(portId, out, delay);
 }
 
 export { output as switchOutput };
 
 function floodTargets(dev: SwitchDev, vlan: number, exceptLp?: string): string[] {
-  return logicalPorts(dev).filter((lp) => lp !== exceptLp && carriesVlan(dev.config, lp, vlan) && stpForwarding(dev.config, vlan, lp));
+  return logicalPorts(dev).filter(
+    (lp) =>
+      lp !== exceptLp && carriesVlan(dev.config, lp, vlan) && stpForwarding(dev.config, vlan, lp),
+  );
 }
 
 /** Von der SVI (CPU) erzeugter Frame: wie ein Frame ohne Eingangsport weiterleiten. */
@@ -125,7 +149,13 @@ export function switchOriginate(ctx: DeviceCtx, dev: SwitchDev, vlan: number, fr
 
 // ------------------------------------------------------------------ Eingang
 
-export function switchRx(ctx: DeviceCtx, dev: SwitchDev, portId: string, frame: Frame, fromId: string): void {
+export function switchRx(
+  ctx: DeviceCtx,
+  dev: SwitchDev,
+  portId: string,
+  frame: Frame,
+  fromId: string,
+): void {
   const cfg = dev.config;
   const port = ctx.port(portId);
   const pc = cfg.ports[portId];
@@ -147,12 +177,22 @@ export function switchRx(ctx: DeviceCtx, dev: SwitchDev, portId: string, frame: 
   if (trunk) {
     vlan = frame.vlan?.vid ?? pc.nativeVlan;
     if (pc.allowed !== 'all' && !pc.allowed.includes(vlan)) {
-      ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'switch.vlanNotAllowed', params: { vlan, port: port.name } } });
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        status: 'drop',
+        msg: { key: 'switch.vlanNotAllowed', params: { vlan, port: port.name } },
+      });
       return;
     }
   } else {
     if (frame.vlan && frame.vlan.vid !== pc.accessVlan) {
-      ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'switch.taggedOnAccess', params: { port: port.name } } });
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        status: 'drop',
+        msg: { key: 'switch.taggedOnAccess', params: { port: port.name } },
+      });
       return;
     }
     vlan = pc.accessVlan;
@@ -171,7 +211,12 @@ export function switchRx(ctx: DeviceCtx, dev: SwitchDev, portId: string, frame: 
   }
   if (frame.dst === MAC_STP || frame.dst === MAC_PVST || frame.dst === MAC_VTP) return;
   if (!cfg.vlans[vlan]) {
-    ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'switch.noVlan', params: { vlan } } });
+    ctx.log({
+      ...base,
+      kind: 'drop',
+      status: 'drop',
+      msg: { key: 'switch.noVlan', params: { vlan } },
+    });
     return;
   }
 
@@ -179,12 +224,23 @@ export function switchRx(ctx: DeviceCtx, dev: SwitchDev, portId: string, frame: 
   const learning = stpLearning(cfg, vlan, lp);
   const forwarding = stpForwarding(cfg, vlan, lp);
   if (!learning && !forwarding) {
-    ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'switch.stpBlocked', params: { port: port.name, vlan } } });
+    ctx.log({
+      ...base,
+      kind: 'drop',
+      status: 'drop',
+      msg: { key: 'switch.stpBlocked', params: { port: port.name, vlan } },
+    });
     return;
   }
 
   // 4) Port-Security (nur Access)
-  if (!trunk && pc.psec.enabled && !isMulticastMac(frame.src) && !securityAllows(ctx, dev, portId, frame.src, base)) return;
+  if (
+    !trunk &&
+    pc.psec.enabled &&
+    !isMulticastMac(frame.src) &&
+    !securityAllows(ctx, dev, portId, frame.src, base)
+  )
+    return;
 
   // 5) Lernen
   let learned = false;
@@ -201,7 +257,10 @@ export function switchRx(ctx: DeviceCtx, dev: SwitchDev, portId: string, frame: 
 
   // 6) L3-Anbindung (SVI)
   const sviCfg = cfg.ifaces[`vlan${vlan}`];
-  if (sviCfg?.ip && (frame.dst === dev.ports[0]?.mac || isBroadcastMac(frame.dst) || isMulticastMac(frame.dst))) {
+  if (
+    sviCfg?.ip &&
+    (frame.dst === dev.ports[0]?.mac || isBroadcastMac(frame.dst) || isMulticastMac(frame.dst))
+  ) {
     const node = l3Node(ctx, dev);
     const svi = node.ifaces.find((i) => i.kind === 'svi' && i.vlan === vlan);
     if (svi) {
@@ -222,7 +281,12 @@ export function switchRx(ctx: DeviceCtx, dev: SwitchDev, portId: string, frame: 
   }
   if (out !== undefined) {
     if (out === lp) {
-      ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'switch.filter' + suffix, params } });
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        status: 'drop',
+        msg: { key: 'switch.filter' + suffix, params },
+      });
       return;
     }
     if (!stpForwarding(cfg, vlan, out)) {
@@ -236,14 +300,25 @@ export function switchRx(ctx: DeviceCtx, dev: SwitchDev, portId: string, frame: 
       status: 'ok',
       msg: {
         key: 'switch.unicast' + suffix,
-        params: { ...params, dst: frame.dst, out: out.startsWith('po') ? `Po${out.slice(2)}` : (dev.ports.find((x) => x.id === outPort)?.name ?? out) },
+        params: {
+          ...params,
+          dst: frame.dst,
+          out: out.startsWith('po')
+            ? `Po${out.slice(2)}`
+            : (dev.ports.find((x) => x.id === outPort)?.name ?? out),
+        },
       },
     });
     output(ctx, dev, out, vlan, frame);
     return;
   }
   const targets = floodTargets(dev, vlan, lp);
-  ctx.log({ ...base, kind: 'rx', status: 'ok', msg: { key: 'switch.flood' + suffix, params: { ...params, count: targets.length } } });
+  ctx.log({
+    ...base,
+    kind: 'rx',
+    status: 'ok',
+    msg: { key: 'switch.flood' + suffix, params: { ...params, count: targets.length } },
+  });
   for (const t of targets) output(ctx, dev, t, vlan, frame);
 }
 
@@ -263,7 +338,8 @@ export function errdisable(ctx: DeviceCtx, dev: SwitchDev, portId: string, reaso
   });
   ctx.requestRefresh();
   const rec = dev.config.errdisableRecovery;
-  if (reason === 'psecure-violation' && rec.psecure) ctx.setTimer(`errdisable:${portId}`, rec.intervalSec * 1_000_000);
+  if (reason === 'psecure-violation' && rec.psecure)
+    ctx.setTimer(`errdisable:${portId}`, rec.intervalSec * 1_000_000);
 }
 
 function securityAllows(
@@ -271,7 +347,13 @@ function securityAllows(
   dev: SwitchDev,
   portId: string,
   src: string,
-  base: { from: string; port: ReturnType<DeviceCtx['port']>; frame: Frame; summary: string; proto: ReturnType<typeof summarizeFrame>['proto'] },
+  base: {
+    from: string;
+    port: ReturnType<DeviceCtx['port']>;
+    frame: Frame;
+    summary: string;
+    proto: ReturnType<typeof summarizeFrame>['proto'];
+  },
 ): boolean {
   const ps = (dev.config.ports[portId] as SwitchPortCfg).psec;
   if (ps.macs.includes(src) || ps.dynMacs.includes(src)) return true;
@@ -284,7 +366,12 @@ function securityAllows(
   ps.lastMac = src;
   const key = `switch.psec.${ps.violation}`;
   if (ps.violation !== 'protect') {
-    ctx.log({ ...base, kind: 'error', status: 'drop', msg: { key, params: { mac: src, port: base.port.name } } });
+    ctx.log({
+      ...base,
+      kind: 'error',
+      status: 'drop',
+      msg: { key, params: { mac: src, port: base.port.name } },
+    });
   }
   if (ps.violation === 'shutdown') errdisable(ctx, dev, portId, 'psecure-violation');
   return false;
@@ -300,7 +387,13 @@ export function switchTimer(ctx: DeviceCtx, dev: SwitchDev, name: string): void 
     const port = dev.ports.find((p) => p.id === name.slice(11));
     if (port?.errdisabled) {
       delete port.errdisabled;
-      ctx.log({ kind: 'info', proto: 'LINK', status: 'info', port, msg: { key: 'switch.errdisableRecovered', params: { port: port.name } } });
+      ctx.log({
+        kind: 'info',
+        proto: 'LINK',
+        status: 'info',
+        port,
+        msg: { key: 'switch.errdisableRecovered', params: { port: port.name } },
+      });
       ctx.requestRefresh();
     }
   }

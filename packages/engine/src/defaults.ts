@@ -101,7 +101,15 @@ export const newSwitchPort = (): SwitchPortCfg => ({
   portfast: false,
   bpduguard: false,
   rootguard: false,
-  psec: { enabled: false, max: 1, violation: 'shutdown', sticky: false, macs: [], dynMacs: [], violations: 0 },
+  psec: {
+    enabled: false,
+    max: 1,
+    violation: 'shutdown',
+    sticky: false,
+    macs: [],
+    dynMacs: [],
+    violations: 0,
+  },
 });
 
 export function newSwitch(name: string, ports: Port[]): SwitchConfig {

@@ -36,10 +36,24 @@ function renderLine(lines: string[], head: string, line: SysConfig['lineCon'], e
 const addr = (m: AddrMatch | undefined): string =>
   !m || 'any' in m ? 'any' : m.wildcard === '0.0.0.0' ? `host ${m.ip}` : `${m.ip} ${m.wildcard}`;
 
-const PORT_NAMES: Record<number, string> = { 20: 'ftp-data', 21: 'ftp', 22: 'ssh', 23: 'telnet', 25: 'smtp', 53: 'domain', 80: 'www', 110: 'pop3', 443: '443' };
+const PORT_NAMES: Record<number, string> = {
+  20: 'ftp-data',
+  21: 'ftp',
+  22: 'ssh',
+  23: 'telnet',
+  25: 'smtp',
+  53: 'domain',
+  80: 'www',
+  110: 'pop3',
+  443: '443',
+};
 const portText = (p: number): string => PORT_NAMES[p] ?? String(p);
 const portMatch = (m: PortMatch | undefined): string =>
-  !m ? '' : m.op === 'range' ? ` range ${portText(m.a)} ${portText(m.b ?? m.a)}` : ` ${m.op} ${portText(m.a)}`;
+  !m
+    ? ''
+    : m.op === 'range'
+      ? ` range ${portText(m.a)} ${portText(m.b ?? m.a)}`
+      : ` ${m.op} ${portText(m.a)}`;
 
 /** Textform eines ACL-Eintrags (ohne Sequenznummer). */
 export function aclEntryText(e: AclEntry, type: 'standard' | 'extended'): string {
@@ -73,20 +87,21 @@ function switchportLines(pc: SwitchPortCfg, out: string[]): void {
     return;
   }
   if (pc.mode !== 'dynamic-auto') {
-    out.push(
-      ` switchport mode ${pc.mode === 'dynamic-desirable' ? 'dynamic desirable' : pc.mode}`,
-    );
+    out.push(` switchport mode ${pc.mode === 'dynamic-desirable' ? 'dynamic desirable' : pc.mode}`);
   }
   if (pc.accessVlan !== 1) out.push(` switchport access vlan ${pc.accessVlan}`);
   if (pc.nativeVlan !== 1) out.push(` switchport trunk native vlan ${pc.nativeVlan}`);
   if (pc.allowed !== 'all') {
-    out.push(` switchport trunk allowed vlan ${pc.allowed.length ? compressVlans(pc.allowed) : 'none'}`);
+    out.push(
+      ` switchport trunk allowed vlan ${pc.allowed.length ? compressVlans(pc.allowed) : 'none'}`,
+    );
   }
   const ps = pc.psec;
   if (ps.enabled) {
     out.push(' switchport port-security');
     if (ps.max !== 1) out.push(` switchport port-security maximum ${ps.max}`);
-    if (ps.violation !== 'shutdown') out.push(` switchport port-security violation ${ps.violation}`);
+    if (ps.violation !== 'shutdown')
+      out.push(` switchport port-security violation ${ps.violation}`);
     if (ps.sticky) out.push(' switchport port-security mac-address sticky');
     for (const m of ps.macs) {
       out.push(` switchport port-security mac-address ${ps.sticky ? 'sticky ' : ''}${ciscoMac(m)}`);
@@ -95,7 +110,8 @@ function switchportLines(pc: SwitchPortCfg, out: string[]): void {
   if (pc.portfast) out.push(' spanning-tree portfast');
   if (pc.bpduguard) out.push(' spanning-tree bpduguard enable');
   if (pc.rootguard) out.push(' spanning-tree guard root');
-  if (pc.channel !== undefined) out.push(` channel-group ${pc.channel} mode ${pc.channelMode ?? 'on'}`);
+  if (pc.channel !== undefined)
+    out.push(` channel-group ${pc.channel} mode ${pc.channelMode ?? 'on'}`);
 }
 
 function renderInterfaces(d: Device & { config: CliConfig }, L: string[]): void {
@@ -103,7 +119,13 @@ function renderInterfaces(d: Device & { config: CliConfig }, L: string[]): void 
   const sys = cfg.sys;
   const isSwitch = cfg.kind === 'switch';
   const channels = isSwitch
-    ? [...new Set(Object.values(cfg.ports).map((p) => p.channel).filter((n): n is number => n !== undefined))].sort()
+    ? [
+        ...new Set(
+          Object.values(cfg.ports)
+            .map((p) => p.channel)
+            .filter((n): n is number => n !== undefined),
+        ),
+      ].sort()
     : [];
   for (const n of channels) L.push(`interface Port-channel${n}`, '!');
   for (const p of d.ports) {
@@ -172,7 +194,8 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
   L.push(enc ? 'service password-encryption' : 'no service password-encryption');
   L.push('!', `hostname ${sys.hostname}`, '!');
   if (sys.enableSecret) L.push(`enable secret 5 ${sys.enableSecret}`);
-  if (sys.enablePassword !== undefined) L.push(password('enable password', sys.enablePassword, enc));
+  if (sys.enablePassword !== undefined)
+    L.push(password('enable password', sys.enablePassword, enc));
   if (sys.enableSecret || sys.enablePassword !== undefined) L.push('!');
   if (cfg.kind === 'switch' && d.type === 'switch-l3' && cfg.ipRouting) L.push('ip routing', '!');
   for (const ex of cfg.dhcp.excluded) {
@@ -192,7 +215,9 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     if (cfg.vtp.mode !== 'server') L.push(`vtp mode ${cfg.vtp.mode}`);
     if (cfg.vtp.domain) L.push(`vtp domain ${cfg.vtp.domain}`);
     L.push(`spanning-tree mode ${cfg.stp.mode}`);
-    for (const [v, pr] of Object.entries(cfg.stp.priority).sort(([a], [b]) => Number(a) - Number(b))) {
+    for (const [v, pr] of Object.entries(cfg.stp.priority).sort(
+      ([a], [b]) => Number(a) - Number(b),
+    )) {
       L.push(`spanning-tree vlan ${v} priority ${pr}`);
     }
     if (cfg.errdisableRecovery.psecure) {
@@ -215,6 +240,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
   for (const [name, p] of Object.entries(cfg.nat.pools)) {
     L.push(`ip nat pool ${name} ${p.start} ${p.end} netmask ${p.mask}`);
   }
+  if (cfg.nat.timeoutSec !== undefined) L.push(`ip nat translation timeout ${cfg.nat.timeoutSec}`);
   for (const rule of cfg.nat.rules) {
     if (rule.kind === 'static') {
       L.push(
@@ -223,9 +249,13 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
           : `ip nat inside source static ${rule.local} ${rule.global}`,
       );
     } else if (rule.kind === 'dynamic') {
-      L.push(`ip nat inside source list ${rule.acl} pool ${rule.pool}${rule.overload ? ' overload' : ''}`);
+      L.push(
+        `ip nat inside source list ${rule.acl} pool ${rule.pool}${rule.overload ? ' overload' : ''}`,
+      );
     } else {
-      L.push(`ip nat inside source list ${rule.acl} interface ${ifDisplay(d, rule.ifaceId)} overload`);
+      L.push(
+        `ip nat inside source list ${rule.acl} interface ${ifDisplay(d, rule.ifaceId)} overload`,
+      );
     }
   }
   if (cfg.defaultGateway) L.push(`ip default-gateway ${cfg.defaultGateway}`);
@@ -240,7 +270,9 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
       L.push(`ip route ${r.prefix} ${r.mask} ${via}${r.ad !== 1 ? ` ${r.ad}` : ''}`);
     }
   }
-  const acls = Object.values(cfg.acls).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const acls = Object.values(cfg.acls).sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true }),
+  );
   for (const acl of acls) {
     if (/^\d+$/.test(acl.name)) {
       for (const e of acl.entries) L.push(`access-list ${acl.name} ${aclEntryText(e, acl.type)}`);

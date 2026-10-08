@@ -57,3 +57,11 @@ festgelegt. Jede Entscheidung ist umkehrbar und wird bei Bedarf in der jeweilige
     (Parameter dann optional). Neue Befehle brauchen keinen Parser-Umbau.
 15. **Golden-Tests für die CLI:** `packages/cli/test/golden/*.txt` (Terminalausgabe ganzer Sitzungen);
     `UPDATE_GOLDEN=1` erzeugt sie neu.
+16. **Switch-Datenebene pro VLAN:** MAC-Tabelle `vlan|mac`; logische Ports (`po1`) bündeln EtherChannel-Mitglieder.
+    STP-Zustand gated Lernen und Weiterleiten je VLAN.
+17. **Standard-Switchport-Modus `dynamic auto`** (wie bei Cisco); zwei `dynamic auto`-Ports bleiben Access.
+18. **L3-Schnittstellen als `Iface`:** physisch `p0`, Subinterface `p0.10`, SVI `vlan10`; ein gemeinsamer IP-Stack für Host,
+    Router und L3-Switch (Weiterleitungsreihenfolge: ACL-in → NAT außen→innen → Route/TTL → NAT innen→außen → ACL-out → ARP).
+19. **Hintergrund-Timer (`bg:`)** (STP-Hello, VTP) zählen nicht als „Vordergrundarbeit“; `waitFor` der CLI endet damit
+    sinnvoll, obwohl STP dauerhaft Ereignisse erzeugt.
+20. **Neue Engine-Meldungen** nur als i18n-Schlüssel mit Parametern; `apps/web/test/i18n.test.ts` erzwingt Vollständigkeit.

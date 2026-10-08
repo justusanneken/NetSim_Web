@@ -88,3 +88,19 @@
   (erlaubte „sichtbare Skalierung“). Ein Klick auf den Umschlag wählt den Eintrag im Inspektor.
 - **PDU-Inspektor:** zeigt die eingehende PDU je OSI-Schicht mit Feldtabellen und der erklärenden Meldung;
   Outbound-Ansicht und „Challenge Me“ folgen in Phase 6.
+
+## Phase 3
+
+- **STP:** 802.1D-Timer (Listening/Learning je 15 s, Max-Age 20 s) und vereinfachtes RSTP (Proposal/Agreement mit
+  6-s-Rückfall); PVST je aktivem VLAN, kein MST, kein UplinkFast/BackboneFast (RSTP deckt das ab). Hello 2 s und
+  1-s-Tick laufen als Hintergrund-Timer (`bg:`) und blockieren `runAll` nicht.
+- **DTP/EtherChannel:** Aushandlung erfolgt durch Konfigurationsvergleich beider Enden, nicht durch DTP-/LACP-/PAgP-PDUs.
+  Der Port-Channel-Hash nutzt Quell- und Ziel-MAC.
+- **VTP:** nur v1/v2-Verhalten (Revision, Domäne, Server/Client/Transparent), ohne Pruning und Passwort.
+- **Port-Security:** Verstöße zählen pro Frame; Sticky-Adressen erscheinen in der `running-config`.
+- **Nicht umgesetzt:** SPAN, Storm-Control, DHCP-Snooping, DAI, UDLD, Private VLANs.
+- **DHCP:** keine Option 82, kein BOOTP/DHCPv6; Lease-Verlängerung bei T1 (50 %), Konflikterkennung per ARP-Probe.
+- **TCP/HTTP:** vereinfachtes TCP (SYN/SYN-ACK, ein Request, Antwort + FIN, RST); keine Retransmission-Fenster, kein TLS
+  (HTTPS ist nur ein Port-/Schemaflag). Seiten sind kurze Texte.
+- **NAT:** Timeouts per `ip nat translation timeout` für UDP/TCP/IP gemeinsam (ICMP fest 60 s); ALG/FTP fehlt.
+- **ACL:** `log`-Schlüsselwort wird akzeptiert, aber nicht gezählt; kein `object-group`, keine Zeitbereiche.

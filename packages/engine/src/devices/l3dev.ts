@@ -50,10 +50,19 @@ export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
 }
 
 /** Frame an einem Router-Port: Schnittstelle (physisch/Subinterface) bestimmen. */
-export function routerRx(ctx: DeviceCtx, dev: L3Dev, portId: string, frame: Frame, fromId: string): void {
+export function routerRx(
+  ctx: DeviceCtx,
+  dev: L3Dev,
+  portId: string,
+  frame: Frame,
+  fromId: string,
+): void {
   const node = l3Node(ctx, dev);
   const iface = node.ifaces.find(
-    (i) => i.portId === portId && i.kind !== 'svi' && (i.kind === 'sub' ? frame.vlan?.vid === i.vlan : !frame.vlan),
+    (i) =>
+      i.portId === portId &&
+      i.kind !== 'svi' &&
+      (i.kind === 'sub' ? frame.vlan?.vid === i.vlan : !frame.vlan),
   );
   if (!iface) {
     ctx.log({
@@ -75,7 +84,12 @@ export function l3Timer(ctx: DeviceCtx, dev: L3Dev, name: string): void {
   if (!ipTimer(ctx, node, name)) diagTimer(ctx, node, name);
 }
 
-export function l3Ping(ctx: DeviceCtx, dev: L3Dev, dst: Ipv4Addr, opts?: PingOptions): Result<number> {
+export function l3Ping(
+  ctx: DeviceCtx,
+  dev: L3Dev,
+  dst: Ipv4Addr,
+  opts?: PingOptions,
+): Result<number> {
   return startPing(ctx, l3Node(ctx, dev), dst, opts);
 }
 

@@ -29,7 +29,8 @@ export const networkOf = (ip: Ipv4Addr, plen: number): Ipv4Addr => {
   return [net >>> 24, (net >>> 16) & 255, (net >>> 8) & 255, net & 255].join('.');
 };
 
-const contains = (e: RibEntry, ip: Ipv4Addr): boolean => sameSubnet(e.prefix, ip, prefixMask(e.plen));
+const contains = (e: RibEntry, ip: Ipv4Addr): boolean =>
+  sameSubnet(e.prefix, ip, prefixMask(e.plen));
 
 /** Baut die Routing-Tabelle: Connected/Local, Statics (installierbar) und dynamische Routen. */
 export function buildRib(cfg: L3Cfg, ifaces: Iface[]): RibEntry[] {
@@ -44,9 +45,16 @@ export function buildRib(cfg: L3Cfg, ifaces: Iface[]): RibEntry[] {
   for (const r of cfg.staticRoutes) {
     const plen = maskToPrefix(r.mask);
     if (plen === undefined) continue;
-    const base = { type: 'S' as const, prefix: networkOf(r.prefix, plen), plen, ad: r.ad, metric: 0 };
+    const base = {
+      type: 'S' as const,
+      prefix: networkOf(r.prefix, plen),
+      plen,
+      ad: r.ad,
+      metric: 0,
+    };
     if (r.outIfaceId) {
-      if (connected.some((c) => c.ifaceId === r.outIfaceId)) rib.push({ ...base, ifaceId: r.outIfaceId });
+      if (connected.some((c) => c.ifaceId === r.outIfaceId))
+        rib.push({ ...base, ifaceId: r.outIfaceId });
     } else if (r.nextHop) {
       const via = connected
         .filter((c) => contains(c, r.nextHop as string))

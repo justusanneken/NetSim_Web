@@ -61,7 +61,10 @@ function portMatch(t: string[]): PortMatch | undefined {
  * Parst `[seq] permit|deny …` (Standard: Quelle; Extended: Protokoll Quelle [Port] Ziel [Port]
  * [established] [log]). Wirft `AclParseError` bei ungültiger Eingabe.
  */
-export function parseAclEntry(type: 'standard' | 'extended', text: string): Omit<AclEntry, 'seq'> & { seq?: number } {
+export function parseAclEntry(
+  type: 'standard' | 'extended',
+  text: string,
+): Omit<AclEntry, 'seq'> & { seq?: number } {
   const t = text.trim().split(/\s+/);
   let seq: number | undefined;
   if (/^\d+$/.test(t[0] ?? '')) seq = Number(t.shift());
@@ -86,7 +89,8 @@ export function parseAclEntry(type: 'standard' | 'extended', text: string): Omit
     const w = t.shift();
     if (w === 'established' && proto === 'tcp') established = true;
     else if (w === 'log') log = true;
-    else if (proto === 'icmp') continue; // ICMP-Typnamen werden ignoriert
+    else if (proto === 'icmp')
+      continue; // ICMP-Typnamen werden ignoriert
     else throw new AclParseError('% Invalid input detected');
   }
   return { seq, action, proto, src, dst, srcPort, dstPort, established, log, matches: 0 };
