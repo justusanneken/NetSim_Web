@@ -14,6 +14,7 @@ export interface RibEntry {
   metric: number;
   nextHop?: Ipv4Addr;
   ifaceId?: string;
+  since?: number;
 }
 
 export const prefixMask = (plen: number): string => {
@@ -64,6 +65,7 @@ export function buildRib(cfg: L3Cfg, ifaces: Iface[]): RibEntry[] {
       metric: d.metric,
       nextHop: d.nextHop,
       ifaceId: d.ifaceId,
+      since: d.since,
     });
   }
   return rib;

@@ -1,28 +1,43 @@
 import { maskToPrefix } from '@netsim/protocols';
 import type { Port } from '@netsim/engine';
 import { networkOf } from '@netsim/engine';
-import { resolvePort } from './format';
+import { IFM, SUBMODES, resolveIface, resolveRange } from './ifnames';
 import { waitFor } from './util';
 import { K, P, R, Registry, choice, opt, type ModeId } from './parser';
 import { renderRunningConfig } from './render';
 import { secretHash, type7Decrypt } from './secrets';
 import { CliError, type CliSession } from './session';
+import { addPhase3 } from './commands3';
 import * as show from './show';
 
 const U: ModeId[] = ['user', 'priv'];
 const PR: ModeId[] = ['priv'];
 const CF: ModeId[] = ['config'];
-const IF: ModeId[] = ['config-if'];
+const IF: ModeId[] = IFM;
 const LN: ModeId[] = ['config-line'];
-const ANYCFG: ModeId[] = ['config', 'config-if', 'config-line'];
+const ANYCFG: ModeId[] = ['config', ...SUBMODES];
 
 const SHOW = K('show', 'Show running system information');
 
 const portOf = (s: CliSession, text: string): Port => {
-  const p = resolvePort(s.device.ports, text);
+  const r = resolveIface(s.device, text);
+  const p = r ? s.device.ports.find((x) => x.id === r.id) : undefined;
   if (!p) throw new CliError('% Invalid interface');
   return p;
 };
+
+/** Zielschnittstellen des Interface-Modus; Port-Channels werden zu ihren Mitgliedern. */
+export function targets(s: CliSession): string[] {
+  const cfg = s.device.config;
+  const out: string[] = [];
+  for (const id of s.ifaces) {
+    if (id.startsWith('po') && cfg.kind === 'switch') {
+      const n = Number(id.slice(2));
+      for (const p of s.device.ports) if (cfg.ports[p.id]?.channel === n) out.push(p.id);
+    } else out.push(id);
+  }
+  return out;
+}
 
 function saveStartup(s: CliSession): void {
   s.sys.startupConfig = renderRunningConfig(s.engine, s.device).join('\n');
@@ -87,7 +102,6 @@ export function runPing(s: CliSession, dst: string, o: PingParams): void {
     return;
   }
   const cfg = d.config;
-  if (cfg.kind !== 'router') return;
   if (s.deferred()) {
     s.out('Simulation mode: packets were queued. Step through the events in the simulation panel.');
     return;
@@ -121,7 +135,7 @@ function runTrace(s: CliSession, dst: string): void {
   s.out('Type escape sequence to abort.');
   s.out(`Tracing the route to ${dst}`);
   s.out('VRF info: (vrf in name/id, vrf out name/id)');
-  if (!r.ok || d.config.kind !== 'router') return;
+  if (!r.ok) return;
   if (s.deferred()) {
     s.out('Simulation mode: probes were queued. Step through the events in the simulation panel.');
     return;
@@ -169,9 +183,8 @@ function pingDialog(s: CliSession): void {
               if (!/^y/i.test(x.trim())) return run();
               s.ask('Source address or interface: ', (src) => {
                 if (src.trim()) {
-                  const port = resolvePort(s.device.ports, src.trim());
-                  const cfg = s.device.config;
-                  const ip = port && cfg.kind === 'router' ? cfg.ifaces[port.id]?.ip : undefined;
+                  const ref = resolveIface(s.device, src.trim());
+                  const ip = ref ? s.device.config.ifaces[ref.id]?.ip : undefined;
                   p.source = ip ?? src.trim();
                 }
                 s.ask('Set DF bit in IP header? (yes/no) [no]: ', (df) => {
@@ -321,7 +334,7 @@ export function buildRegistry(): Registry<CliSession> {
     modes: ['user', 'priv', ...ANYCFG],
     slots: [K('exit', 'Exit from the EXEC / current mode')],
     run: (s) => {
-      if (s.mode === 'config-if' || s.mode === 'config-line') s.mode = 'config';
+      if (SUBMODES.includes(s.mode)) s.mode = 'config';
       else if (s.mode === 'config') s.mode = 'priv';
       else logout(s);
     },
@@ -699,11 +712,12 @@ export function buildRegistry(): Registry<CliSession> {
     P('mask', 'mask', 'A.B.C.D', 'Destination prefix mask'),
   ];
   const routeRun = (s: CliSession, a: Record<string, string>): void => {
+    const ref = a.out ? resolveIface(s.device, a.out) : undefined;
     const route = {
       prefix: a.prefix as string,
       mask: a.mask as string,
       nextHop: a.nh,
-      outPortId: a.out ? portOf(s, a.out).id : undefined,
+      outIfaceId: ref?.id,
       ad: a.ad ? Number(a.ad) : 1,
     };
     const res = s.negated
@@ -711,29 +725,37 @@ export function buildRegistry(): Registry<CliSession> {
       : s.engine.addStaticRoute(s.deviceId, route);
     if (!res.ok) throw engineError(res);
   };
-  r.add({
-    modes: CF,
-    only: 'router',
-    negatable: true,
-    slots: [
-      ...routeBase,
-      P('nh', 'ip', 'A.B.C.D', "Forwarding router's address"),
-      opt(P('ad', 'int', '<1-255>', 'Distance metric for this route', [1, 255])),
-    ],
-    run: routeRun,
-  });
-  r.add({
-    modes: CF,
-    only: 'router',
-    negatable: true,
-    slots: [
-      ...routeBase,
-      P('out', 'iface', 'IFNAME', 'Interface name'),
-      opt(P('ad', 'int', '<1-255>', 'Distance metric for this route', [1, 255])),
-    ],
-    run: routeRun,
-  });
+  for (const [slot, only] of [
+    [P('nh', 'ip', 'A.B.C.D', "Forwarding router's address"), 'l3'],
+    [P('out', 'iface', 'IFNAME', 'Interface name'), 'l3'],
+  ] as const) {
+    r.add({
+      modes: CF,
+      only,
+      negatable: true,
+      slots: [
+        ...routeBase,
+        slot,
+        opt(P('ad', 'int', '<1-255>', 'Distance metric for this route', [1, 255])),
+      ],
+      run: routeRun,
+    });
+  }
 
+  // --- interface-Varianten
+  const enter = (s: CliSession, ids: string[], mode: ModeId): void => {
+    for (const id of ids) {
+      const made = s.engine.ensureIface(s.deviceId, id);
+      void made;
+    }
+    s.ifaces = ids;
+    s.mode = mode;
+    if (s.replay) {
+      for (const id of ids) {
+        if (s.device.ports.some((p) => p.id === id)) s.engine.setPortAdmin(s.deviceId, id, true);
+      }
+    }
+  };
   r.add({
     modes: CF,
     slots: [
@@ -741,9 +763,50 @@ export function buildRegistry(): Registry<CliSession> {
       P('if', 'iface', 'IFNAME', 'Interface name'),
     ],
     run: (s, a) => {
-      s.ifaces = [portOf(s, a.if as string).id];
+      const ref = resolveIface(s.device, a.if as string);
+      if (!ref) throw new CliError('% Invalid interface');
+      if (ref.kind === 'po') {
+        s.ifaces = [ref.id];
+        s.mode = 'config-if';
+        return;
+      }
+      enter(s, [ref.id], ref.kind === 'sub' ? 'config-subif' : 'config-if');
+    },
+  });
+  r.add({
+    modes: CF,
+    only: 'switch',
+    slots: [
+      K('interface', 'Select an interface to configure'),
+      K('vlan', 'Catalyst Vlans'),
+      P('vlan', 'int', '<1-4094>', 'Vlan interface number', [1, 4094]),
+    ],
+    run: (s, a) => enter(s, [`vlan${Number(a.vlan)}`], 'config-if'),
+  });
+  r.add({
+    modes: CF,
+    only: 'switch',
+    slots: [
+      K('interface', 'Select an interface to configure'),
+      K('port-channel', 'Ethernet Channel of interfaces'),
+      P('n', 'int', '<1-6>', 'Port-channel interface number', [1, 6]),
+    ],
+    run: (s, a) => {
+      s.ifaces = [`po${Number(a.n)}`];
       s.mode = 'config-if';
-      if (s.replay) s.engine.setPortAdmin(s.deviceId, s.ifaces[0] as string, true);
+    },
+  });
+  r.add({
+    modes: CF,
+    slots: [
+      K('interface', 'Select an interface to configure'),
+      K('range', 'interface range command'),
+      R('range', 'RANGE', 'Interface range, e.g. fa0/1 - 5'),
+    ],
+    run: (s, a) => {
+      const refs = resolveRange(s.device, a.range as string);
+      if (!refs) throw new CliError('% Invalid interface range');
+      enter(s, refs.map((x) => x.id), 'config-if-range');
     },
   });
   r.add({
@@ -763,7 +826,6 @@ export function buildRegistry(): Registry<CliSession> {
   // --- Interface-Modus
   r.add({
     modes: IF,
-    only: 'router',
     negatable: true,
     slots: [
       K('ip', 'Interface Internet Protocol config commands'),
@@ -772,7 +834,7 @@ export function buildRegistry(): Registry<CliSession> {
       opt(P('mask', 'mask', 'A.B.C.D', 'IP subnet mask')),
     ],
     run: (s, a) => {
-      for (const id of s.ifaces) {
+      for (const id of targets(s)) {
         const res = s.negated
           ? s.engine.setInterfaceIp(s.deviceId, id, '', '')
           : s.engine.setInterfaceIp(s.deviceId, id, a.ip ?? '', a.mask ?? '');
@@ -786,14 +848,15 @@ export function buildRegistry(): Registry<CliSession> {
     },
   });
   const mtu = (s: CliSession, a: Record<string, string>): void => {
-    for (const id of s.ifaces) {
-      const res = s.engine.setPortMtu(s.deviceId, id, s.negated ? 1500 : Number(a.n));
+    for (const id of targets(s)) {
+      const portId = id.split('.')[0] as string;
+      const res = s.engine.setPortMtu(s.deviceId, portId, s.negated ? 1500 : Number(a.n));
       if (!res.ok) throw engineError(res);
     }
   };
   r.add({
     modes: IF,
-    only: 'router',
+    only: 'l3',
     negatable: true,
     slots: [
       K('ip', 'Interface Internet Protocol config commands'),
@@ -816,7 +879,7 @@ export function buildRegistry(): Registry<CliSession> {
     negatable: true,
     slots: [K('shutdown', 'Shutdown the selected interface')],
     run: (s) => {
-      for (const id of s.ifaces) s.setAdmin(id, s.negated);
+      for (const id of targets(s)) s.setShutdown(id, !s.negated);
     },
   });
   r.add({
@@ -847,7 +910,7 @@ export function buildRegistry(): Registry<CliSession> {
       ),
     ],
     run: (s, a) => {
-      for (const id of s.ifaces)
+      for (const id of targets(s))
         s.engine.setPortSettings(s.deviceId, id, {
           speed: s.negated || a.v === 'auto' ? 'auto' : (Number(a.v) as 10 | 100 | 1000),
         });
@@ -866,7 +929,7 @@ export function buildRegistry(): Registry<CliSession> {
       ),
     ],
     run: (s, a) => {
-      for (const id of s.ifaces)
+      for (const id of targets(s))
         s.engine.setPortSettings(s.deviceId, id, {
           duplex: s.negated ? 'auto' : (a.v as 'auto' | 'full' | 'half'),
         });
@@ -925,5 +988,6 @@ export function buildRegistry(): Registry<CliSession> {
     run: () => undefined,
   });
 
+  addPhase3(r);
   return r;
 }

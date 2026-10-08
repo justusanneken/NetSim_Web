@@ -416,6 +416,8 @@ export interface DynRoute {
   metric: number;
   nextHop?: Ipv4Addr;
   ifaceId: string;
+  /** Installationszeit (µs virtuelle Zeit). */
+  since?: number;
 }
 
 /** Gemeinsamer L3-Zustand von Router und L3-fähigen Switches. */

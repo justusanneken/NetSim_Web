@@ -101,7 +101,7 @@ describe('VLAN und Trunk', () => {
     expect(swCfg(e, s3).vlans[30]?.name).toBe('Mgmt');
     expect(swCfg(e, s2).vlans[30]).toBeUndefined();
     expect(swCfg(e, s3).vtp.revision).toBe(swCfg(e, s1).vtp.revision);
-    expect(e.addVlan(s3, 40).error).toBe('sw.vtpClient');
+    expect(e.addVlan(s3, 40)).toMatchObject({ error: 'sw.vtpClient' });
     ok(e.removeVlan(s1, 30));
     e.runUntil(e.state.now + 2_000_000);
     expect(swCfg(e, s3).vlans[30]).toBeUndefined();

@@ -1,5 +1,7 @@
 import type { Device, Engine, RouterConfig, SwitchConfig } from '@netsim/engine';
-import { resolvePort, shortName } from './format';
+import { shortName } from './format';
+import { ifDisplay, resolveIface } from './ifnames';
+import { ifaceUp } from '@netsim/engine';
 import { tokenize, type Args, type Env, type ModeId, type Registry } from './parser';
 import { isCliDevice } from './render';
 import type { Shell } from './shell';
@@ -18,7 +20,13 @@ const MODE_SUFFIX: Record<ModeId, string> = {
   priv: '#',
   config: '(config)#',
   'config-if': '(config-if)#',
+  'config-subif': '(config-subif)#',
+  'config-if-range': '(config-if-range)#',
   'config-line': '(config-line)#',
+  'config-vlan': '(config-vlan)#',
+  'dhcp-config': '(dhcp-config)#',
+  'config-std-nacl': '(config-std-nacl)#',
+  'config-ext-nacl': '(config-ext-nacl)#',
 };
 
 let REGISTRY: Registry<CliSession> | undefined;
@@ -30,8 +38,12 @@ export class CliSession implements Shell {
   terminalLength = 24;
   historySize = 20;
   negated = false;
-  /** Ausgewählte Ports im Interface-Modus. */
+  /** Ausgewählte Schnittstellen-IDs im Interface-Modus (Port, `p0.10`, `vlan10`, `po1`). */
   ifaces: string[] = [];
+  /** Kontext der Untermodi. */
+  vlanId = 1;
+  poolName = '';
+  aclName = '';
   /** Zeilenziel im Line-Modus. */
   lineTarget: 'con' | 'vty' = 'con';
   silent = false;
@@ -160,8 +172,8 @@ export class CliSession implements Shell {
   private env(): Env {
     const d = this.device;
     return {
-      family: d.config.kind === 'router' ? 'router' : 'switch',
-      iface: (t) => resolvePort(d.ports, t) !== undefined,
+      family: d.config.kind === 'router' ? 'router' : d.type === 'switch-l3' ? 'switch-l3' : 'switch',
+      iface: (t) => resolveIface(d, t) !== undefined,
     };
   }
 
@@ -262,7 +274,7 @@ export class CliSession implements Shell {
     if (this.pending) return undefined;
     const doMatch = /^\s*do\s+(.*)$/i.exec(line);
     const [mode, text] =
-      doMatch && this.mode.startsWith('config')
+      doMatch && this.inConfig()
         ? (['priv', doMatch[1] ?? ''] as const)
         : ([this.mode, line] as const);
     return registry().help(mode, text, this.env()).join('\n') + '\n';
@@ -270,7 +282,7 @@ export class CliSession implements Shell {
 
   complete(line: string): string {
     const doMatch = /^(\s*do\s+)(.*)$/i.exec(line);
-    if (doMatch && this.mode.startsWith('config')) {
+    if (doMatch && this.inConfig()) {
       return (doMatch[1] ?? '') + registry().complete('priv', doMatch[2] ?? '', this.env());
     }
     return registry().complete(this.mode, line, this.env());
@@ -284,7 +296,7 @@ export class CliSession implements Shell {
 
   end(): string {
     if (this.pending) return this.interrupt();
-    if (this.mode.startsWith('config')) this.mode = 'priv';
+    if (this.mode.startsWith('config') || this.mode === 'dhcp-config') this.mode = 'priv';
     return '';
   }
 
@@ -306,6 +318,30 @@ export class CliSession implements Shell {
     }
   }
 
+  /** `shutdown` / `no shutdown` für Port, Subinterface oder SVI (mit IOS-Linkmeldungen). */
+  setShutdown(id: string, shut: boolean): void {
+    const dev = this.device;
+    if (dev.ports.some((p) => p.id === id)) {
+      this.setAdmin(id, !shut);
+      return;
+    }
+    const made = this.engine.ensureIface(this.deviceId, id);
+    const ic = made.ok ? dev.config.ifaces[id] : undefined;
+    if (!ic) return;
+    const before = ifaceUp(dev, dev.config, id, ic);
+    ic.shutdown = shut;
+    const after = ifaceUp(dev, dev.config, id, ic);
+    if (before === after) return;
+    const name = ifDisplay(dev, id);
+    if (after) {
+      this.out(`%LINK-3-UPDOWN: Interface ${name}, changed state to up`);
+      this.out(`%LINEPROTO-5-UPDOWN: Line protocol on Interface ${name}, changed state to up`);
+    } else {
+      this.out(`%LINK-5-CHANGED: Interface ${name}, changed state to administratively down`);
+      this.out(`%LINEPROTO-5-UPDOWN: Line protocol on Interface ${name}, changed state to down`);
+    }
+  }
+
   /** Setzt die Konfiguration aus Text um (Startup-Config laden / Replay). */
   applyConfigText(text: string): void {
     const t = new CliSession(this.engine, this.deviceId);
@@ -319,6 +355,10 @@ export class CliSession implements Shell {
       if (!t.pending && !line.startsWith(' ')) t.mode = 'config';
       t.input(line.trim() === line ? line : line.trim());
     }
+  }
+
+  inConfig(): boolean {
+    return this.mode.startsWith('config') || this.mode === 'dhcp-config';
   }
 
   shortName(name: string): string {

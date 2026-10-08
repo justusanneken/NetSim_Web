@@ -106,7 +106,7 @@ export const newSwitchPort = (): SwitchPortCfg => ({
 
 export function newSwitch(name: string, ports: Port[]): SwitchConfig {
   const pc: Record<string, SwitchPortCfg> = {};
-  for (const p of ports) pc[p.id] = { ...newSwitchPort(), mode: 'access' };
+  for (const p of ports) pc[p.id] = newSwitchPort();
   return {
     kind: 'switch',
     sys: newSys(name),

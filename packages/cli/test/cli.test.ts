@@ -421,6 +421,7 @@ describe('Abnahme Phase 2: CLI-Golden-Tests', () => {
     e.connect({ deviceId: b, portId: 'p0' }, { deviceId: sw, portId: 'p1' }, 'straight');
     e.setHostIp(a, '10.0.0.1', '255.255.255.0');
     e.setHostIp(b, '10.0.0.2', '255.255.255.0');
+    e.runUntil(e.now + 40_000_000);
     e.ping(a, '10.0.0.2');
     e.runAll();
     const d = e.getDevice(sw);

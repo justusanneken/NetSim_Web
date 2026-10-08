@@ -4,8 +4,20 @@
  */
 import { isValidIpv4, maskToPrefix } from '@netsim/protocols';
 
-export type ModeId = 'user' | 'priv' | 'config' | 'config-if' | 'config-line';
-export type ParamType = 'word' | 'int' | 'ip' | 'mask' | 'iface';
+export type ModeId =
+  | 'user'
+  | 'priv'
+  | 'config'
+  | 'config-if'
+  | 'config-subif'
+  | 'config-if-range'
+  | 'config-line'
+  | 'config-vlan'
+  | 'dhcp-config'
+  | 'config-std-nacl'
+  | 'config-ext-nacl';
+export type ParamType = 'word' | 'int' | 'ip' | 'mask' | 'iface' | 'vlans' | 'mac' | 'wildcard';
+export type Family = 'router' | 'switch' | 'switch-l3';
 export type Args = Record<string, string>;
 
 export interface KwSlot {
@@ -41,8 +53,8 @@ export interface CommandDef<C> {
   run: (cx: C, args: Args) => void;
   /** Zusätzlich als `no …` und `default …` verfügbar; Handler bekommt `cx.negated`. */
   negatable?: boolean;
-  /** Nur für diese Gerätefamilie sichtbar. */
-  only?: 'router' | 'switch';
+  /** Nur für diese Gerätefamilie sichtbar (`switch` umfasst L2- und L3-Switches). */
+  only?: 'router' | 'switch' | 'switch-l3' | 'l3';
 }
 
 // ---------------------------------------------------------------- Builder (DSL)
@@ -74,7 +86,7 @@ export const opt = <T extends Slot>(s: T): T => ({ ...s, opt: true });
 
 export interface Env {
   /** Gerätefamilie für `only`. */
-  family: 'router' | 'switch';
+  family: Family;
   /** Prüft, ob Text eine gültige Schnittstellenbezeichnung des Geräts ist. */
   iface(text: string): boolean;
 }
@@ -123,7 +135,21 @@ function validParam(s: ParamSlot, tok: string, env: Env): boolean {
       return maskToPrefix(tok) !== undefined;
     case 'iface':
       return env.iface(tok);
+    case 'vlans':
+      return /^\d+([-,]\d+)*$/.test(tok) || tok === 'all' || tok === 'none';
+    case 'mac':
+      return /^[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}$/i.test(tok);
+    case 'wildcard':
+      return isValidIpv4(tok);
   }
+}
+
+export function familyOk(only: CommandDef<never>['only'], family: Family): boolean {
+  if (!only) return true;
+  if (only === 'router') return family === 'router';
+  if (only === 'switch') return family !== 'router';
+  if (only === 'switch-l3') return family === 'switch-l3';
+  return family !== 'switch'; // 'l3': Router oder L3-Switch
 }
 
 const reachable = (slots: Slot[], idx: number): number[] => {
@@ -147,7 +173,7 @@ export class Registry<C> {
   private compiled(mode: ModeId, env: Env): Compiled<C>[] {
     const out: Compiled<C>[] = [];
     for (const d of this.defs) {
-      if (!d.modes.includes(mode) || (d.only && d.only !== env.family)) continue;
+      if (!d.modes.includes(mode) || !familyOk(d.only, env.family)) continue;
       out.push({ ...d, negated: false });
       if (d.negatable) {
         // Bei `no …` sind nachfolgende Parameter optional (z. B. `no hostname`).
