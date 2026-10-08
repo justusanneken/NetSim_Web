@@ -7,3 +7,4 @@ export { EngineService } from './service';
 export type { PingOptions } from './devices/host';
 export type { DeviceCtx, LogInput } from './ctx';
 export * from './view';
+export { buildRib, lookupRib, networkOf, prefixMask, type RibEntry } from './rib';

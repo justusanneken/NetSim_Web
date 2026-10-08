@@ -1,2 +1,10 @@
-// Phase 2: CLI-Framework (Modi, `?`, Tab, Abkürzungen). Absichtlich leer in Phase 1.
-export {};
+export { CliSession, CliError } from './session';
+export { Registry, K, P, R, choice, opt, tokenize } from './parser';
+export type { CommandDef, ModeId, Slot, Env } from './parser';
+export type { Shell } from './shell';
+export { renderRunningConfig, isCliDevice } from './render';
+export { secretHash, type7Encrypt, type7Decrypt } from './secrets';
+export { ciscoMac, winMac, shortName, resolvePort } from './format';
+export { HostShell } from './hostshell';
+export { Terminal } from './terminal';
+export { waitFor } from './util';

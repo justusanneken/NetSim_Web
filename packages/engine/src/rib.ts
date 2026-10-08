@@ -42,9 +42,16 @@ export function buildRib(cfg: RouterConfig, ports: Port[]): RibEntry[] {
   for (const r of cfg.staticRoutes) {
     const plen = maskToPrefix(r.mask);
     if (plen === undefined) continue;
-    const base = { type: 'S' as const, prefix: networkOf(r.prefix, plen), plen, ad: r.ad, metric: 0 };
+    const base = {
+      type: 'S' as const,
+      prefix: networkOf(r.prefix, plen),
+      plen,
+      ad: r.ad,
+      metric: 0,
+    };
     if (r.outPortId) {
-      if (connected.some((c) => c.portId === r.outPortId)) rib.push({ ...base, portId: r.outPortId });
+      if (connected.some((c) => c.portId === r.outPortId))
+        rib.push({ ...base, portId: r.outPortId });
     } else if (r.nextHop) {
       // Rekursion nur über direkt verbundene Netze (längster Präfix)
       const via = connected

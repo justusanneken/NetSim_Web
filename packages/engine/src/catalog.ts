@@ -8,6 +8,7 @@ export function newSys(hostname: string): SysConfig {
     lineCon: { login: false },
     lineVty: { login: false },
     descriptions: {},
+    setupDone: false,
   };
 }
 

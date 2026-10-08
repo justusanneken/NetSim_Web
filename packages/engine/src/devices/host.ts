@@ -27,7 +27,8 @@ export function newIpCore(): IpCore {
 /** IP-Sicht auf einen Host: eine Schnittstelle, Default-Gateway, kein Forwarding. */
 export function hostNode(ctx: DeviceCtx, cfg: HostConfig): IpNode {
   const port = ctx.device.ports[0];
-  const ifaces: Iface[] = port && cfg.ip && cfg.mask ? [{ portId: port.id, ip: cfg.ip, mask: cfg.mask }] : [];
+  const ifaces: Iface[] =
+    port && cfg.ip && cfg.mask ? [{ portId: port.id, ip: cfg.ip, mask: cfg.mask }] : [];
   const iface = ifaces[0];
   return {
     cfg,

@@ -45,9 +45,7 @@ export interface IpNode {
 }
 
 export type SendResult =
-  | { ok: true }
-  | { ok: false; reason: 'noRoute' }
-  | { ok: false; reason: 'needFrag'; mtu: number };
+  { ok: true } | { ok: false; reason: 'noRoute' } | { ok: false; reason: 'needFrag'; mtu: number };
 
 type Base = {
   readonly from: string;
@@ -94,11 +92,7 @@ export function isLocalIp(node: IpNode, ip: Ipv4Addr): boolean {
 
 // ------------------------------------------------------------------ Senden
 
-export function sendArpRequest(
-  ctx: DeviceCtx,
-  iface: Iface,
-  target: Ipv4Addr,
-): void {
+export function sendArpRequest(ctx: DeviceCtx, iface: Iface, target: Ipv4Addr): void {
   const port = ctx.port(iface.portId);
   const req: ArpPdu = {
     kind: 'arp',
@@ -199,7 +193,9 @@ export function sendIcmpError(
     },
     nextHopMtu,
   };
-  const pkt = newIpPacket(node, srcIp, off.src, icmp, { ttl: node.forwarding ? 255 : node.defaultTtl });
+  const pkt = newIpPacket(node, srcIp, off.src, icmp, {
+    ttl: node.forwarding ? 255 : node.defaultTtl,
+  });
   ipSend(ctx, node, pkt);
 }
 
@@ -399,7 +395,13 @@ function reassemble(ctx: DeviceCtx, cfg: IpCore, ip: Ipv4Pdu): Ipv4Pdu | undefin
   }
   if (cur < e.total) return undefined;
   delete cfg.reasm[key];
-  return { ...structuredClone(ip), mf: false, fragOffset: 0, dataLen: undefined, payload: e.payload };
+  return {
+    ...structuredClone(ip),
+    mf: false,
+    fragOffset: 0,
+    dataLen: undefined,
+    payload: e.payload,
+  };
 }
 
 function deliverLocal(
@@ -425,7 +427,12 @@ function deliverLocal(
   const icmp = ip.payload;
   if (icmp.type === 'echo-request') {
     if (broadcast) {
-      ctx.log({ ...base, kind: 'drop', status: 'drop', msg: { key: 'host.icmp.broadcastIgnored' } });
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        status: 'drop',
+        msg: { key: 'host.icmp.broadcastIgnored' },
+      });
       return;
     }
     learn(ctx, node, ip.src, frame.src);

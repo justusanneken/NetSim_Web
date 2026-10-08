@@ -1,0 +1,11 @@
+R1#ping 172.16.0.1 repeat 1
+Type escape sequence to abort.
+Sending 1, 100-byte ICMP Echos to 172.16.0.1, timeout is 2 seconds:
+U
+Success rate is 0 percent (0/1)
+R1#traceroute 172.16.0.1
+Type escape sequence to abort.
+Tracing the route to 172.16.0.1
+VRF info: (vrf in name/id, vrf out name/id)
+  1 *
+

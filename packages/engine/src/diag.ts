@@ -88,7 +88,13 @@ function sendPingSeq(ctx: DeviceCtx, node: IpNode, sessionId: number): void {
   const r = ipSend(ctx, node, pkt);
   if (!r.ok) {
     ctx.cancelTimer(`ping-timeout:${s.id}:${seq}`);
-    failPing(ctx, res, r.reason === 'needFrag' ? 'ping.fragNeeded' : 'ping.noRoute', s.dst, hop.iface.ip);
+    failPing(
+      ctx,
+      res,
+      r.reason === 'needFrag' ? 'ping.fragNeeded' : 'ping.noRoute',
+      s.dst,
+      hop.iface.ip,
+    );
   }
 }
 

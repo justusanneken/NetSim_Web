@@ -202,7 +202,8 @@ export class Engine {
     const dev = this.state.devices[deviceId];
     if (!dev) return;
     dev.name = name;
-    if (dev.config.kind === 'switch' || dev.config.kind === 'router') dev.config.sys.hostname = name;
+    if (dev.config.kind === 'switch' || dev.config.kind === 'router')
+      dev.config.sys.hostname = name;
   }
 
   moveDevice(deviceId: string, pos: Point): void {
@@ -434,8 +435,10 @@ export class Engine {
     if (!dev || dev.config.kind !== 'router') return { ok: false, error: 'ip.notARouter' };
     if (!isValidIpv4(r.prefix)) return { ok: false, error: 'ip.invalidIp' };
     if (maskToPrefix(r.mask) === undefined) return { ok: false, error: 'ip.invalidMask' };
-    if (r.nextHop !== undefined && !isValidIpv4(r.nextHop)) return { ok: false, error: 'ip.invalidGateway' };
-    if (r.nextHop === undefined && r.outPortId === undefined) return { ok: false, error: 'ip.invalidGateway' };
+    if (r.nextHop !== undefined && !isValidIpv4(r.nextHop))
+      return { ok: false, error: 'ip.invalidGateway' };
+    if (r.nextHop === undefined && r.outPortId === undefined)
+      return { ok: false, error: 'ip.invalidGateway' };
     const entry = {
       prefix: networkOf(r.prefix, maskToPrefix(r.mask) as number),
       mask: r.mask,
@@ -445,7 +448,10 @@ export class Engine {
     };
     const routes = dev.config.staticRoutes;
     const same = (x: (typeof routes)[number]) =>
-      x.prefix === entry.prefix && x.mask === entry.mask && x.nextHop === entry.nextHop && x.outPortId === entry.outPortId;
+      x.prefix === entry.prefix &&
+      x.mask === entry.mask &&
+      x.nextHop === entry.nextHop &&
+      x.outPortId === entry.outPortId;
     if (!routes.some(same)) routes.push(entry);
     return { ok: true, value: true };
   }
@@ -461,7 +467,11 @@ export class Engine {
     const prefix = networkOf(r.prefix, plen);
     const routes = dev.config.staticRoutes;
     const i = routes.findIndex(
-      (x) => x.prefix === prefix && x.mask === r.mask && x.nextHop === r.nextHop && x.outPortId === r.outPortId,
+      (x) =>
+        x.prefix === prefix &&
+        x.mask === r.mask &&
+        x.nextHop === r.nextHop &&
+        x.outPortId === r.outPortId,
     );
     if (i >= 0) routes.splice(i, 1);
     return { ok: true, value: true };
@@ -470,7 +480,8 @@ export class Engine {
   setPortMtu(deviceId: string, portId: string, mtu: number): Result<true> {
     const p = this.getPort({ deviceId, portId });
     if (!p) return { ok: false, error: 'cable.reject.notFound' };
-    if (!Number.isInteger(mtu) || mtu < 68 || mtu > 9216) return { ok: false, error: 'ip.invalidMtu' };
+    if (!Number.isInteger(mtu) || mtu < 68 || mtu > 9216)
+      return { ok: false, error: 'ip.invalidMtu' };
     p.mtu = mtu;
     return { ok: true, value: true };
   }
@@ -489,7 +500,8 @@ export class Engine {
     if (dev.config.kind !== 'router' && dev.config.kind !== 'switch') return;
     const startup = dev.config.sys.startupConfig;
     dev.config = spec.makeConfig(dev.name);
-    if (dev.config.kind === 'router' || dev.config.kind === 'switch') dev.config.sys.startupConfig = startup;
+    if (dev.config.kind === 'router' || dev.config.kind === 'switch')
+      dev.config.sys.startupConfig = startup;
     for (const p of dev.ports) {
       p.adminUp = !spec.portsDefaultDown;
       p.speed = 'auto';

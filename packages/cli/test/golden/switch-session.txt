@@ -1,0 +1,73 @@
+SW1>enable
+SW1#show mac address-table
+          Mac Address Table
+-------------------------------------------
+
+Vlan    Mac Address       Type        Ports
+----    -----------       --------    -----
+   1    0200.0000.001b    DYNAMIC     Fa0/1
+   1    0200.0000.001c    DYNAMIC     Fa0/2
+Total Mac Addresses for this criterion: 2
+SW1#configure terminal
+Enter configuration commands, one per line.  End with CNTL/Z.
+SW1(config)#interface fa0/2
+SW1(config-if)#description Server B
+SW1(config-if)#speed 10
+SW1(config-if)#shutdown
+%LINK-5-CHANGED: Interface FastEthernet0/2, changed state to administratively down
+%LINEPROTO-5-UPDOWN: Line protocol on Interface FastEthernet0/2, changed state to down
+SW1(config-if)#end
+SW1#show interfaces status
+Port      Name               Status       Vlan       Duplex  Speed Type
+Fa0/1                        connected    1          a-full  a-100 10/100BaseTX
+Fa0/2     Server B           disabled     1          auto    auto  10/100BaseTX
+Fa0/3                        notconnect   1          auto    auto  10/100BaseTX
+Fa0/4                        notconnect   1          auto    auto  10/100BaseTX
+Fa0/5                        notconnect   1          auto    auto  10/100BaseTX
+Fa0/6                        notconnect   1          auto    auto  10/100BaseTX
+Fa0/7                        notconnect   1          auto    auto  10/100BaseTX
+Fa0/8                        notconnect   1          auto    auto  10/100BaseTX
+Fa0/9                        notconnect   1          auto    auto  10/100BaseTX
+Fa0/10                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/11                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/12                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/13                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/14                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/15                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/16                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/17                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/18                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/19                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/20                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/21                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/22                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/23                       notconnect   1          auto    auto  10/100BaseTX
+Fa0/24                       notconnect   1          auto    auto  10/100BaseTX
+Gi0/1                        notconnect   1          auto    auto  10/100/1000BaseTX
+Gi0/2                        notconnect   1          auto    auto  10/100/1000BaseTX
+SW1#show ip route
+            ^
+% Invalid input detected at '^' marker.
+
+SW1#show ip arp
+            ^
+% Invalid input detected at '^' marker.
+
+SW1#show running-config | section interface FastEthernet0/2
+interface FastEthernet0/2
+ description Server B
+ speed 10
+ shutdown
+interface FastEthernet0/20
+interface FastEthernet0/21
+interface FastEthernet0/22
+interface FastEthernet0/23
+interface FastEthernet0/24
+SW1#clear mac address-table dynamic
+SW1#show mac address-table
+          Mac Address Table
+-------------------------------------------
+
+Vlan    Mac Address       Type        Ports
+----    -----------       --------    -----
+Total Mac Addresses for this criterion: 0

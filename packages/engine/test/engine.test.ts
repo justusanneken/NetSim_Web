@@ -480,7 +480,14 @@ describe('Topologie', () => {
     expect(e.getDevice(sw)).toMatchObject({ name: 'Core', pos: { x: 5, y: 6 } });
     expect(e.getDevice(sw)?.config).toMatchObject({ sys: { hostname: 'Core' } });
     expect(() => e.addDevice('firewall')).toThrow(/not supported/);
-    expect(Object.keys(CATALOG).sort()).toEqual(['hub', 'laptop', 'pc', 'router', 'server', 'switch-l2']);
+    expect(Object.keys(CATALOG).sort()).toEqual([
+      'hub',
+      'laptop',
+      'pc',
+      'router',
+      'server',
+      'switch-l2',
+    ]);
   });
 });
 

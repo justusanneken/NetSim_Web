@@ -127,7 +127,9 @@ describe('Fragmentierung, DF und PMTUD', () => {
       from: '10.0.1.1',
     });
     expect(keys(e.log)).toContain('router.needFrag');
-    const err = e.log.find((l) => l.frame?.payload.kind === 'ipv4' && l.frame.payload.payload.nextHopMtu);
+    const err = e.log.find(
+      (l) => l.frame?.payload.kind === 'ipv4' && l.frame.payload.payload.nextHopMtu,
+    );
     expect(err).toBeDefined();
     // Ohne DF fragmentiert der Router
     e.ping(pc0, '10.0.2.10', { dataSize: 1472 });
@@ -154,9 +156,18 @@ describe('Routing-Tabelle', () => {
     const { e, pc0, pc1, r1 } = chainLab();
     // Default-Route + spezifischere /24 bleibt vorrangig
     e.addStaticRoute(r1, { prefix: '0.0.0.0', mask: '0.0.0.0', nextHop: '10.0.12.2' });
-    e.addStaticRoute(r1, { prefix: '10.0.2.0', mask: '255.255.255.0', nextHop: '10.0.12.99', ad: 200 });
+    e.addStaticRoute(r1, {
+      prefix: '10.0.2.0',
+      mask: '255.255.255.0',
+      nextHop: '10.0.12.99',
+      ad: 200,
+    });
     const rib = e.routingTable(r1).filter((x) => x.type === 'S');
-    expect(rib.map((x) => `${x.prefix}/${x.plen}`)).toEqual(['10.0.2.0/24', '0.0.0.0/0', '10.0.2.0/24']);
+    expect(rib.map((x) => `${x.prefix}/${x.plen}`)).toEqual([
+      '10.0.2.0/24',
+      '0.0.0.0/0',
+      '10.0.2.0/24',
+    ]);
     e.ping(pc0, '10.0.2.10');
     e.runAll();
     expect(pings(e, pc0)[0]?.status).toBe('reply');
@@ -181,16 +192,28 @@ describe('Routing-Tabelle', () => {
     expect(e.setInterfaceIp(r1, 'p2', '10.0.5.0', '255.255.255.0')).toMatchObject({
       error: 'ip.networkAddress',
     });
-    expect(e.setInterfaceIp(r1, 'p2', 'x', '255.255.255.0')).toMatchObject({ error: 'ip.invalidIp' });
-    expect(e.setInterfaceIp(r1, 'p2', '10.0.5.1', '255.0.255.0')).toMatchObject({ error: 'ip.invalidMask' });
+    expect(e.setInterfaceIp(r1, 'p2', 'x', '255.255.255.0')).toMatchObject({
+      error: 'ip.invalidIp',
+    });
+    expect(e.setInterfaceIp(r1, 'p2', '10.0.5.1', '255.0.255.0')).toMatchObject({
+      error: 'ip.invalidMask',
+    });
     expect(e.setInterfaceIp(r1, 'p2', '10.0.5.1', '255.255.255.0').ok).toBe(true);
     expect(e.setInterfaceIp(r1, 'p2', '', '').ok).toBe(true);
     expect(e.setInterfaceIp('nope', 'p2', '', '')).toMatchObject({ error: 'ip.notARouter' });
-    expect(e.addStaticRoute(r1, { prefix: 'x', mask: '255.0.0.0', nextHop: '1.1.1.1' }).ok).toBe(false);
-    expect(e.addStaticRoute(r1, { prefix: '1.0.0.0', mask: '255.0.255.0', nextHop: '1.1.1.1' }).ok).toBe(false);
-    expect(e.addStaticRoute(r1, { prefix: '1.0.0.0', mask: '255.0.0.0', nextHop: 'q' }).ok).toBe(false);
+    expect(e.addStaticRoute(r1, { prefix: 'x', mask: '255.0.0.0', nextHop: '1.1.1.1' }).ok).toBe(
+      false,
+    );
+    expect(
+      e.addStaticRoute(r1, { prefix: '1.0.0.0', mask: '255.0.255.0', nextHop: '1.1.1.1' }).ok,
+    ).toBe(false);
+    expect(e.addStaticRoute(r1, { prefix: '1.0.0.0', mask: '255.0.0.0', nextHop: 'q' }).ok).toBe(
+      false,
+    );
     expect(e.addStaticRoute(r1, { prefix: '1.0.0.0', mask: '255.0.0.0' }).ok).toBe(false);
-    expect(e.addStaticRoute('nope', { prefix: '1.0.0.0', mask: '255.0.0.0', nextHop: '1.1.1.1' }).ok).toBe(false);
+    expect(
+      e.addStaticRoute('nope', { prefix: '1.0.0.0', mask: '255.0.0.0', nextHop: '1.1.1.1' }).ok,
+    ).toBe(false);
     expect(e.removeStaticRoute('nope', { prefix: '1.0.0.0', mask: '255.0.0.0' }).ok).toBe(false);
     expect(e.removeStaticRoute(r1, { prefix: '1.0.0.0', mask: 'zz' }).ok).toBe(false);
   });

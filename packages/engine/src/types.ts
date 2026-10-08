@@ -217,6 +217,8 @@ export interface SysConfig {
   descriptions: Record<string, string>;
   /** Gespeicherte Startup-Konfiguration (Text). */
   startupConfig?: string;
+  /** Initial-Konfigurationsdialog beantwortet/übersprungen. */
+  setupDone: boolean;
 }
 
 export interface RouterIface {
@@ -264,12 +266,7 @@ export interface UnsupportedConfig {
   kind: 'none';
 }
 
-export type DeviceState =
-  | HostConfig
-  | RouterConfig
-  | SwitchConfig
-  | HubConfig
-  | UnsupportedConfig;
+export type DeviceState = HostConfig | RouterConfig | SwitchConfig | HubConfig | UnsupportedConfig;
 
 export interface Device {
   id: string;
@@ -395,5 +392,4 @@ export interface EngineSnapshot {
 }
 
 export type Result<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: string; params?: Record<string, string | number> };
+  { ok: true; value: T } | { ok: false; error: string; params?: Record<string, string | number> };

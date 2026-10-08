@@ -1,0 +1,75 @@
+C:\>ping 10.0.2.10
+Pinging 10.0.2.10 with 32 bytes of data:
+
+Reply from 10.0.2.10: bytes=32 time<1ms TTL=127
+Reply from 10.0.2.10: bytes=32 time<1ms TTL=127
+Reply from 10.0.2.10: bytes=32 time<1ms TTL=127
+Reply from 10.0.2.10: bytes=32 time<1ms TTL=127
+
+Ping statistics for 10.0.2.10:
+    Packets: Sent = 4, Received = 4, Lost = 0 (0% loss),
+Approximate round trip times in milli-seconds:
+    Minimum = 0ms, Maximum = 0ms, Average = 0ms
+C:\>tracert 10.0.2.10
+
+Tracing route to 10.0.2.10 over a maximum of 30 hops:
+
+  1   <1 ms   <1 ms   <1 ms  10.0.1.1
+  2   <1 ms   <1 ms   <1 ms  10.0.2.10
+
+Trace complete.
+C:\>ipconfig
+
+FastEthernet0 Connection:(default port)
+
+   Connection-specific DNS Suffix..: 
+   IPv4 Address....................: 10.0.1.10
+   Subnet Mask.....................: 255.255.255.0
+   Default Gateway.................: 10.0.1.1
+C:\>ipconfig /all
+
+FastEthernet0 Connection:(default port)
+
+   Connection-specific DNS Suffix..: 
+   Physical Address................: 02-00-00-00-00-04
+   DHCP Enabled....................: No
+   IPv4 Address....................: 10.0.1.10
+   Subnet Mask.....................: 255.255.255.0
+   Default Gateway.................: 10.0.1.1
+C:\>arp -a
+
+Interface: 10.0.1.10 --- 0x2
+  Internet Address      Physical Address      Type
+  10.0.1.1              02-00-00-00-00-01     dynamic
+C:\>ping 10.0.2.99 -n 2
+Pinging 10.0.2.99 with 32 bytes of data:
+
+Reply from 10.0.1.1: Destination host unreachable.
+Reply from 10.0.1.1: Destination host unreachable.
+
+Ping statistics for 10.0.2.99:
+    Packets: Sent = 2, Received = 0, Lost = 2 (100% loss),
+C:\>ping 172.16.0.1 -n 1
+Pinging 172.16.0.1 with 32 bytes of data:
+
+Reply from 10.0.1.1: Destination net unreachable.
+
+Ping statistics for 172.16.0.1:
+    Packets: Sent = 1, Received = 0, Lost = 1 (100% loss),
+C:\>ping 10.0.2.10 -n 1 -l 1472 -f
+Pinging 10.0.2.10 with 1472 bytes of data:
+
+Reply from 10.0.2.10: bytes=1472 time<1ms TTL=127
+
+Ping statistics for 10.0.2.10:
+    Packets: Sent = 1, Received = 1, Lost = 0 (0% loss),
+Approximate round trip times in milli-seconds:
+    Minimum = 1ms, Maximum = 1ms, Average = 1ms
+C:\>tracert 10.0.2.99 -h 3
+
+Tracing route to 10.0.2.99 over a maximum of 3 hops:
+
+  1   <1 ms   <1 ms   <1 ms  10.0.1.1
+  2  10.0.1.1  reports: Destination host unreachable.
+
+Trace complete.
