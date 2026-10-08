@@ -57,6 +57,43 @@ function lab() {
   return { e, sw, ap1, ap2, srv, lap };
 }
 
+describe('QA WLC', () => {
+  it('lightweight AP stops serving the WLAN when the controller is gone', () => {
+    const e = new Engine();
+    const sw = e.addDevice('switch-l2');
+    const wlc = e.addDevice('wlc');
+    const ap = e.addDevice('ap', { pos: { x: 0, y: 0 } });
+    const lap = e.addDevice('laptop', { pos: { x: 50, y: 0 } });
+    must(e.connect({ deviceId: wlc, portId: 'p0' }, { deviceId: sw, portId: 'p0' }, 'straight'));
+    must(e.connect({ deviceId: ap, portId: 'p0' }, { deviceId: sw, portId: 'p1' }, 'straight'));
+    must(e.setHostIp(wlc, '10.1.0.1', '255.255.255.0'));
+    must(e.setHostIp(ap, '10.1.0.2', '255.255.255.0'));
+    must(
+      e.p5.wlcSetWlan(wlc, {
+        ssid: 'Corp',
+        security: 'wpa2-psk',
+        key: 'corp-key-1',
+        band: 'both',
+        enabled: true,
+      }),
+    );
+    must(e.p5.setApController(ap, '10.1.0.1'));
+    sec(e, 40);
+    must(e.p5.wifiAddProfile(lap, 'Corp', 'corp-key-1'));
+    expect(host(e, lap).wifi?.status).toBe('connected');
+    e.setPower(wlc, false);
+    sec(e, 150);
+    expect(host(e, ap).ap?.managed).toBeUndefined();
+    expect(host(e, lap).wifi?.assoc).toBeUndefined();
+    // controller back: AP re-joins, client reconnects
+    e.setPower(wlc, true);
+    sec(e, 40);
+    expect(host(e, ap).ap?.managed?.wlans).toHaveLength(1);
+    expect(host(e, lap).wifi?.status).toBe('connected');
+    void sw;
+  });
+});
+
 describe('QA WLAN roaming', () => {
   it('roams to AP2 and stays reachable from the wired side (server-initiated ping)', () => {
     const { e, ap2, srv, lap } = lab();

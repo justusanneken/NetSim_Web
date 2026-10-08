@@ -63,7 +63,8 @@ export interface ApCfg {
   /** Lightweight-AP: Adresse des WLC (leer = autonom). */
   wlc?: Ipv4Addr;
   /** Vom WLC gelieferte WLANs (Laufzeit, nach erfolgreichem Join). */
-  managed?: { wlc: Ipv4Addr; wlans: Wlan[]; joinedAt: number };
+  /** `seenAt`: letzte Antwort des WLC (fehlt sie drei Refresh-Intervalle lang, gilt der WLC als verloren). */
+  managed?: { wlc: Ipv4Addr; wlans: Wlan[]; joinedAt: number; seenAt?: number };
   /** Laufzeit: gelernte MAC → Port. */
   macTable: Record<Mac, string>;
   /** Laufzeit: assoziierte Clients je Funk-Port. */
