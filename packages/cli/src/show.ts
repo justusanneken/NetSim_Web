@@ -55,6 +55,16 @@ export function showIpInterfaceBrief(_e: Engine, d: D): string[] {
       );
     }
   }
+  for (const [id, c] of Object.entries(cfg?.ifaces ?? {})) {
+    if (c.kind !== 'loop' && c.kind !== 'tunnel') continue;
+    const up = cfg ? ifaceUp(d, cfg, id, c) : false;
+    row(
+      ifDisplay(d, id),
+      c.ip,
+      up ? 'up' : c.shutdown ? 'administratively down' : 'down',
+      up ? 'up' : 'down',
+    );
+  }
   if (d.config.kind === 'switch') {
     const svis = Object.entries(d.config.ifaces).filter(([, c]) => c.kind === 'svi');
     if (!svis.some(([id]) => id === 'vlan1'))
@@ -110,8 +120,19 @@ function classful(ip: string): { net: string; plen: number } {
   return { net: networkOf(ip, plen), plen };
 }
 
-export function showIpRoute(e: Engine, d: D, target?: string): string[] {
-  const rib = e.routingTable(d.id);
+export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): string[] {
+  const allRib = e.routingTable(d.id);
+  const codeOf: Record<string, string> = {
+    rip: 'R',
+    ospf: 'O',
+    eigrp: 'D',
+    bgp: 'B',
+    static: 'S',
+    connected: 'C',
+  };
+  const rib = proto
+    ? allRib.filter((r) => r.type === codeOf[proto] || (proto === 'connected' && r.type === 'L'))
+    : allRib;
   if (target) return showRouteEntry(d, rib, target);
   const def = rib.find((r) => r.plen === 0 && r.type !== 'C' && r.type !== 'L');
   const out = [...CODES, ''];

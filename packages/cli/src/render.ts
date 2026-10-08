@@ -7,6 +7,7 @@ import type {
   IfaceCfg,
   L3Cfg,
   PortMatch,
+  RedistCfg,
   RouterConfig,
   SwitchConfig,
   SwitchPortCfg,
@@ -78,8 +79,58 @@ function l3Lines(cfg: L3Cfg, c: IfaceCfg | undefined, out: string[]): void {
   if (c?.aclIn) out.push(` ip access-group ${c.aclIn} in`);
   if (c?.aclOut) out.push(` ip access-group ${c.aclOut} out`);
   if (c?.natSide) out.push(` ip nat ${c.natSide}`);
+  if (c) routingIfaceLines(c, out);
   void cfg;
 }
+
+const area = (a: string): string => a;
+
+/** Schnittstellenbezogene Routing-Konfiguration (OSPF, HSRP, IPv6, Bandbreite …). */
+function routingIfaceLines(c: IfaceCfg, out: string[]): void {
+  if (c.bandwidth !== undefined) out.push(` bandwidth ${c.bandwidth}`);
+  if (c.delay !== undefined) out.push(` delay ${c.delay}`);
+  if (c.ripSplitHorizon === false) out.push(' no ip split-horizon');
+  const o = c.ospf;
+  if (o) {
+    out.push(` ip ospf ${o.pid} area ${area(o.area)}`);
+    if (o.cost !== undefined) out.push(` ip ospf cost ${o.cost}`);
+    if (o.priority !== undefined) out.push(` ip ospf priority ${o.priority}`);
+    if (o.helloSec !== undefined) out.push(` ip ospf hello-interval ${o.helloSec}`);
+    if (o.deadSec !== undefined) out.push(` ip ospf dead-interval ${o.deadSec}`);
+    if (o.network) out.push(` ip ospf network ${o.network}`);
+  }
+  for (const g of Object.values(c.hsrp ?? {})) {
+    if (g.vip) out.push(` standby ${g.group} ip ${g.vip}`);
+    if (g.priority !== 100) out.push(` standby ${g.group} priority ${g.priority}`);
+    if (g.preempt) out.push(` standby ${g.group} preempt`);
+    if (g.helloSec !== 3 || g.holdSec !== 10)
+      out.push(` standby ${g.group} timers ${g.helloSec} ${g.holdSec}`);
+    for (const t of g.track)
+      out.push(` standby ${g.group} track ${trackName(t.ifaceId)} ${t.decrement}`);
+    if (g.name) out.push(` standby ${g.group} name ${g.name}`);
+  }
+  const v6 = c.v6;
+  if (v6) {
+    if (v6.enabled && v6.addrs.length === 0 && !v6.autoconfig) out.push(' ipv6 enable');
+    for (const a of v6.addrs)
+      out.push(` ipv6 address ${a.addr.toUpperCase()}/${a.plen}${a.eui64 ? ' eui-64' : ''}`);
+    if (v6.autoconfig) out.push(' ipv6 address autoconfig');
+    if (v6.raSuppress) out.push(' ipv6 nd ra suppress');
+    const v = v6.ospf;
+    if (v) {
+      out.push(` ipv6 ospf ${v.pid} area ${area(v.area)}`);
+      if (v.cost !== undefined) out.push(` ipv6 ospf cost ${v.cost}`);
+      if (v.priority !== undefined) out.push(` ipv6 ospf priority ${v.priority}`);
+      if (v.helloSec !== undefined) out.push(` ipv6 ospf hello-interval ${v.helloSec}`);
+      if (v.deadSec !== undefined) out.push(` ipv6 ospf dead-interval ${v.deadSec}`);
+      if (v.network) out.push(` ipv6 ospf network ${v.network}`);
+    }
+  }
+}
+
+/** Name der verfolgten Schnittstelle; wird beim Replay wieder aufgelöst (ID → Anzeigename ohne Gerät). */
+let trackNamer: (id: string) => string = (id) => id;
+const trackName = (id: string): string => trackNamer(id);
 
 function switchportLines(pc: SwitchPortCfg, out: string[]): void {
   if (pc.routed) {
@@ -161,6 +212,26 @@ function renderInterfaces(d: Device & { config: CliConfig }, L: string[]): void 
       }
     }
   }
+  for (const kind of ['loop', 'tunnel'] as const) {
+    for (const id of sortedIfaceIds(cfg, kind).sort(
+      (a, b) => Number(a.slice(2)) - Number(b.slice(2)),
+    )) {
+      const c = cfg.ifaces[id] as IfaceCfg;
+      const out = [`interface ${ifDisplay(d, id)}`];
+      if (sys.descriptions[id]) out.push(` description ${sys.descriptions[id]}`);
+      l3Lines(cfg, c, out);
+      if (kind === 'tunnel') {
+        if (c.tunnel?.source)
+          out.push(
+            ` tunnel source ${cfg.ifaces[c.tunnel.source] ? ifDisplay(d, c.tunnel.source) : c.tunnel.source}`,
+          );
+        if (c.tunnel?.destination) out.push(` tunnel destination ${c.tunnel.destination}`);
+        out.push(' tunnel mode gre ip');
+      }
+      if (c.shutdown) out.push(' shutdown');
+      L.push(...out, '!');
+    }
+  }
   if (isSwitch) {
     const vlans = sortedIfaceIds(cfg, 'svi');
     if (!vlans.includes('vlan1')) L.push('interface Vlan1', ' no ip address', ' shutdown', '!');
@@ -198,6 +269,8 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     L.push(password('enable password', sys.enablePassword, enc));
   if (sys.enableSecret || sys.enablePassword !== undefined) L.push('!');
   if (cfg.kind === 'switch' && d.type === 'switch-l3' && cfg.ipRouting) L.push('ip routing', '!');
+  if (cfg.ipv6Routing) L.push('ipv6 unicast-routing', '!');
+  trackNamer = (id) => ifDisplay(d, id);
   for (const ex of cfg.dhcp.excluded) {
     L.push(`ip dhcp excluded-address ${ex.from}${ex.to !== ex.from ? ` ${ex.to}` : ''}`);
   }
@@ -258,6 +331,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
       );
     }
   }
+  renderRouting(d, L);
   if (cfg.defaultGateway) L.push(`ip default-gateway ${cfg.defaultGateway}`);
   if (cfg.staticRoutes.length > 0) {
     const routes = [...cfg.staticRoutes].sort(
@@ -269,6 +343,14 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
       const via = r.outIfaceId ? ifDisplay(d, r.outIfaceId) : r.nextHop;
       L.push(`ip route ${r.prefix} ${r.mask} ${via}${r.ad !== 1 ? ` ${r.ad}` : ''}`);
     }
+  }
+  for (const r of [...cfg.staticRoutes6].sort(
+    (a, b) => a.prefix.localeCompare(b.prefix) || a.plen - b.plen,
+  )) {
+    const via = [r.nextHop?.toUpperCase(), r.outIfaceId ? ifDisplay(d, r.outIfaceId) : undefined]
+      .filter(Boolean)
+      .join(' ');
+    L.push(`ipv6 route ${r.prefix.toUpperCase()}/${r.plen} ${via}${r.ad !== 1 ? ` ${r.ad}` : ''}`);
   }
   const acls = Object.values(cfg.acls).sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { numeric: true }),
@@ -295,4 +377,112 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
   } else renderLine(L, 'line vty 0 4', sys.lineVty, enc);
   L.push('!', 'end');
   return L;
+}
+
+// ---------------------------------------------------------------- Routing-Prozesse
+
+const redistText = (r: RedistCfg, proto: 'rip' | 'ospf' | 'eigrp' | 'bgp'): string => {
+  let s = ` redistribute ${r.source}${r.id !== undefined ? ' ' + r.id : ''}`;
+  if (proto === 'eigrp') {
+    if (r.bw !== undefined) s += ` metric ${r.bw} ${r.delay ?? 10} 255 1 1500`;
+  } else if (r.metric !== undefined) s += ` metric ${r.metric}`;
+  if (proto === 'ospf') {
+    if (r.metricType) s += ` metric-type ${r.metricType}`;
+    if (r.subnets) s += ' subnets';
+  }
+  return s;
+};
+
+function passiveLines(
+  d: Device,
+  c: { passive: string[]; unpassive: string[]; passiveDefault: boolean },
+  L: string[],
+): void {
+  if (c.passiveDefault) {
+    L.push(' passive-interface default');
+    for (const id of c.unpassive) L.push(` no passive-interface ${ifDisplay(d, id)}`);
+  } else for (const id of c.passive) L.push(` passive-interface ${ifDisplay(d, id)}`);
+}
+
+function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
+  const r = d.config.routing;
+  if (r.rip) {
+    const c = r.rip;
+    L.push('router rip', ' version 2');
+    passiveLines(d, c, L);
+    for (const n of c.networks) L.push(` network ${n}`);
+    if (!c.autoSummary) L.push(' no auto-summary');
+    if (c.defaultOriginate) L.push(' default-information originate');
+    if (c.defaultMetric !== 1) L.push(` default-metric ${c.defaultMetric}`);
+    const t = c.timers;
+    if (t.update !== 30 || t.invalid !== 180 || t.holddown !== 180 || t.flush !== 240)
+      L.push(` timers basic ${t.update} ${t.invalid} ${t.holddown} ${t.flush}`);
+    for (const x of c.redistribute) L.push(redistText(x, 'rip'));
+    L.push('!');
+  }
+  for (const c of Object.values(r.ospf)) {
+    L.push(`router ospf ${c.pid}`);
+    if (c.routerId) L.push(` router-id ${c.routerId}`);
+    if (c.refBwMbps !== 100) L.push(` auto-cost reference-bandwidth ${c.refBwMbps}`);
+    passiveLines(d, c, L);
+    for (const n of c.networks) L.push(` network ${n.prefix} ${n.wildcard} area ${n.area}`);
+    for (const g of c.ranges)
+      L.push(
+        ` area ${g.area} range ${g.prefix} ${prefixMaskText(g.plen)}${g.notAdvertise ? ' not-advertise' : ''}`,
+      );
+    if (c.defaultOriginate) {
+      const o = c.defaultOriginate;
+      L.push(
+        ` default-information originate${o.always ? ' always' : ''} metric ${o.metric} metric-type ${o.metricType}`,
+      );
+    }
+    for (const x of c.redistribute) L.push(redistText(x, 'ospf'));
+    L.push('!');
+  }
+  for (const c of Object.values(r.ospf6)) {
+    L.push(`ipv6 router ospf ${c.pid}`);
+    if (c.routerId) L.push(` router-id ${c.routerId}`);
+    if (c.refBwMbps !== 100) L.push(` auto-cost reference-bandwidth ${c.refBwMbps}`);
+    passiveLines(d, c, L);
+    if (c.defaultOriginate) {
+      const o = c.defaultOriginate;
+      L.push(
+        ` default-information originate${o.always ? ' always' : ''} metric ${o.metric} metric-type ${o.metricType}`,
+      );
+    }
+    L.push('!');
+  }
+  for (const c of Object.values(r.eigrp)) {
+    L.push(`router eigrp ${c.asn}`);
+    if (c.routerId) L.push(` eigrp router-id ${c.routerId}`);
+    passiveLines(d, c, L);
+    for (const n of c.networks) L.push(` network ${n.prefix} ${n.wildcard}`);
+    if (!c.autoSummary) L.push(' no auto-summary');
+    if (c.variance !== 1) L.push(` variance ${c.variance}`);
+    for (const x of c.redistribute) L.push(redistText(x, 'eigrp'));
+    L.push('!');
+  }
+  if (r.bgp) {
+    const c = r.bgp;
+    L.push(`router bgp ${c.asn}`);
+    if (c.routerId) L.push(` bgp router-id ${c.routerId}`);
+    if (c.defaultLocalPref !== 100) L.push(` bgp default local-preference ${c.defaultLocalPref}`);
+    for (const n of Object.values(c.neighbors)) {
+      L.push(` neighbor ${n.ip} remote-as ${n.asn}`);
+      if (n.description) L.push(` neighbor ${n.ip} description ${n.description}`);
+      if (n.updateSource) L.push(` neighbor ${n.ip} update-source ${ifDisplay(d, n.updateSource)}`);
+      if (n.ebgpMultihop) L.push(` neighbor ${n.ip} ebgp-multihop ${n.ebgpMultihop}`);
+      if (n.nextHopSelf) L.push(` neighbor ${n.ip} next-hop-self`);
+      if (n.weight !== undefined) L.push(` neighbor ${n.ip} weight ${n.weight}`);
+      if (n.shutdown) L.push(` neighbor ${n.ip} shutdown`);
+    }
+    for (const n of c.networks) L.push(` network ${n.prefix} mask ${prefixMaskText(n.plen)}`);
+    for (const x of c.redistribute) L.push(redistText(x, 'bgp'));
+    L.push('!');
+  }
+}
+
+function prefixMaskText(plen: number): string {
+  const m = plen === 0 ? 0 : (0xffffffff << (32 - plen)) >>> 0;
+  return [m >>> 24, (m >>> 16) & 255, (m >>> 8) & 255, m & 255].join('.');
 }

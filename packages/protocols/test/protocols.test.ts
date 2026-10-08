@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Frame, Ipv6Pdu, OspfMsg } from '../src';
 import {
   isLinkLocalIpv6,
   isMulticastIpv4,
@@ -311,5 +312,293 @@ describe('IPv6-Adressen (Phase 4)', () => {
     expect(isMulticastIpv4('224.0.0.9')).toBe(true);
     expect(isMulticastIpv6('ff02::1')).toBe(true);
     expect(isLinkLocalIpv6('fe80::1')).toBe(true);
+  });
+});
+
+describe('Routing-PDUs (Phase 4): Größe, Beschreibung, Zusammenfassung', () => {
+  const eth = (payload: Frame['payload'], etherType = 0x0800): Frame => ({
+    kind: 'ethernet',
+    src: '02:00:00:00:00:01',
+    dst: '01:00:5e:00:00:05',
+    etherType,
+    payload,
+  });
+  const ip4 = (payload: Ipv4Pdu['payload'], protocol: number): Ipv4Pdu => ({
+    kind: 'ipv4',
+    src: '10.0.0.1',
+    dst: '224.0.0.5',
+    ttl: 1,
+    protocol,
+    id: 1,
+    df: false,
+    mf: false,
+    fragOffset: 0,
+    payload,
+  });
+  const hdr = { type: 1 as const, id: '1.1.1.1', advRouter: '1.1.1.1', seq: 0x80000001, age: 1 };
+  const base = { routerId: '1.1.1.1', areaId: '0' };
+  const ospf = (msg: OspfMsg): Ipv4Pdu => ip4({ kind: 'routing', proto: 'ospf', v: 2, msg }, 89);
+
+  it('OSPF: alle fünf Pakettypen', () => {
+    const msgs: OspfMsg[] = [
+      {
+        type: 'hello',
+        ...base,
+        helloSec: 10,
+        deadSec: 40,
+        priority: 1,
+        dr: '0.0.0.0',
+        bdr: '0.0.0.0',
+        neighbors: ['2.2.2.2'],
+      },
+      { type: 'dbd', ...base, init: true, more: false, master: true, ddSeq: 1, headers: [hdr] },
+      { type: 'lsr', ...base, requests: [{ type: 1, id: '1.1.1.1', advRouter: '1.1.1.1' }] },
+      {
+        type: 'lsu',
+        ...base,
+        lsas: [
+          {
+            ...hdr,
+            body: {
+              type: 1,
+              abr: false,
+              asbr: false,
+              links: [{ kind: 'stub', prefix: '10.0.0.0', plen: 24, cost: 1 }],
+            },
+          },
+          {
+            ...hdr,
+            type: 2,
+            body: { type: 2, prefix: '10.0.0.0', plen: 24, attached: ['1.1.1.1'] },
+          },
+          {
+            ...hdr,
+            type: 5,
+            body: { type: 5, prefix: '1.0.0.0', plen: 8, metric: 20, eType: 2, tag: 0 },
+          },
+        ],
+      },
+      { type: 'lsack', ...base, headers: [hdr] },
+    ];
+    for (const m of msgs) {
+      const f = eth(ospf(m));
+      expect(pduSize(f)).toBeGreaterThan(64);
+      expect(summarizeFrame(f).proto).toBe('OSPF');
+      const layers = describeFrame(f);
+      expect(layers.map((l) => l.name)).toContain('Routing');
+      expect(layers.flatMap((l) => l.fields).some((x) => x.name === 'Router ID')).toBe(true);
+    }
+  });
+
+  it('EIGRP, BGP, RIP, HSRP', () => {
+    const eigrp = ip4(
+      {
+        kind: 'routing',
+        proto: 'eigrp',
+        msg: {
+          op: 'update',
+          asn: 100,
+          routerId: '1.1.1.1',
+          holdSec: 15,
+          seq: 1,
+          ack: 0,
+          routes: [
+            {
+              prefix: '10.0.0.0',
+              plen: 24,
+              delay: 10,
+              bandwidth: 100000,
+              hops: 1,
+              unreachable: true,
+            },
+          ],
+        },
+      },
+      88,
+    );
+    expect(summarizeFrame(eth(eigrp)).proto).toBe('EIGRP');
+    expect(
+      describeFrame(eth(eigrp))
+        .flatMap((l) => l.fields)
+        .some((x) => x.name === 'Route'),
+    ).toBe(true);
+    const bgpMsgs = [
+      { type: 'open' as const, asn: 65001, holdSec: 180, routerId: '1.1.1.1' },
+      { type: 'keepalive' as const },
+      {
+        type: 'update' as const,
+        withdrawn: [{ prefix: '1.0.0.0', plen: 8 }],
+        attrs: {
+          origin: 'igp' as const,
+          asPath: [100, 200],
+          nextHop: '10.0.0.1',
+          med: 5,
+          localPref: 100,
+        },
+        nlri: [{ prefix: '10.0.0.0', plen: 24 }],
+      },
+      { type: 'notification' as const, code: 6, text: 'cease' },
+    ];
+    for (const msg of bgpMsgs) {
+      const f = eth(ip4({ kind: 'routing', proto: 'bgp', sport: 40000, dport: 179, msg }, 6));
+      expect(summarizeFrame(f).proto).toBe('BGP');
+      expect(pduSize(f)).toBeGreaterThan(0);
+      expect(describeFrame(f).length).toBeGreaterThan(1);
+    }
+    const rip = ip4(
+      {
+        kind: 'udp',
+        srcPort: 520,
+        dstPort: 520,
+        dataSize: 0,
+        app: {
+          kind: 'rip',
+          command: 'response',
+          entries: [
+            { prefix: '10.0.0.0', mask: '255.255.255.0', nextHop: '0.0.0.0', metric: 1, tag: 0 },
+          ],
+        },
+      },
+      17,
+    );
+    expect(summarizeFrame(eth(rip)).proto).toBe('RIP');
+    expect(
+      describeFrame(eth(rip))
+        .flatMap((l) => l.fields)
+        .some((x) => x.name === 'Route'),
+    ).toBe(true);
+    const hsrp = ip4(
+      {
+        kind: 'udp',
+        srcPort: 1985,
+        dstPort: 1985,
+        dataSize: 0,
+        app: {
+          kind: 'hsrp',
+          group: 1,
+          op: 'hello',
+          state: 'active',
+          helloSec: 3,
+          holdSec: 10,
+          priority: 100,
+          vip: '10.0.0.254',
+        },
+      },
+      17,
+    );
+    expect(summarizeFrame(eth(hsrp)).proto).toBe('HSRP');
+    expect(
+      describeFrame(eth(hsrp))
+        .flatMap((l) => l.fields)
+        .some((x) => x.name === 'Virtual IP'),
+    ).toBe(true);
+  });
+
+  it('GRE kapselt IPv4; IPv6 mit ICMPv6 und Neighbor Discovery', () => {
+    const inner = ip4(
+      { kind: 'icmp', type: 'echo-request', code: 0, id: 1, seq: 1, dataSize: 32 },
+      1,
+    );
+    const gre = ip4({ kind: 'gre', protocolType: 0x0800, inner }, 47);
+    const fg = eth(gre);
+    expect(summarizeFrame(fg).proto).toBe('GRE');
+    expect(pduSize(fg)).toBeGreaterThan(pduSize(eth(inner)) - 14);
+    expect(describeFrame(fg).map((l) => l.name)).toEqual(
+      expect.arrayContaining(['IPv4', 'GRE', 'ICMP']),
+    );
+
+    const ip6 = (payload: Ipv6Pdu['payload']): Ipv6Pdu => ({
+      kind: 'ipv6',
+      src: 'fe80::1',
+      dst: 'ff02::1',
+      hopLimit: 255,
+      nextHeader: 58,
+      payload,
+    });
+    const echo = eth(
+      ip6({ kind: 'icmp6', type: 'echo-request', code: 0, id: 1, seq: 2, dataSize: 32 }),
+      0x86dd,
+    );
+    expect(summarizeFrame(echo)).toMatchObject({ proto: 'ICMP6' });
+    const ns = eth(
+      ip6({
+        kind: 'icmp6',
+        type: 'ns',
+        code: 0,
+        id: 0,
+        seq: 0,
+        dataSize: 0,
+        target: 'fe80::2',
+        lladdr: '02:00:00:00:00:02',
+      }),
+      0x86dd,
+    );
+    expect(summarizeFrame(ns).proto).toBe('ND');
+    const na = eth(
+      ip6({
+        kind: 'icmp6',
+        type: 'na',
+        code: 0,
+        id: 0,
+        seq: 0,
+        dataSize: 0,
+        target: 'fe80::2',
+        naFlags: { router: true, solicited: true, override: true },
+      }),
+      0x86dd,
+    );
+    expect(
+      describeFrame(na)
+        .flatMap((l) => l.fields)
+        .some((x) => x.name === 'Flags'),
+    ).toBe(true);
+    const ra = eth(
+      ip6({
+        kind: 'icmp6',
+        type: 'ra',
+        code: 0,
+        id: 0,
+        seq: 0,
+        dataSize: 0,
+        prefixes: [{ prefix: '2001:db8::', plen: 64, onLink: true, autonomous: true }],
+        routerLifetime: 1800,
+      }),
+      0x86dd,
+    );
+    expect(pduSize(ra)).toBeGreaterThan(64);
+    expect(
+      describeFrame(ra)
+        .flatMap((l) => l.fields)
+        .some((x) => x.name === 'Prefix'),
+    ).toBe(true);
+    const err = eth(
+      ip6({
+        kind: 'icmp6',
+        type: 'dest-unreachable',
+        code: 0,
+        id: 1,
+        seq: 1,
+        dataSize: 40,
+        orig: { src: 'a::1', dst: 'b::1' },
+      }),
+      0x86dd,
+    );
+    expect(summarizeFrame(err).info).toContain('dest-unreachable');
+    const udp6 = eth(ip6({ kind: 'udp', srcPort: 1, dstPort: 2, dataSize: 10 }), 0x86dd);
+    expect(summarizeFrame(udp6).proto).toBe('UDP');
+    const ospf3 = eth(
+      ip6({ kind: 'routing', proto: 'ospf', v: 3, msg: { type: 'lsack', ...base, headers: [] } }),
+      0x86dd,
+    );
+    expect(summarizeFrame(ospf3).proto).toBe('OSPF');
+    const gre6 = eth(
+      ip6({
+        kind: 'gre',
+        protocolType: 0x86dd,
+        inner: ip6({ kind: 'icmp6', type: 'echo-reply', code: 0, id: 1, seq: 1, dataSize: 8 }),
+      }),
+      0x86dd,
+    );
+    expect(summarizeFrame(gre6).proto).toBe('GRE');
   });
 });

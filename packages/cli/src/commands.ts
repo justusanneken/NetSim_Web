@@ -8,6 +8,7 @@ import { renderRunningConfig } from './render';
 import { secretHash, type7Decrypt } from './secrets';
 import { CliError, type CliSession } from './session';
 import { addPhase3 } from './commands3';
+import { addPhase4 } from './commands4';
 import * as show from './show';
 
 const U: ModeId[] = ['user', 'priv'];
@@ -282,6 +283,11 @@ export function buildRegistry(): Registry<CliSession> {
 
   // --- Modus-Wechsel
   r.add({
+    modes: ['priv'],
+    slots: [K('enable', 'Turn on privileged commands')],
+    run: () => undefined,
+  });
+  r.add({
     modes: ['user'],
     slots: [K('enable', 'Turn on privileged commands')],
     run: (s) => {
@@ -429,6 +435,25 @@ export function buildRegistry(): Registry<CliSession> {
       opt(P('net', 'ip', 'A.B.C.D', 'Network to display information about')),
     ],
     run: (s, a) => s.outLines(show.showIpRoute(s.engine, s.device, a.net)),
+  });
+  r.add({
+    modes: U,
+    only: 'l3',
+    slots: [
+      SHOW,
+      K('ip', 'IP information'),
+      K('route', 'IP routing table'),
+      choice(
+        'proto',
+        ['rip', 'Routing Information Protocol (RIP)'],
+        ['ospf', 'Open Shortest Path First (OSPF)'],
+        ['eigrp', 'Enhanced Interior Gateway Routing Protocol (EIGRP)'],
+        ['bgp', 'Border Gateway Protocol (BGP)'],
+        ['static', 'Static routes'],
+        ['connected', 'Connected'],
+      ),
+    ],
+    run: (s, a) => s.outLines(show.showIpRoute(s.engine, s.device, undefined, a.proto)),
   });
   sh(
     [
@@ -993,5 +1018,6 @@ export function buildRegistry(): Registry<CliSession> {
   });
 
   addPhase3(r);
+  addPhase4(r);
   return r;
 }

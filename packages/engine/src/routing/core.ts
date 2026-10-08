@@ -191,6 +191,16 @@ export function installRoutes(
     old.length === routes.length &&
     old.map(key).sort().join(';') === routes.map(key).sort().join(';');
   if (same) return false;
+  if (rt.r.debug.includes('routing')) {
+    const k = (r: Omit<DynRoute, 'src'>): string =>
+      `${r.prefix}/${r.plen} via ${r.nextHop ?? r.ifaceId} [${r.ad}/${r.metric}]`;
+    const before = new Set(old.map(k));
+    const after = new Set(routes.map(k));
+    for (const x of routes)
+      if (!before.has(k(x))) dbg(rt, 'SYS', 'routing', () => `RT: add ${k(x)} (${src})`);
+    for (const x of old)
+      if (!after.has(k(x))) dbg(rt, 'SYS', 'routing', () => `RT: del ${k(x)} (${src})`);
+  }
   const oldSince = new Map(old.map((r) => [`${r.prefix}/${r.plen}|${r.nextHop ?? ''}`, r.since]));
   const next = [
     ...list.filter((r) => r.src !== src),

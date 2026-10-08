@@ -16,6 +16,8 @@ export interface Shell {
   end(): string;
   /** Initialausgabe beim Öffnen (Banner, Setup-Dialog). */
   start(): string;
+  /** Asynchrone Ausgabe seit dem letzten Aufruf (z. B. `debug`-Meldungen); leer, wenn nichts anfiel. */
+  poll?(): string;
   readonly history: readonly string[];
   /** Zeilen je Seite für `--More--` (0 = aus). */
   readonly terminalLength: number;

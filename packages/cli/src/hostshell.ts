@@ -1,4 +1,4 @@
-import { isValidIpv4 } from '@netsim/protocols';
+import { isValidIpv4, isValidIpv6, linkLocalFromMac, normalizeIpv6 } from '@netsim/protocols';
 import type { Device, Engine, HostConfig, PingResult } from '@netsim/engine';
 import { winMac } from './format';
 import type { Shell } from './shell';
@@ -120,7 +120,8 @@ export class HostShell implements Shell {
     let dst = this.target(args);
     if (!dst) return void out.push('Usage: ping [-n count] [-l size] [-f] target_name');
     const name = dst;
-    if (!isValidIpv4(dst)) {
+    if (isValidIpv6(dst)) dst = normalizeIpv6(dst) ?? dst;
+    else if (!isValidIpv4(dst)) {
       const ip = this.resolve(dst);
       if (!ip)
         return void out.push(
@@ -170,6 +171,8 @@ export class HostShell implements Shell {
   }
 
   private pingLine(p: PingResult): string {
+    if (p.status === 'reply' && p.from?.includes(':'))
+      return `Reply from ${p.from}: time${p.rttUs !== undefined && p.rttUs < 1000 ? '<1ms' : `=${ms(p.rttUs ?? 0)}`}`;
     if (p.status === 'reply')
       return `Reply from ${p.from}: bytes=${p.bytes} time${p.rttUs !== undefined && p.rttUs < 1000 ? '<1ms' : `=${ms(p.rttUs ?? 0)}`} TTL=${p.ttl}`;
     if (p.status === 'timeout' || p.status === 'pending') return 'Request timed out.';
@@ -265,9 +268,17 @@ export class HostShell implements Shell {
       out.push(`   DHCP Enabled....................: ${cfg.dhcpClient.enabled ? 'Yes' : 'No'}`);
       out.push(`   DNS Servers.....................: ${cfg.dnsServers.join(', ')}`);
     }
+    if (cfg.v6.enabled && port) {
+      out.push(`   Link-local IPv6 Address.........: ${linkLocalFromMac(port.mac)}`);
+      for (const a of [...cfg.v6.addrs, ...cfg.v6.slaac])
+        out.push(`   IPv6 Address....................: ${a.addr}`);
+    }
     out.push(`   IPv4 Address....................: ${cfg.ip ?? '0.0.0.0'}`);
     out.push(`   Subnet Mask.....................: ${cfg.mask ?? '0.0.0.0'}`);
-    out.push(`   Default Gateway.................: ${cfg.gateway ?? '0.0.0.0'}`);
+    const gw6 = cfg.v6.gateway ?? (cfg.v6.raGateway ? cfg.v6.raGateway.addr : undefined);
+    out.push(
+      `   Default Gateway.................: ${[gw6, cfg.gateway].filter(Boolean).join(' ') || '0.0.0.0'}`,
+    );
   }
 
   private arp(args: string[], out: string[]): void {

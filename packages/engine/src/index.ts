@@ -23,3 +23,4 @@ export {
   newBgp,
   newBgpNbr,
 } from './routing';
+export { listIfaces6, type Iface6 } from './l3v6';

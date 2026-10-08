@@ -2,7 +2,7 @@
  * Deklarative Befehlsdefinition + Parser (IOS-Stil): eindeutige Präfix-Abkürzungen,
  * `?`-Hilfe, Tab-Completion, `no`/`default`-Präfix. Neue Befehle sind nur Daten + Handler.
  */
-import { isValidIpv4, maskToPrefix } from '@netsim/protocols';
+import { isValidIpv4, isValidIpv6, maskToPrefix } from '@netsim/protocols';
 
 export type ModeId =
   | 'user'
@@ -15,8 +15,14 @@ export type ModeId =
   | 'config-vlan'
   | 'dhcp-config'
   | 'config-std-nacl'
-  | 'config-ext-nacl';
-export type ParamType = 'word' | 'int' | 'ip' | 'mask' | 'iface' | 'vlans' | 'mac' | 'wildcard';
+  | 'config-ext-nacl'
+  | 'config-rip'
+  | 'config-ospf'
+  | 'config-ospf6'
+  | 'config-eigrp'
+  | 'config-bgp';
+export type ParamType =
+  'word' | 'int' | 'ip' | 'mask' | 'iface' | 'vlans' | 'mac' | 'wildcard' | 'ipv6' | 'prefix6';
 export type Family = 'router' | 'switch' | 'switch-l3';
 export type Args = Record<string, string>;
 
@@ -141,6 +147,18 @@ function validParam(s: ParamSlot, tok: string, env: Env): boolean {
       return /^[0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4}$/i.test(tok);
     case 'wildcard':
       return isValidIpv4(tok);
+    case 'ipv6':
+      return isValidIpv6(tok);
+    case 'prefix6': {
+      const [a, l] = tok.split('/');
+      return (
+        a !== undefined &&
+        l !== undefined &&
+        isValidIpv6(a) &&
+        /^\d{1,3}$/.test(l) &&
+        Number(l) <= 128
+      );
+    }
   }
 }
 

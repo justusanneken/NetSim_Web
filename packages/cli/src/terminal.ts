@@ -26,6 +26,14 @@ export class Terminal {
     return crlf(this.sh.start()) + this.paintPrompt();
   }
 
+  /** Asynchrone Meldungen (debug) über der aktuellen Eingabezeile ausgeben und den Prompt neu zeichnen. */
+  poll(): string {
+    if (!this.sh.poll || this.pager) return '';
+    const text = this.sh.poll();
+    if (text === '') return '';
+    return '\r\x1b[K' + crlf(text.endsWith('\n') ? text : text + '\n') + this.paintPrompt();
+  }
+
   /** Zeichnet Prompt und aktuellen Puffer neu (z. B. beim erneuten Öffnen). */
   redraw(): string {
     return '\r\x1b[K' + this.paintPrompt();

@@ -9,6 +9,16 @@ import { buildRegistry } from './commands';
 
 export class CliError extends Error {}
 
+/** `*Mar  1 00:00:12.345` aus der virtuellen Zeit (µs). */
+function stamp(us: number): string {
+  const ms = Math.floor(us / 1000);
+  const p = (n: number, w = 2): string => String(n).padStart(w, '0');
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const s = Math.floor((ms % 60_000) / 1000);
+  return `*Mar  1 ${p(h)}:${p(m)}:${p(s)}.${p(ms % 1000, 3)}`;
+}
+
 interface Pending {
   text: string;
   secret: boolean;
@@ -27,6 +37,11 @@ const MODE_SUFFIX: Record<ModeId, string> = {
   'dhcp-config': '(dhcp-config)#',
   'config-std-nacl': '(config-std-nacl)#',
   'config-ext-nacl': '(config-ext-nacl)#',
+  'config-rip': '(config-router)#',
+  'config-ospf': '(config-router)#',
+  'config-ospf6': '(config-rtr)#',
+  'config-eigrp': '(config-router)#',
+  'config-bgp': '(config-router)#',
 };
 
 let REGISTRY: Registry<CliSession> | undefined;
@@ -44,6 +59,8 @@ export class CliSession implements Shell {
   vlanId = 1;
   poolName = '';
   aclName = '';
+  /** Prozess-ID (OSPF/EIGRP/BGP-AS) im Router-Konfigurationsmodus. */
+  procId = 0;
   /** Zeilenziel im Line-Modus. */
   lineTarget: 'con' | 'vty' = 'con';
   silent = false;
@@ -53,13 +70,35 @@ export class CliSession implements Shell {
   private pending: Pending | undefined;
   private buf: string[] = [];
   private started = false;
+  /** Position im Engine-Log für asynchrone `debug`-Ausgaben. */
+  private debugCursor: number;
 
   constructor(
     readonly engine: Engine,
     readonly deviceId: string,
     /** Liefert `true`, wenn nicht bis zum Ende simuliert werden soll (Simulationsmodus). */
     readonly deferred: () => boolean = () => false,
-  ) {}
+  ) {
+    this.debugCursor = engine.log.length;
+  }
+
+  /** `debug`-Meldungen dieses Geräts seit dem letzten Aufruf (IOS-Zeitstempel). */
+  poll(): string {
+    const log = this.engine.log;
+    if (this.debugCursor > log.length) this.debugCursor = 0;
+    const cfg = this.device.config;
+    const flags = cfg.routing.debug;
+    const lines: string[] = [];
+    if (flags.length > 0) {
+      for (let i = this.debugCursor; i < log.length; i++) {
+        const e = log[i];
+        if (!e?.debug || e.atDeviceId !== this.deviceId || !flags.includes(e.debug.tag)) continue;
+        lines.push(`${stamp(e.t)}: ${e.debug.text}`);
+      }
+    }
+    this.debugCursor = log.length;
+    return lines.length ? lines.join('\n') + '\n' : '';
+  }
 
   get device(): Device & { config: RouterConfig | SwitchConfig } {
     const d = this.engine.getDevice(this.deviceId);
@@ -242,6 +281,7 @@ export class CliSession implements Shell {
       this.negated = r.negated;
       try {
         r.def.run(this, r.args);
+        if (this.inConfig()) this.engine.routingChanged(this.deviceId);
       } catch (e) {
         if (e instanceof CliError) this.out(e.message);
         else throw e;
