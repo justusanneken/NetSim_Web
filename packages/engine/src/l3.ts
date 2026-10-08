@@ -5,6 +5,7 @@ import {
   IP_PROTO,
   broadcastAddress,
   isBroadcastMac,
+  isMulticastIpv4,
   isMulticastMac,
   pduSize,
   summarizeFrame,
@@ -25,6 +26,7 @@ import { dhcpRx } from './svc/dhcp';
 import { dnsRx } from './svc/dns';
 import type { Iface } from './ifaces';
 import { natHasInbound, natInside2Outside, natOutside2Inside } from './nat';
+import { routingRx } from './routing';
 import { tcpRx } from './svc/tcp';
 import type { Device, HostConfig, IpCore, L3Cfg, Port } from './types';
 
@@ -49,6 +51,8 @@ export interface IpNode {
   arpTtlUs: number;
   defaultTtl: number;
   ifaces: Iface[];
+  /** Aktive HSRP-Adressen (Active-Router): virtuelle IP + virtuelle MAC je Schnittstelle. */
+  vips?: { ip: Ipv4Addr; mac: string; ifaceId: string }[];
   lookup(dst: Ipv4Addr): NextHop | undefined;
   /** Sendet einen fertigen Frame aus der Schnittstelle (Tag/SVI-Besonderheiten inklusive). */
   xmit(ctx: DeviceCtx, iface: Iface, frame: Frame): void;
@@ -76,7 +80,19 @@ export function eth(src: string, dst: string, payload: ArpPdu | Ipv4Pdu): Frame 
 }
 
 const protoOf = (p: IpPayload): number =>
-  p.kind === 'icmp' ? IP_PROTO.icmp : p.kind === 'tcp' ? IP_PROTO.tcp : IP_PROTO.udp;
+  p.kind === 'icmp'
+    ? IP_PROTO.icmp
+    : p.kind === 'tcp'
+      ? IP_PROTO.tcp
+      : p.kind === 'gre'
+        ? IP_PROTO.gre
+        : p.kind === 'routing'
+          ? p.proto === 'ospf'
+            ? IP_PROTO.ospf
+            : p.proto === 'eigrp'
+              ? IP_PROTO.eigrp
+              : IP_PROTO.tcp
+          : IP_PROTO.udp;
 
 export function newIpPacket(
   node: IpNode,
@@ -99,8 +115,11 @@ export function newIpPacket(
   };
 }
 
+/** Loopback und Tunnel haben keine Layer-2-Nachbarn (kein ARP). */
+const isVirtualP2p = (i: Iface): boolean => i.kind === 'tunnel' || i.kind === 'loop';
+
 export const isLocalIp = (node: IpNode, ip: Ipv4Addr): boolean =>
-  node.ifaces.some((i) => i.ip === ip);
+  node.ifaces.some((i) => i.ip === ip) || (node.vips?.some((v) => v.ip === ip) ?? false);
 
 // ------------------------------------------------------------------ Senden
 
@@ -117,6 +136,10 @@ export function sendArpRequest(ctx: DeviceCtx, node: IpNode, iface: Iface, targe
 }
 
 function emit(ctx: DeviceCtx, node: IpNode, hop: NextHop, pkt: Ipv4Pdu): void {
+  if (isVirtualP2p(hop.iface)) {
+    node.xmit(ctx, hop.iface, eth(hop.iface.mac, '00:00:00:00:00:00', pkt));
+    return;
+  }
   const entry = node.cfg.arpCache[hop.nextHop];
   if (entry && entry.expiresAt > ctx.now) {
     node.xmit(ctx, hop.iface, eth(hop.iface.mac, entry.mac, pkt));
@@ -269,7 +292,13 @@ export function ifaceFrameRx(
 ): void {
   const { proto, info } = summarizeFrame(frame);
   const base: Base = { from: fromId, port, frame, summary: info, proto };
-  if (frame.dst !== iface.mac && !isBroadcastMac(frame.dst) && !isMulticastMac(frame.dst)) {
+  const vipMac = node.vips?.some((v) => v.ifaceId === iface.id && v.mac === frame.dst) ?? false;
+  if (
+    frame.dst !== iface.mac &&
+    !vipMac &&
+    !isBroadcastMac(frame.dst) &&
+    !isMulticastMac(frame.dst)
+  ) {
     ctx.log({
       ...base,
       kind: 'drop',
@@ -299,7 +328,8 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
       });
       return;
     }
-    if (a.targetIp !== iface.ip) {
+    const vip = node.vips?.find((v) => v.ifaceId === iface.id && v.ip === a.targetIp);
+    if (a.targetIp !== iface.ip && !vip) {
       ctx.log({
         ...base,
         kind: 'drop',
@@ -327,12 +357,12 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
     const reply: ArpPdu = {
       kind: 'arp',
       op: 'reply',
-      senderMac: iface.mac,
-      senderIp: iface.ip,
+      senderMac: vip?.mac ?? iface.mac,
+      senderIp: vip?.ip ?? iface.ip,
       targetMac: a.senderMac,
       targetIp: a.senderIp,
     };
-    node.xmit(ctx, iface, eth(iface.mac, a.senderMac, reply));
+    node.xmit(ctx, iface, eth(vip?.mac ?? iface.mac, a.senderMac, reply));
     return;
   }
   learn(ctx, node, a.senderIp, a.senderMac);
@@ -359,6 +389,11 @@ function ipRx(
   ip: Ipv4Pdu,
   frame: Frame,
 ): void {
+  if (isMulticastIpv4(ip.dst)) {
+    // Routing-Protokolle/HSRP; Hosts und andere Geräte ignorieren Multicast stillschweigend
+    if (node.l3) deliverLocal(ctx, node, iface, base, ip, frame, true);
+    return;
+  }
   const bcast = ip.dst === '255.255.255.255' || ip.dst === broadcastAddress(iface.ip, iface.mask);
   // Antworten an die übersetzte Adresse (auch die Router-Schnittstellenadresse) zuerst zurückübersetzen
   if (
@@ -571,6 +606,10 @@ function deliverLocal(
   }
   const reassembled = ip !== ipIn;
   const l4 = ip.payload;
+  if (l4.kind === 'routing' || l4.kind === 'gre') {
+    if (node.l3) routingRx(ctx, node, iface, base, ip);
+    return;
+  }
   if (l4.kind === 'udp') {
     udpIn(ctx, node, iface, base, ip, frame, broadcast);
     return;
@@ -644,6 +683,10 @@ function udpIn(
   const udp = ip.payload;
   if (udp.kind !== 'udp') return;
   const app = udp.app;
+  if (app?.kind === 'rip' || app?.kind === 'hsrp') {
+    if (node.l3) routingRx(ctx, node, iface, base, ip);
+    return;
+  }
   if (app?.kind === 'dhcp' && dhcpRx(ctx, node, iface, base, ip, udp, app, frame)) return;
   if (app?.kind === 'dns' && dnsRx(ctx, node, iface, base, ip, udp, app)) return;
   ctx.log({

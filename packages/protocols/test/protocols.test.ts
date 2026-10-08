@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isLinkLocalIpv6,
+  isMulticastIpv4,
+  isMulticastIpv6,
+  isValidIpv6,
+  ipv6Network,
+  linkLocalFromMac,
+  multicastMacV4,
+  multicastMacV6,
+  normalizeIpv6,
+  sameIpv6Prefix,
+  slaacAddress,
+  solicitedNode,
   BROADCAST_MAC,
   ETHERTYPE,
   IP_PROTO,
@@ -272,5 +284,32 @@ describe('pdu', () => {
     };
     expect(summarizeFrame(rep).info).toContain('is at');
     expect(summarizeFrame(ping).proto).toBe('ICMP');
+  });
+});
+
+describe('IPv6-Adressen (Phase 4)', () => {
+  it('parst und formatiert kanonisch', () => {
+    expect(normalizeIpv6('2001:0db8:0000:0000:0000:0000:0000:0001')).toBe('2001:db8::1');
+    expect(normalizeIpv6('FE80::1')).toBe('fe80::1');
+    expect(normalizeIpv6('::')).toBe('::');
+    expect(normalizeIpv6('1:2:3:4:5:6:7:8')).toBe('1:2:3:4:5:6:7:8');
+    expect(isValidIpv6('2001:db8:::1')).toBe(false);
+    expect(isValidIpv6('12345::1')).toBe(false);
+    expect(isValidIpv6('1:2:3')).toBe(false);
+  });
+
+  it('Präfix, EUI-64, Link-Local, Multicast-MAC', () => {
+    expect(ipv6Network('2001:db8:1:2:aaaa:bbbb:cccc:dddd', 64)).toBe('2001:db8:1:2::');
+    expect(sameIpv6Prefix('2001:db8::1', '2001:db8::ffff', 64)).toBe(true);
+    expect(linkLocalFromMac('00:11:22:33:44:55')).toBe('fe80::211:22ff:fe33:4455');
+    expect(slaacAddress('2001:db8:1:1::', '00:11:22:33:44:55')).toBe(
+      '2001:db8:1:1:211:22ff:fe33:4455',
+    );
+    expect(multicastMacV6('ff02::5')).toBe('33:33:00:00:00:05');
+    expect(solicitedNode('2001:db8::211:22ff:fe33:4455')).toBe('ff02::1:ff33:4455');
+    expect(multicastMacV4('224.0.0.5')).toBe('01:00:5e:00:00:05');
+    expect(isMulticastIpv4('224.0.0.9')).toBe(true);
+    expect(isMulticastIpv6('ff02::1')).toBe(true);
+    expect(isLinkLocalIpv6('fe80::1')).toBe(true);
   });
 });

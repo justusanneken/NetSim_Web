@@ -16,11 +16,18 @@ export interface Iface {
 
 export const subId = (portId: string, vlan: number): string => `${portId}.${vlan}`;
 export const sviId = (vlan: number): string => `vlan${vlan}`;
+export const loopId = (n: number): string => `lo${n}`;
+export const tunnelId = (n: number): string => `tu${n}`;
+/** Virtuelle Schnittstelle ohne physischen Port (Loopback, Tunnel, SVI). */
+export const isVirtualIface = (kind: IfaceCfg['kind']): boolean =>
+  kind === 'svi' || kind === 'loop' || kind === 'tunnel';
 
 /** Anzeigename (`GigabitEthernet0/0.10`, `Vlan10`). */
 export function ifaceName(dev: Device, id: string, cfg?: IfaceCfg): string {
   const c = cfg ?? (dev.config as unknown as L3Cfg).ifaces?.[id];
   if (c?.kind === 'svi') return `Vlan${c.vlan}`;
+  if (c?.kind === 'loop') return `Loopback${id.slice(2)}`;
+  if (c?.kind === 'tunnel') return `Tunnel${id.slice(2)}`;
   if (c?.kind === 'sub') {
     const port = dev.ports.find((p) => p.id === c.portId);
     return `${port?.name ?? id}.${c.vlan}`;
@@ -41,6 +48,8 @@ export function vlanActive(cfg: SwitchConfig, dev: Device, vlan: number): boolea
 
 /** Ob die Schnittstelle (unabhängig von der IP) betriebsbereit ist. */
 export function ifaceUp(dev: Device, cfg: L3Cfg, id: string, c: IfaceCfg): boolean {
+  if (c.kind === 'loop') return !c.shutdown;
+  if (c.kind === 'tunnel') return !c.shutdown && tunnelUp(dev, cfg, c);
   if (c.kind === 'svi') {
     const sw = dev.config.kind === 'switch' ? dev.config : undefined;
     return !!sw && !c.shutdown && vlanActive(sw, dev, c.vlan ?? 0);
@@ -54,6 +63,18 @@ export function ifaceUp(dev: Device, cfg: L3Cfg, id: string, c: IfaceCfg): boole
   return true;
 }
 
+/** Tunnel ist up, wenn Quelle konfiguriert/aktiv ist und ein Ziel gesetzt wurde (Ziel-Erreichbarkeit prüft das Senden). */
+function tunnelUp(dev: Device, cfg: L3Cfg, c: IfaceCfg): boolean {
+  const t = c.tunnel;
+  if (!t?.source || !t.destination) return false;
+  const src = t.source;
+  const ifc = cfg.ifaces[src];
+  if (ifc) return !ifc.shutdown && ifaceUp(dev, cfg, src, ifc) && !!ifc.ip;
+  return Object.entries(cfg.ifaces).some(
+    ([id, x]) => x.ip === src && ifaceUp(dev, cfg, id, x) && id !== undefined,
+  );
+}
+
 /** Alle aktiven Schnittstellen mit IP-Konfiguration. */
 export function listIfaces(dev: Device, cfg: L3Cfg): Iface[] {
   const out: Iface[] = [];
@@ -61,16 +82,16 @@ export function listIfaces(dev: Device, cfg: L3Cfg): Iface[] {
   for (const [id, c] of Object.entries(cfg.ifaces)) {
     if (!c.ip || !c.mask || !ifaceUp(dev, cfg, id, c)) continue;
     const port = dev.ports.find((p) => p.id === c.portId);
-    if (c.kind === 'svi') {
+    if (isVirtualIface(c.kind)) {
       out.push({
         id,
-        kind: 'svi',
+        kind: c.kind,
         portId: '',
-        vlan: c.vlan,
+        vlan: c.kind === 'svi' ? c.vlan : undefined,
         mac: baseMac,
         ip: c.ip,
         mask: c.mask,
-        mtu: 1500,
+        mtu: c.kind === 'tunnel' ? 1476 : 1500,
         cfg: c,
       });
     } else if (port) {

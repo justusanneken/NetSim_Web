@@ -1,3 +1,4 @@
+import type { HsrpCfg, OspfIfCfg, RoutingCfg, TunnelCfg } from './routing/types';
 import type { DnsRecord, Frame, Ipv4Addr, Ipv4Pdu, Mac, ProtoTag } from '@netsim/protocols';
 
 export type DeviceType =
@@ -392,7 +393,7 @@ export interface SysConfig {
 
 /** Konfiguration einer L3-Schnittstelle (physisch, Subinterface oder SVI). */
 export interface IfaceCfg {
-  kind: 'phys' | 'sub' | 'svi';
+  kind: 'phys' | 'sub' | 'svi' | 'loop' | 'tunnel';
   portId?: string;
   /** Sub: Dot1Q-VLAN; SVI: VLAN-ID. */
   vlan?: number;
@@ -404,6 +405,15 @@ export interface IfaceCfg {
   aclOut?: string;
   natSide?: 'inside' | 'outside';
   helpers?: Ipv4Addr[];
+  /** Bandbreite (kbit/s) für OSPF-Kosten/EIGRP; sonst aus der Linkgeschwindigkeit. */
+  bandwidth?: number;
+  /** EIGRP-Delay in Einheiten von 10 µs. */
+  delay?: number;
+  ospf?: OspfIfCfg;
+  hsrp?: Record<number, HsrpCfg>;
+  tunnel?: TunnelCfg;
+  /** RIP: Split Horizon an dieser Schnittstelle (Default an). */
+  ripSplitHorizon?: boolean;
 }
 export type RouterIface = IfaceCfg;
 
@@ -420,6 +430,8 @@ export interface StaticRoute {
 /** Von einem dynamischen Routing-Protokoll installierte Route (Laufzeit). */
 export interface DynRoute {
   proto: 'R' | 'O' | 'D' | 'B';
+  /** Quelle der Route (`rip`, `ospf:1`, `eigrp:100`, `bgp`) – für Redistribution und Neuberechnung. */
+  src: string;
   /** Unterart, z. B. `IA`, `E2`, `EX`. */
   sub?: string;
   prefix: Ipv4Addr;
@@ -435,6 +447,7 @@ export interface DynRoute {
 /** Gemeinsamer L3-Zustand von Router und L3-fähigen Switches. */
 export interface L3Cfg extends IpCore {
   dynRoutes: DynRoute[];
+  routing: RoutingCfg;
   ifaces: Record<string, IfaceCfg>;
   staticRoutes: StaticRoute[];
   acls: Record<string, Acl>;
@@ -632,6 +645,11 @@ export interface Msg {
 
 export type LogKind = 'rx' | 'drop' | 'collision' | 'link' | 'ping' | 'info' | 'error';
 
+export interface DebugInfo {
+  tag: string;
+  text: string;
+}
+
 export interface LogEntry {
   id: number;
   t: number;
@@ -647,6 +665,8 @@ export interface LogEntry {
   /** Kurzinfo des Frames (z. B. „Who has 10.0.0.2?“). */
   summary?: string;
   frame?: Frame;
+  /** `debug`-Ausgabe (IOS-Textzeile) – nur bei aktivem Debug-Schalter erzeugt. */
+  debug?: DebugInfo;
 }
 
 // ---------------------------------------------------------------- Engine-Zustand

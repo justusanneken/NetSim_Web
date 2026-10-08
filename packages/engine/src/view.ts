@@ -58,7 +58,7 @@ export interface DeviceView {
   ifaceList?: {
     id: string;
     name: string;
-    kind: 'phys' | 'sub' | 'svi';
+    kind: 'phys' | 'sub' | 'svi' | 'loop' | 'tunnel';
     ip?: string;
     mask?: string;
   }[];

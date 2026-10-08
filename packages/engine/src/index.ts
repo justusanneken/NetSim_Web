@@ -12,3 +12,5 @@ export { listIfaces, ifaceName, ifaceUp, vlanActive, subId, sviId, type Iface } 
 export { aclEval } from './acl';
 export { newSys, newSwitchPort } from './defaults';
 export { bridgeId } from './devices/stp';
+export * from './routing/types';
+export { newRouting, newRip, newOspf } from './routing';

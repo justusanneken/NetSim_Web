@@ -1,5 +1,14 @@
 import {
   type BpduPdu,
+  type EigrpMsg,
+  type GrePdu,
+  type HsrpPdu,
+  type Icmp6Pdu,
+  type Ipv6Pdu,
+  type OspfLsa,
+  type OspfMsg,
+  type RipPdu,
+  type RoutingPdu,
   type DhcpPdu,
   type DnsPdu,
   type EthernetPdu,
@@ -26,9 +35,56 @@ const ARP_SIZE = 28;
 const DHCP_SIZE = 300;
 const BPDU_SIZE = 35;
 
+const lsaSize = (l: OspfLsa): number => {
+  const b = l.body;
+  return (
+    20 + (b.type === 1 ? 4 + b.links.length * 12 : b.type === 2 ? 8 + b.attached.length * 4 : 12)
+  );
+};
+
+function ospfSize(m: OspfMsg): number {
+  switch (m.type) {
+    case 'hello':
+      return 44 + m.neighbors.length * 4;
+    case 'dbd':
+      return 32 + m.headers.length * 20;
+    case 'lsr':
+      return 24 + m.requests.length * 12;
+    case 'lsu':
+      return 28 + m.lsas.reduce((a, l) => a + lsaSize(l), 0);
+    case 'lsack':
+      return 24 + m.headers.length * 20;
+  }
+}
+
+function routingSize(p: RoutingPdu): number {
+  switch (p.proto) {
+    case 'ospf':
+      return ospfSize(p.msg);
+    case 'eigrp':
+      return 20 + (p.msg.routes?.length ?? 0) * 28;
+    case 'bgp': {
+      const m = p.msg;
+      if (m.type === 'open') return 29;
+      if (m.type === 'keepalive') return 19;
+      if (m.type === 'notification') return 21;
+      return (
+        23 +
+        m.nlri.length * 5 +
+        m.withdrawn.length * 5 +
+        (m.attrs ? 20 + m.attrs.asPath.length * 2 : 0)
+      );
+    }
+  }
+}
+
 function appSize(p: UdpPdu['app'] | TcpPdu['app']): number {
   if (!p) return 0;
   switch (p.kind) {
+    case 'rip':
+      return 4 + p.entries.length * 20;
+    case 'hsrp':
+      return 20;
     case 'dhcp':
       return DHCP_SIZE;
     case 'dns':
@@ -58,6 +114,22 @@ export function pduSize(pdu: Pdu): number {
       return BPDU_SIZE;
     case 'vtp':
       return 40 + pdu.vlans.length * 12;
+    case 'rip':
+    case 'hsrp':
+      return appSize(pdu);
+    case 'routing':
+      return routingSize(pdu);
+    case 'gre':
+      return 4 + pduSize(pdu.inner);
+    case 'icmp6':
+      return (
+        ICMP_HEADER +
+        pdu.dataSize +
+        (pdu.type === 'ns' || pdu.type === 'na' ? 24 : 0) +
+        (pdu.prefixes?.length ?? 0) * 32
+      );
+    case 'ipv6':
+      return 40 + pduSize(pdu.payload);
     case 'ipv4':
       return IPV4_HEADER + (pdu.dataLen ?? pduSize(pdu.payload));
     case 'ethernet':
@@ -77,7 +149,10 @@ export function layersOf(pdu: Pdu): Pdu[] {
   switch (pdu.kind) {
     case 'ethernet':
     case 'ipv4':
+    case 'ipv6':
       return [pdu, ...layersOf(pdu.payload)];
+    case 'gre':
+      return [pdu, ...layersOf(pdu.inner)];
     case 'udp':
     case 'tcp':
       return pdu.app ? [pdu, pdu.app] : [pdu];
@@ -172,7 +247,123 @@ export function describePdu(pdu: Pdu): HeaderField[] {
       return describeBpdu(pdu);
     case 'vtp':
       return describeVtp(pdu);
+    case 'rip':
+      return [
+        f('Command', pdu.command),
+        f('Version', 2),
+        ...pdu.entries.map((e) => f('Route', `${e.prefix}/${e.mask} metric ${e.metric}`)),
+      ];
+    case 'hsrp':
+      return [
+        f('Group', pdu.group),
+        f('Op', pdu.op),
+        f('State', pdu.state),
+        f('Hello', `${pdu.helloSec} s`),
+        f('Hold', `${pdu.holdSec} s`),
+        f('Priority', pdu.priority),
+        f('Virtual IP', pdu.vip),
+      ];
+    case 'routing':
+      return describeRouting(pdu);
+    case 'gre':
+      return [f('Protocol Type', hex(pdu.protocolType))];
+    case 'ipv6':
+      return [
+        f('Version', 6),
+        f('Payload Length', pduSize(pdu.payload)),
+        f('Next Header', pdu.nextHeader),
+        f('Hop Limit', pdu.hopLimit),
+        f('Source', pdu.src),
+        f('Destination', pdu.dst),
+      ];
+    case 'icmp6':
+      return describeIcmp6(pdu);
   }
+}
+
+function describeIcmp6(p: Icmp6Pdu): HeaderField[] {
+  return [
+    f('Type', p.type),
+    f('Code', p.code),
+    ...(p.target ? [f('Target', p.target)] : []),
+    ...(p.lladdr ? [f('Link-Layer Address', p.lladdr)] : []),
+    ...(p.naFlags
+      ? [f('Flags', `R=${+p.naFlags.router} S=${+p.naFlags.solicited} O=${+p.naFlags.override}`)]
+      : []),
+    ...(p.prefixes?.map((x) =>
+      f('Prefix', `${x.prefix}/${x.plen}${x.autonomous ? ' (A)' : ''}${x.onLink ? ' (L)' : ''}`),
+    ) ?? []),
+    ...(p.type === 'echo-request' || p.type === 'echo-reply'
+      ? [f('Identifier', p.id), f('Sequence', p.seq), f('Data', `${p.dataSize} bytes`)]
+      : []),
+  ];
+}
+
+function describeRouting(p: RoutingPdu): HeaderField[] {
+  if (p.proto === 'ospf') {
+    const m = p.msg;
+    const out = [
+      f('Version', p.v),
+      f('Type', m.type),
+      f('Router ID', m.routerId),
+      f('Area', m.areaId),
+    ];
+    if (m.type === 'hello')
+      out.push(
+        f('Hello / Dead', `${m.helloSec} / ${m.deadSec} s`),
+        f('Priority', m.priority),
+        f('DR', m.dr),
+        f('BDR', m.bdr),
+        f('Neighbors', m.neighbors.join(', ')),
+      );
+    else if (m.type === 'dbd')
+      out.push(
+        f('Flags', `I=${+m.init} M=${+m.more} MS=${+m.master}`),
+        f('Headers', m.headers.length),
+      );
+    else if (m.type === 'lsr') out.push(f('Requests', m.requests.length));
+    else if (m.type === 'lsu')
+      for (const l of m.lsas)
+        out.push(f('LSA', `type ${l.type} id ${l.id} adv ${l.advRouter} seq ${l.seq}`));
+    else out.push(f('Acked', m.headers.length));
+    return out;
+  }
+  if (p.proto === 'eigrp') return describeEigrp(p.msg);
+  const m = p.msg;
+  const out = [f('Type', m.type)];
+  if (m.type === 'open')
+    out.push(f('AS', m.asn), f('Hold Time', m.holdSec), f('BGP Identifier', m.routerId));
+  if (m.type === 'update') {
+    if (m.attrs)
+      out.push(
+        f('Origin', m.attrs.origin),
+        f('AS_PATH', m.attrs.asPath.join(' ') || '(empty)'),
+        f('NEXT_HOP', m.attrs.nextHop),
+        ...(m.attrs.med !== undefined ? [f('MED', m.attrs.med)] : []),
+        ...(m.attrs.localPref !== undefined ? [f('LOCAL_PREF', m.attrs.localPref)] : []),
+      );
+    for (const n of m.nlri) out.push(f('NLRI', `${n.prefix}/${n.plen}`));
+    for (const n of m.withdrawn) out.push(f('Withdrawn', `${n.prefix}/${n.plen}`));
+  }
+  if (m.type === 'notification') out.push(f('Error', `${m.code} ${m.text}`));
+  return out;
+}
+
+function describeEigrp(m: EigrpMsg): HeaderField[] {
+  return [
+    f('Opcode', m.op),
+    f('AS', m.asn),
+    f('Router ID', m.routerId),
+    f('Hold Time', m.holdSec),
+    f('Sequence', m.seq),
+    f('Acknowledge', m.ack),
+    ...(m.routes ?? []).map((r) =>
+      f(
+        'Route',
+        `${r.prefix}/${r.plen} delay ${r.delay} bw ${r.bandwidth}${r.unreachable ? ' (unreachable)' : ''}`,
+      ),
+    ),
+  ];
 }
 
 function describeDhcp(p: DhcpPdu): HeaderField[] {
@@ -235,6 +426,12 @@ const LAYER_META: Record<Pdu['kind'], { osi: number; name: string }> = {
   bpdu: { osi: 2, name: 'STP' },
   vtp: { osi: 2, name: 'VTP' },
   ipv4: { osi: 3, name: 'IPv4' },
+  ipv6: { osi: 3, name: 'IPv6' },
+  icmp6: { osi: 3, name: 'ICMPv6' },
+  gre: { osi: 3, name: 'GRE' },
+  routing: { osi: 4, name: 'Routing' },
+  rip: { osi: 7, name: 'RIPv2' },
+  hsrp: { osi: 7, name: 'HSRP' },
   icmp: { osi: 3, name: 'ICMP' },
   udp: { osi: 4, name: 'UDP' },
   tcp: { osi: 4, name: 'TCP' },
@@ -268,7 +465,61 @@ export function summarizeFrame(frame: EthernetPdu): { proto: ProtoTag; info: str
       return { proto: 'VTP', info: `domain ${p.domain} revision ${p.revision}` };
     case 'ipv4':
       return summarizeIp(p);
+    case 'ipv6':
+      return summarizeIp6(p);
   }
+}
+
+function summarizeRouting(r: RoutingPdu, tail: string): { proto: ProtoTag; info: string } {
+  if (r.proto === 'ospf') {
+    const m = r.msg;
+    const extra =
+      m.type === 'hello'
+        ? ` rid ${m.routerId} area ${m.areaId} nbrs ${m.neighbors.length}`
+        : m.type === 'lsu'
+          ? ` ${m.lsas.length} LSA`
+          : m.type === 'dbd'
+            ? ` ${m.headers.length} hdr`
+            : m.type === 'lsr'
+              ? ` ${m.requests.length} req`
+              : ` ${m.headers.length} ack`;
+    return { proto: 'OSPF', info: `${m.type.toUpperCase()}${extra}${tail}` };
+  }
+  if (r.proto === 'eigrp') {
+    const m = r.msg;
+    return {
+      proto: 'EIGRP',
+      info: `${m.op.toUpperCase()} AS ${m.asn} seq ${m.seq} ack ${m.ack}${m.routes ? ` ${m.routes.length} route(s)` : ''}${tail}`,
+    };
+  }
+  const m = r.msg;
+  const extra =
+    m.type === 'update'
+      ? ` +${m.nlri.length} -${m.withdrawn.length}`
+      : m.type === 'open'
+        ? ` AS ${m.asn}`
+        : '';
+  return { proto: 'BGP', info: `${m.type.toUpperCase()}${extra}${tail}` };
+}
+
+function summarizeIp6(p: Ipv6Pdu): { proto: ProtoTag; info: string } {
+  const tail = ` hl=${p.hopLimit}`;
+  const l4 = p.payload;
+  if (l4.kind === 'icmp6') {
+    const nd = l4.type === 'ns' || l4.type === 'na' || l4.type === 'rs' || l4.type === 'ra';
+    const what = nd
+      ? `${l4.type.toUpperCase()}${l4.target ? ' ' + l4.target : ''}`
+      : l4.orig
+        ? `${l4.type} code=${l4.code}`
+        : `${l4.type} id=${l4.id} seq=${l4.seq}`;
+    return { proto: nd ? 'ND' : 'ICMP6', info: `${what} ${p.src} → ${p.dst}${tail}` };
+  }
+  if (l4.kind === 'routing') return summarizeRouting(l4, tail);
+  if (l4.kind === 'gre') return { proto: 'GRE', info: `${p.src} → ${p.dst}${tail}` };
+  return {
+    proto: l4.kind === 'tcp' ? 'TCP' : 'UDP',
+    info: `[${p.src}]:${l4.srcPort} → [${p.dst}]:${l4.dstPort}${tail}`,
+  };
 }
 
 function summarizeIp(p: Ipv4Pdu): { proto: ProtoTag; info: string } {
@@ -280,6 +531,12 @@ function summarizeIp(p: Ipv4Pdu): { proto: ProtoTag; info: string } {
     return { proto: 'ICMP', info: `${what} ${p.src} → ${p.dst}${tail}` };
   }
   if (l4.kind === 'udp') return summarizeUdp(p, l4, tail);
+  if (l4.kind === 'routing') return summarizeRouting(l4, ` ${p.src} → ${p.dst}${tail}`);
+  if (l4.kind === 'gre') {
+    const inner =
+      l4.inner.kind === 'ipv4' ? summarizeIp(l4.inner).info : summarizeIp6(l4.inner).info;
+    return { proto: 'GRE', info: `${p.src} → ${p.dst} [${inner}]${tail}` };
+  }
   const a: HttpPdu | undefined = l4.app;
   const app = a ? (a.method ? ` ${a.method} ${a.path}` : ` HTTP ${a.status}`) : '';
   return {
@@ -296,6 +553,18 @@ function summarizeUdp(p: Ipv4Pdu, u: UdpPdu, tail: string): { proto: ProtoTag; i
   if (a?.kind === 'dns') {
     const q = `${a.question.name} ${a.question.type}`;
     return { proto: 'DNS', info: `${a.response ? 'response' : 'query'} ${q}${tail}` };
+  }
+  if (a?.kind === 'rip') {
+    return {
+      proto: 'RIP',
+      info: `${a.command} ${a.entries.length} route(s) ${p.src} → ${p.dst}${tail}`,
+    };
+  }
+  if (a?.kind === 'hsrp') {
+    return {
+      proto: 'HSRP',
+      info: `group ${a.group} ${a.op} ${a.state} prio ${a.priority} vip ${a.vip}${tail}`,
+    };
   }
   return { proto: 'UDP', info: `${p.src}:${u.srcPort} → ${p.dst}:${u.dstPort}${tail}` };
 }

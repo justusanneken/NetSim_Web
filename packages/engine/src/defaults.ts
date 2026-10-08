@@ -1,3 +1,4 @@
+import { newRouting } from './routing/types';
 import type {
   DhcpServerCfg,
   HostConfig,
@@ -62,6 +63,7 @@ export function newL3(ipRouting: boolean): L3Cfg {
     dhcp: newDhcpServer(),
     ipRouting,
     dynRoutes: [],
+    routing: newRouting(),
   };
 }
 

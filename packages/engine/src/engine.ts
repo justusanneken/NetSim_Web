@@ -23,6 +23,7 @@ import {
   type PingOptions,
 } from './devices/host';
 import { l3Ping, l3Timer, l3Trace, routerRx, type L3Dev } from './devices/l3dev';
+import { routingResetRuntime, routingSync } from './routing';
 import { ifaceName, listIfaces, sviId, subId } from './ifaces';
 import { buildRib, networkOf, type RibEntry } from './rib';
 import { hubRx } from './devices/hub';
@@ -151,7 +152,7 @@ export class Engine {
         cfg.dhcpClient.state = cfg.dhcpClient.enabled ? 'init' : 'off';
       } else if (cfg.kind === 'router' || cfg.kind === 'switch') {
         cfg.nat.table = [];
-        cfg.dynRoutes = [];
+        routingResetRuntime(cfg);
         if (cfg.kind === 'switch') {
           cfg.macTable = {};
           cfg.stp.instances = {};
@@ -180,6 +181,17 @@ export class Engine {
     if (dev.config.kind === 'switch' && dev.powered) {
       this.withCtx(dev, (ctx) => switchStart(ctx, dev as SwitchDev));
     }
+    if ((dev.config.kind === 'router' || dev.config.kind === 'switch') && dev.powered) {
+      this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
+    }
+  }
+
+  /** Routing-Konfiguration (CLI/GUI) oder Topologie geändert: Protokollprozesse nachziehen. */
+  routingChanged(deviceId: string): void {
+    const dev = this.state.devices[deviceId];
+    if (!dev?.powered || dev.crashed) return;
+    if (dev.config.kind === 'router' || dev.config.kind === 'switch')
+      this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
   }
 
   // ------------------------------------------------------------ Topologie
@@ -360,6 +372,8 @@ export class Engine {
         dev.config.macTable = {};
         dev.config.stp.instances = {};
       }
+      if (dev.config.kind === 'router' || dev.config.kind === 'switch')
+        routingResetRuntime(dev.config);
       if (dev.config.kind === 'host') {
         dev.config.tcp = {};
         dev.config.dnsPending = {};
@@ -466,6 +480,14 @@ export class Engine {
     if (cfg.ifaces[id]) return { ok: true, value: id };
     const sub = /^(p\d+)\.(\d+)$/.exec(id);
     const svi = /^vlan(\d+)$/.exec(id);
+    if (/^lo\d+$/.test(id)) {
+      cfg.ifaces[id] = { kind: 'loop' };
+      return { ok: true, value: id };
+    }
+    if (/^tu\d+$/.test(id)) {
+      cfg.ifaces[id] = { kind: 'tunnel', tunnel: { mode: 'gre' } };
+      return { ok: true, value: id };
+    }
     if (sub && dev.config.kind === 'router' && dev.ports.some((p) => p.id === sub[1])) {
       cfg.ifaces[id] = { kind: 'sub', portId: sub[1], vlan: Number(sub[2]), shutdown: false };
     } else if (svi && dev.config.kind === 'switch') {
@@ -498,6 +520,7 @@ export class Engine {
     if (ip === '') {
       ic.ip = undefined;
       ic.mask = undefined;
+      this.routingChanged(deviceId);
       return { ok: true, value: true };
     }
     if (!isValidIpv4(ip)) return { ok: false, error: 'ip.invalidIp' };
@@ -520,6 +543,7 @@ export class Engine {
     }
     ic.ip = ip;
     ic.mask = mask;
+    this.routingChanged(deviceId);
     return { ok: true, value: true };
   }
 
@@ -916,6 +940,8 @@ export class Engine {
       }
       p.txBusyUntil = 0;
     }
+    if ((dev.config.kind === 'router' || dev.config.kind === 'switch') && dev.powered)
+      this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
     this.addLog(dev, {
       kind: 'info',
       proto: 'LINK',
@@ -1182,7 +1208,8 @@ export class Engine {
     else if (cfg.kind === 'router') this.withCtx(dev, (ctx) => l3Timer(ctx, dev as L3Dev, name));
     else if (cfg.kind === 'switch') {
       this.withCtx(dev, (ctx) => {
-        if (/^(arp|ping|ping-timeout|trace-timeout):/.test(name)) l3Timer(ctx, dev as L3Dev, name);
+        if (/^(arp|ping|ping-timeout|trace-timeout|rt):/.test(name))
+          l3Timer(ctx, dev as L3Dev, name);
         else switchTimer(ctx, dev as SwitchDev, name);
       });
     }
@@ -1241,6 +1268,7 @@ export class Engine {
       msg: e.msg,
       summary: e.summary,
       frame: e.frame,
+      debug: e.debug,
     });
   }
 

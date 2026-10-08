@@ -8,6 +8,8 @@ export interface RibEntry {
   type: RibType;
   /** Unterart (OSPF `IA`/`E2`, EIGRP `EX`, …). */
   sub?: string;
+  /** Quelle bei dynamischen Routen (`ospf:1`, `rip`, …). */
+  src?: string;
   prefix: Ipv4Addr;
   plen: number;
   ad: number;
@@ -67,6 +69,7 @@ export function buildRib(cfg: L3Cfg, ifaces: Iface[]): RibEntry[] {
     rib.push({
       type: d.proto,
       sub: d.sub,
+      src: d.src,
       prefix: d.prefix,
       plen: d.plen,
       ad: d.ad,

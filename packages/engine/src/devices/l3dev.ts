@@ -5,6 +5,7 @@ import { diagTimer, startPing, startTrace, type PingOptions } from '../diag';
 import { listIfaces, type Iface } from '../ifaces';
 import { ifaceFrameRx, ipTimer, type IpNode } from '../l3';
 import { buildRib, lookupRib } from '../rib';
+import { routingTimer } from '../routing';
 import type { Device, Result, RouterConfig, SwitchConfig } from '../types';
 import { switchOriginate, type SwitchDev } from './switch';
 
@@ -80,6 +81,10 @@ export function routerRx(
 }
 
 export function l3Timer(ctx: DeviceCtx, dev: L3Dev, name: string): void {
+  if (name.startsWith('rt:')) {
+    routingTimer(ctx, dev, name);
+    return;
+  }
   const node = l3Node(ctx, dev);
   if (!ipTimer(ctx, node, name)) diagTimer(ctx, node, name);
 }

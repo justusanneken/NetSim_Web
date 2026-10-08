@@ -48,6 +48,8 @@ export function l4Of(ip: Ipv4Pdu): L4Key {
         dport: p.dstPort,
         established: p.flags.ack || p.flags.rst,
       };
+    default:
+      return { proto: 'ip', sport: 0, dport: 0, established: false };
   }
 }
 

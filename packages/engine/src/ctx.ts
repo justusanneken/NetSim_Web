@@ -1,5 +1,5 @@
 import type { Frame, ProtoTag } from '@netsim/protocols';
-import type { Device, LogEntry, Msg, Port, PortRef, Transmission } from './types';
+import type { DebugInfo, Device, LogEntry, Msg, Port, PortRef, Transmission } from './types';
 
 export interface LogInput {
   kind: LogEntry['kind'];
@@ -11,6 +11,7 @@ export interface LogInput {
   port?: Port;
   summary?: string;
   frame?: Frame;
+  debug?: DebugInfo;
 }
 
 /**

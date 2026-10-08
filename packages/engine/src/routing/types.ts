@@ -1,0 +1,326 @@
+import type { BgpAttrs, EigrpRoute, HsrpState, OspfLsa } from '@netsim/protocols';
+
+/** Konfiguration und Laufzeitzustand der dynamischen Routing-Protokolle (alles JSON-serialisierbar). */
+
+export type RedistSource = 'connected' | 'static' | 'rip' | 'ospf' | 'eigrp' | 'bgp';
+
+export interface RedistCfg {
+  source: RedistSource;
+  /** Prozess-ID (OSPF) bzw. AS-Nummer (EIGRP/BGP). */
+  id?: number;
+  metric?: number;
+  /** OSPF: externer Typ (1/2, Default 2). */
+  metricType?: 1 | 2;
+  /** OSPF: klassenlose Netze mit übernehmen. */
+  subnets: boolean;
+  tag?: number;
+  /** EIGRP: Seed-Metrik (Bandbreite kbit/s, Delay in 10 µs). */
+  bw?: number;
+  delay?: number;
+}
+
+// ---------------------------------------------------------------- RIP
+
+export interface RipRoute {
+  prefix: string;
+  plen: number;
+  metric: number;
+  nextHop?: string;
+  ifaceId?: string;
+  /** Zeitpunkt des letzten Updates (µs); lokal erzeugte Routen: undefined. */
+  updatedAt?: number;
+  /** Ab diesem Zeitpunkt wird die Route mit Metrik 16 gelöscht (Garbage-Collection). */
+  flushAt?: number;
+  /** Änderung seit dem letzten Update (Triggered Update). */
+  changed: boolean;
+  origin: 'rip' | 'network' | 'redistributed' | 'default';
+  tag: number;
+}
+
+export interface RipCfg {
+  networks: string[];
+  passive: string[];
+  /** `no passive-interface X` bei `passive-interface default`. */
+  unpassive: string[];
+  passiveDefault: boolean;
+  autoSummary: boolean;
+  defaultOriginate: boolean;
+  redistribute: RedistCfg[];
+  defaultMetric: number;
+  timers: { update: number; invalid: number; holddown: number; flush: number };
+  /** Split Horizon mit Poison Reverse an? (Default: Split Horizon ohne Poison). */
+  poison: boolean;
+  /** Laufzeit. */
+  routes: Record<string, RipRoute>;
+  timersArmed?: boolean;
+  version: 2;
+}
+
+// ---------------------------------------------------------------- OSPF
+
+export interface OspfNetworkStmt {
+  prefix: string;
+  wildcard: string;
+  area: string;
+}
+
+export type OspfNbrState = 'down' | 'init' | '2way' | 'exstart' | 'exchange' | 'loading' | 'full';
+
+export interface OspfNbr {
+  rid: string;
+  ip: string;
+  state: OspfNbrState;
+  priority: number;
+  dr: string;
+  bdr: string;
+  ddSeq: number;
+  master: boolean;
+  lastHeard: number;
+  /** Angeforderte LSAs (Schlüssel). */
+  reqList: string[];
+  /** Unbestätigt gesendete LSAs (Schlüssel → Header-Seq). */
+  retrans: Record<string, number>;
+  /** Wurde das eigene DBD des Nachbarn schon verarbeitet? */
+  dbdDone: boolean;
+}
+
+export type OspfIfStateName = 'down' | 'waiting' | 'p2p' | 'dr' | 'bdr' | 'drother' | 'loopback';
+
+export interface OspfIfState {
+  area: string;
+  state: OspfIfStateName;
+  dr: string;
+  bdr: string;
+  /** Adresse der DR-/BDR-Schnittstelle (Netzwerk-ID der Network-LSA). */
+  drAddr: string;
+  bdrAddr: string;
+  waitUntil: number;
+  /** Aktuell gesetztes Hello-Intervall (Timer-Neuanlage bei Änderung). */
+  helloSec: number;
+  neighbors: Record<string, OspfNbr>;
+}
+
+export interface OspfIfCfg {
+  pid: number;
+  area: string;
+  cost?: number;
+  priority?: number;
+  helloSec?: number;
+  deadSec?: number;
+  network?: 'broadcast' | 'point-to-point';
+}
+
+export interface OspfAreaRange {
+  area: string;
+  prefix: string;
+  plen: number;
+  notAdvertise: boolean;
+}
+
+export interface OspfExternal {
+  prefix: string;
+  plen: number;
+  metric: number;
+  eType: 1 | 2;
+  tag: number;
+}
+
+export interface OspfCfg {
+  pid: number;
+  routerId?: string;
+  networks: OspfNetworkStmt[];
+  passive: string[];
+  unpassive: string[];
+  passiveDefault: boolean;
+  /** Referenzbandbreite in Mbit/s (Default 100). */
+  refBwMbps: number;
+  defaultOriginate?: { always: boolean; metric: number; metricType: 1 | 2 };
+  redistribute: RedistCfg[];
+  ranges: OspfAreaRange[];
+  /** Ob dies ein OSPFv3-Prozess ist (IPv6-Adressen). */
+  v6: boolean;
+  // ---- Laufzeit
+  /** Effektive Router-ID. */
+  rid?: string;
+  ifs: Record<string, OspfIfState>;
+  /** Area-ID (oder `as`) → LSA-Schlüssel (`typ|id|adv`) → LSA. */
+  lsdb: Record<string, Record<string, OspfLsa>>;
+  /** Installationszeit je LSA (`area|key`) in µs für das Altern. */
+  installed: Record<string, number>;
+  /** Selbst erzeugte LSA-Sequenznummern. */
+  seqs: Record<string, number>;
+  /** Aktuell redistribuierte externe Routen (Quelle für Typ-5-LSAs). */
+  externals: Record<string, OspfExternal>;
+  spfRuns: number;
+  lastSpf: number;
+  /** LSDB oder Topologie geändert → SPF nötig. */
+  dirty: boolean;
+  timersArmed?: boolean;
+}
+
+// ---------------------------------------------------------------- EIGRP
+
+export interface EigrpNbr {
+  ip: string;
+  ifaceId: string;
+  routerId: string;
+  holdSec: number;
+  lastHeard: number;
+  /** Nächste zu sendende / zuletzt bestätigte Sequenznummer. */
+  seqOut: number;
+  ackedUp: number;
+  /** Zuletzt empfangene Sequenznummer des Nachbarn. */
+  seqIn: number;
+  /** Unbestätigtes Paket zur Neuübertragung. */
+  pending?: { op: 'update' | 'query' | 'reply'; seq: number; routes: EigrpRoute[]; tries: number };
+  /** Update-Tabelle wurde schon gesendet. */
+  synced: boolean;
+  uptime: number;
+}
+
+export interface EigrpPath {
+  /** Nachbar-IP oder `local` (direkt angeschlossen/redistribuiert). */
+  via: string;
+  ifaceId: string;
+  /** Reported Distance des Nachbarn, Feasible Distance (RD + Link). */
+  rd: number;
+  dist: number;
+  /** Komponenten für Weitergabe. */
+  delay: number;
+  bandwidth: number;
+  hops: number;
+  external?: { proto: string; router: string };
+}
+
+export interface EigrpTopo {
+  prefix: string;
+  plen: number;
+  paths: EigrpPath[];
+  /** Feasible Distance des Successors (Referenz für die Feasibility Condition). */
+  fd: number;
+  active: boolean;
+  /** Aktiv: Nachbarn, von denen noch eine Reply aussteht. */
+  waiting: string[];
+  /** Zuletzt an Nachbarn angekündigter Zustand. */
+  advertised?: { delay: number; bandwidth: number; hops: number; unreachable: boolean };
+}
+
+export interface EigrpCfg {
+  asn: number;
+  routerId?: string;
+  networks: { prefix: string; wildcard: string }[];
+  passive: string[];
+  unpassive: string[];
+  passiveDefault: boolean;
+  autoSummary: boolean;
+  variance: number;
+  redistribute: RedistCfg[];
+  // ---- Laufzeit
+  rid?: string;
+  neighbors: Record<string, EigrpNbr>;
+  topology: Record<string, EigrpTopo>;
+}
+
+// ---------------------------------------------------------------- BGP
+
+export type BgpState = 'idle' | 'connect' | 'opensent' | 'openconfirm' | 'established';
+
+export interface BgpPath {
+  prefix: string;
+  plen: number;
+  attrs: BgpAttrs;
+  /** Nachbar-IP, von dem die Route kam; `local` bei eigenen Routen. */
+  from: string;
+  /** eBGP oder iBGP gelernt. */
+  ebgp: boolean;
+  /** Router-ID des Senders (Tiebreaker). */
+  fromRid: string;
+  weight: number;
+  /** Eigener Ursprung per `network`/Redistribution. */
+  local: boolean;
+}
+
+export interface BgpNbrCfg {
+  ip: string;
+  asn: number;
+  updateSource?: string;
+  ebgpMultihop?: number;
+  nextHopSelf: boolean;
+  shutdown: boolean;
+  description?: string;
+  weight?: number;
+  // ---- Laufzeit
+  state: BgpState;
+  routerId?: string;
+  holdSec: number;
+  lastRx: number;
+  lastTx: number;
+  established?: number;
+  /** Anzahl empfangener Präfixe. */
+  prefixesRx: number;
+  /** Zuletzt an den Nachbarn gesendete Präfixe (zum Berechnen von Withdraws). */
+  advertised: Record<string, boolean>;
+  /** Adj-RIB-In: Präfix → Pfad. */
+  ribIn: Record<string, BgpPath>;
+}
+
+export interface BgpCfg {
+  asn: number;
+  routerId?: string;
+  neighbors: Record<string, BgpNbrCfg>;
+  networks: { prefix: string; plen: number }[];
+  redistribute: RedistCfg[];
+  /** Laufzeit: Loc-RIB (Präfix-Schlüssel → bester Pfad). */
+  locRib: Record<string, BgpPath>;
+  rid?: string;
+  synchronization: false;
+}
+
+// ---------------------------------------------------------------- HSRP
+
+export interface HsrpCfg {
+  group: number;
+  vip?: string;
+  priority: number;
+  preempt: boolean;
+  helloSec: number;
+  holdSec: number;
+  track: { ifaceId: string; decrement: number }[];
+  name?: string;
+  // ---- Laufzeit
+  state: HsrpState;
+  activeIp?: string;
+  standbyIp?: string;
+  activePriority: number;
+  standbyPriority: number;
+  lastActiveHello: number;
+  lastStandbyHello: number;
+  stateSince: number;
+}
+
+// ---------------------------------------------------------------- GRE
+
+export interface TunnelCfg {
+  /** Quell-Schnittstelle (ID) oder -Adresse. */
+  source?: string;
+  destination?: string;
+  mode: 'gre';
+}
+
+// ---------------------------------------------------------------- Gesamt
+
+export interface RoutingCfg {
+  rip?: RipCfg;
+  ospf: Record<number, OspfCfg>;
+  eigrp: Record<number, EigrpCfg>;
+  bgp?: BgpCfg;
+  /** Aktive `debug`-Schalter (z. B. `ospf.adj`). */
+  debug: string[];
+}
+
+export const newRouting = (): RoutingCfg => ({ ospf: {}, eigrp: {}, debug: [] });
+
+export const isPassive = (
+  c: { passive: string[]; unpassive: string[]; passiveDefault: boolean },
+  id: string,
+): boolean => (c.passiveDefault ? !c.unpassive.includes(id) : c.passive.includes(id));

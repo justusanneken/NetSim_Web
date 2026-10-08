@@ -9,10 +9,22 @@ export const ETHERTYPE = {
   ipv4: 0x0800,
   arp: 0x0806,
   dot1q: 0x8100,
+  ipv6: 0x86dd,
   stp: 0x0026,
   vtp: 0x2003,
 } as const;
-export const IP_PROTO = { icmp: 1, tcp: 6, udp: 17 } as const;
+export const IP_PROTO = {
+  icmp: 1,
+  tcp: 6,
+  udp: 17,
+  gre: 47,
+  icmp6: 58,
+  eigrp: 88,
+  ospf: 89,
+} as const;
+
+/** IPv6-Adresse in komprimierter Schreibweise (`2001:db8::1`). */
+export type Ipv6Addr = string;
 
 /** Ziel-MAC-Adressen der Layer-2-Steuerprotokolle (werden vom Switch nicht weitergeleitet). */
 export const MAC_STP = '01:80:c2:00:00:00';
@@ -86,9 +98,9 @@ export interface Ipv4Pdu {
   payload: IpPayload;
 }
 
-export type IpPayload = IcmpPdu | UdpPdu | TcpPdu;
+export type IpPayload = IcmpPdu | UdpPdu | TcpPdu | RoutingPdu | GrePdu;
 
-export type AppPdu = DhcpPdu | DnsPdu;
+export type AppPdu = DhcpPdu | DnsPdu | RipPdu | HsrpPdu;
 
 export interface UdpPdu {
   kind: 'udp';
@@ -197,6 +209,199 @@ export interface VtpPdu {
   vlans: { id: number; name: string }[];
 }
 
+// ---------------------------------------------------------------- Routing-Protokolle (Phase 4)
+
+export interface RipEntry {
+  prefix: Ipv4Addr;
+  mask: string;
+  nextHop: Ipv4Addr;
+  /** 1–15, 16 = unerreichbar. */
+  metric: number;
+  tag: number;
+}
+
+/** RIPv2 (UDP 520, Multicast 224.0.0.9). */
+export interface RipPdu {
+  kind: 'rip';
+  command: 'request' | 'response';
+  entries: RipEntry[];
+}
+
+export type HsrpState = 'init' | 'learn' | 'listen' | 'speak' | 'standby' | 'active';
+
+/** HSRPv1 (UDP 1985, Multicast 224.0.0.2). */
+export interface HsrpPdu {
+  kind: 'hsrp';
+  group: number;
+  op: 'hello' | 'coup' | 'resign';
+  state: HsrpState;
+  helloSec: number;
+  holdSec: number;
+  priority: number;
+  vip: Ipv4Addr;
+}
+
+export interface OspfLsaHeader {
+  /** 1 Router, 2 Network, 3 Summary, 4 ASBR-Summary, 5 AS-External. */
+  type: 1 | 2 | 3 | 4 | 5;
+  id: string;
+  advRouter: string;
+  seq: number;
+  age: number;
+}
+
+export interface OspfRouterLink {
+  kind: 'p2p' | 'transit' | 'stub';
+  /** p2p: Router-ID des Nachbarn; transit: Netzwerk-ID (DR-Schnittstelle); stub: –. */
+  neighbor?: string;
+  /** Eigene Adresse an dieser Verbindung (Next-Hop-Berechnung der anderen). */
+  addr?: string;
+  prefix?: string;
+  plen?: number;
+  cost: number;
+}
+
+export type OspfLsaBody =
+  | { type: 1; abr: boolean; asbr: boolean; links: OspfRouterLink[] }
+  | { type: 2; prefix: string; plen: number; attached: string[] }
+  | { type: 3; prefix: string; plen: number; metric: number }
+  | { type: 4; asbr: string; metric: number }
+  | {
+      type: 5;
+      prefix: string;
+      plen: number;
+      metric: number;
+      eType: 1 | 2;
+      fwd?: string;
+      tag: number;
+    };
+
+export type OspfLsa = OspfLsaHeader & { body: OspfLsaBody };
+
+export type OspfMsg =
+  | {
+      type: 'hello';
+      routerId: string;
+      areaId: string;
+      helloSec: number;
+      deadSec: number;
+      priority: number;
+      dr: string;
+      bdr: string;
+      neighbors: string[];
+      /** Subnetzmaske (v2) bzw. Prefixlänge – nur zur Anzeige/Prüfung. */
+      plen?: number;
+    }
+  | {
+      type: 'dbd';
+      routerId: string;
+      areaId: string;
+      init: boolean;
+      more: boolean;
+      master: boolean;
+      ddSeq: number;
+      headers: OspfLsaHeader[];
+    }
+  | {
+      type: 'lsr';
+      routerId: string;
+      areaId: string;
+      requests: { type: number; id: string; advRouter: string }[];
+    }
+  | { type: 'lsu'; routerId: string; areaId: string; lsas: OspfLsa[] }
+  | { type: 'lsack'; routerId: string; areaId: string; headers: OspfLsaHeader[] };
+
+export interface EigrpRoute {
+  prefix: string;
+  plen: number;
+  /** Zusammengesetzte Metrik-Komponenten (klassisch). */
+  delay: number;
+  bandwidth: number;
+  hops: number;
+  /** Externe Route (Redistribution). */
+  external?: { proto: string; router: string };
+  unreachable?: boolean;
+}
+
+export interface EigrpMsg {
+  op: 'hello' | 'update' | 'query' | 'reply' | 'ack';
+  asn: number;
+  routerId: string;
+  holdSec: number;
+  seq: number;
+  ack: number;
+  init?: boolean;
+  routes?: EigrpRoute[];
+}
+
+export interface BgpAttrs {
+  origin: 'igp' | 'egp' | 'incomplete';
+  asPath: number[];
+  nextHop: string;
+  med?: number;
+  localPref?: number;
+}
+
+export type BgpMsg =
+  | { type: 'open'; asn: number; holdSec: number; routerId: string }
+  | { type: 'keepalive' }
+  | {
+      type: 'update';
+      withdrawn: { prefix: string; plen: number }[];
+      attrs?: BgpAttrs;
+      nlri: { prefix: string; plen: number }[];
+    }
+  | { type: 'notification'; code: number; text: string };
+
+/** OSPF (IP-Protokoll 89), EIGRP (88) und – vereinfacht ohne TCP – BGP (Port 179). */
+export type RoutingPdu =
+  | { kind: 'routing'; proto: 'ospf'; v: 2 | 3; msg: OspfMsg }
+  | { kind: 'routing'; proto: 'eigrp'; msg: EigrpMsg }
+  | { kind: 'routing'; proto: 'bgp'; sport: number; dport: number; msg: BgpMsg };
+
+/** GRE (IP-Protokoll 47): kapselt ein IPv4-/IPv6-Paket. */
+export interface GrePdu {
+  kind: 'gre';
+  protocolType: number;
+  inner: Ipv4Pdu | Ipv6Pdu;
+}
+
+// ---------------------------------------------------------------- IPv6
+
+export type Icmp6Type =
+  'echo-request' | 'echo-reply' | 'dest-unreachable' | 'time-exceeded' | 'ns' | 'na' | 'rs' | 'ra';
+
+export interface Icmp6Pdu {
+  kind: 'icmp6';
+  type: Icmp6Type;
+  code: number;
+  id: number;
+  seq: number;
+  dataSize: number;
+  /** NS/NA: Zieladresse. */
+  target?: Ipv6Addr;
+  /** NS/RS/RA: Source-Link-Layer-Adresse; NA: Target-Link-Layer-Adresse. */
+  lladdr?: Mac;
+  /** NA-Flags. */
+  naFlags?: { router: boolean; solicited: boolean; override: boolean };
+  /** RA: Präfixe (SLAAC) und Router-Lebensdauer. */
+  prefixes?: { prefix: Ipv6Addr; plen: number; onLink: boolean; autonomous: boolean }[];
+  routerLifetime?: number;
+  /** Fehlermeldungen: Absender/Ziel des auslösenden Pakets. */
+  orig?: { src: Ipv6Addr; dst: Ipv6Addr };
+}
+
+export type Ip6Payload = Icmp6Pdu | UdpPdu | TcpPdu | RoutingPdu | GrePdu;
+
+export interface Ipv6Pdu {
+  kind: 'ipv6';
+  src: Ipv6Addr;
+  dst: Ipv6Addr;
+  hopLimit: number;
+  nextHeader: number;
+  payload: Ip6Payload;
+}
+
 export interface EthernetPdu {
   kind: 'ethernet';
   dst: Mac;
@@ -204,7 +409,7 @@ export interface EthernetPdu {
   etherType: number;
   /** 802.1Q-Tag (fehlt bei untagged Frames). */
   vlan?: { vid: number; pcp: number };
-  payload: ArpPdu | Ipv4Pdu | BpduPdu | VtpPdu;
+  payload: ArpPdu | Ipv4Pdu | Ipv6Pdu | BpduPdu | VtpPdu;
 }
 
 export type Pdu =
@@ -218,7 +423,13 @@ export type Pdu =
   | DnsPdu
   | HttpPdu
   | BpduPdu
-  | VtpPdu;
+  | VtpPdu
+  | Ipv6Pdu
+  | Icmp6Pdu
+  | RipPdu
+  | HsrpPdu
+  | RoutingPdu
+  | GrePdu;
 /** Ein Frame auf dem Kabel ist immer ein Ethernet-PDU. */
 export type Frame = EthernetPdu;
 
@@ -248,6 +459,14 @@ export type ProtoTag =
   | 'VTP'
   | 'NAT'
   | 'ACL'
+  | 'RIP'
+  | 'OSPF'
+  | 'EIGRP'
+  | 'BGP'
+  | 'HSRP'
+  | 'GRE'
+  | 'ICMP6'
+  | 'ND'
   | 'LINK'
   | 'CSMA'
   | 'SYS';
