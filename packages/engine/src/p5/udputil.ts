@@ -38,6 +38,9 @@ export function udpRequest(
   o: UdpRequestOpts,
 ): { ok: true; id: number } | { ok: false; error: string } {
   const core = appcOf(node.cfg);
+  // alte Anfragen aufräumen (auch fehlgeschlagene, z. B. Syslog an einen unerreichbaren Host)
+  const ids = Object.keys(core.reqs).map(Number);
+  if (ids.length >= 60) for (const old of ids.slice(0, ids.length - 59)) delete core.reqs[old];
   const id = core.nextReq++;
   const msg: SvcPdu = {
     kind: 'svc',
@@ -56,9 +59,6 @@ export function udpRequest(
   if (o.oneWay) return { ok: true, id };
   core.reqs[id] = { id, proto: o.proto, op: o.op, dst: o.dst, status: 'pending', sentAt: ctx.now };
   ctx.setTimer(`svc:ureq:${id}`, o.timeoutUs ?? UDP_TIMEOUT_US);
-  // alte Anfragen aufräumen
-  const ids = Object.keys(core.reqs).map(Number);
-  if (ids.length > 60) for (const old of ids.slice(0, ids.length - 60)) delete core.reqs[old];
   return { ok: true, id };
 }
 
