@@ -7,6 +7,7 @@ import { DevicePanel } from './components/DevicePanel';
 import { Inspector } from './components/Inspector';
 import { MenuBar } from './components/MenuBar';
 import { Palette } from './components/Palette';
+import { PhysicalView } from './components/PanelPhysical';
 import { PortPicker } from './components/PortPicker';
 import { SimPanel } from './components/SimPanel';
 import { Toolbar } from './components/Toolbar';
@@ -51,6 +52,7 @@ export function App() {
   const colorblind = useStore((s) => s.colorblind);
   const toast = useStore((s) => s.toast);
   const connected = useStore((s) => s.view !== null);
+  const viewMode = useStore((s) => s.viewMode);
   useShortcuts();
 
   useEffect(() => {
@@ -63,7 +65,13 @@ export function App() {
       <MenuBar />
       <Toolbar />
       <main className="canvas-area">
-        {connected ? <Canvas /> : <p className="pad">{t('common.loading')}</p>}
+        {!connected ? (
+          <p className="pad">{t('common.loading')}</p>
+        ) : viewMode === 'physical' ? (
+          <PhysicalView />
+        ) : (
+          <Canvas />
+        )}
         <PortPicker />
         <DeviceDialog />
         {toast && (

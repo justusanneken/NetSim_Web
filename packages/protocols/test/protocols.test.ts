@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Frame, Ipv6Pdu, OspfMsg } from '../src';
+import type { Frame, Ipv4Pdu, Ipv6Pdu, OspfMsg } from '../src';
 import {
   isLinkLocalIpv6,
   isMulticastIpv4,
@@ -600,5 +600,56 @@ describe('Routing-PDUs (Phase 4): Größe, Beschreibung, Zusammenfassung', () =>
       0x86dd,
     );
     expect(summarizeFrame(gre6).proto).toBe('GRE');
+  });
+});
+
+describe('Phase 5: svc-Anwendungsnachricht', () => {
+  const svc = {
+    kind: 'svc' as const,
+    proto: 'tftp' as const,
+    op: 'wrq',
+    args: { file: 'r1-confg', pass: 'geheim' },
+    body: 'hostname R1',
+  };
+  const mkIp = (payload: Ipv4Pdu['payload']): Frame => ({
+    kind: 'ethernet',
+    src: 'aa:aa:aa:aa:aa:01',
+    dst: 'aa:aa:aa:aa:aa:02',
+    etherType: 0x0800,
+    payload: {
+      kind: 'ipv4',
+      src: '10.0.0.1',
+      dst: '10.0.0.2',
+      ttl: 64,
+      protocol: 17,
+      id: 1,
+      df: false,
+      mf: false,
+      fragOffset: 0,
+      payload,
+    },
+  });
+
+  it('Größe, Felder (Geheimnisse maskiert), Schichten und Tags für UDP und TCP', () => {
+    const udp = mkIp({ kind: 'udp', srcPort: 50000, dstPort: 69, dataSize: 0, app: svc });
+    expect(pduSize(svc)).toBeGreaterThan(24 + 'hostname R1'.length);
+    const fields = describePdu(svc);
+    expect(fields.find((f) => f.name === 'pass')?.value).toBe('********');
+    expect(fields.find((f) => f.name === 'file')?.value).toBe('r1-confg');
+    expect(describeFrame(udp).map((l) => l.name)).toContain('Application');
+    expect(summarizeFrame(udp)).toMatchObject({ proto: 'TFTP' });
+    const tcp = mkIp({
+      kind: 'tcp',
+      srcPort: 50000,
+      dstPort: 23,
+      flags: { syn: false, ack: true, fin: false, rst: false, psh: true },
+      seq: 1,
+      ack: 1,
+      window: 8192,
+      dataSize: 0,
+      app: { ...svc, proto: 'telnet', op: 'login' },
+    });
+    expect(summarizeFrame(tcp)).toMatchObject({ proto: 'TELNET' });
+    expect(describePdu({ ...svc, body: undefined }).some((f) => f.name === 'Data')).toBe(false);
   });
 });

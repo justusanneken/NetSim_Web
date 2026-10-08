@@ -25,6 +25,8 @@ export interface DeviceP5View {
   stratum?: number;
   ntpServer?: string;
   firewallOn?: boolean;
+  files?: Record<string, number>;
+  domainName?: string;
   wifi?: {
     enabled: boolean;
     status: WifiStatus;
@@ -65,6 +67,7 @@ export function buildP5View(engine: Engine, d: Device): DeviceP5View {
   if (c.kind === 'host') {
     v.ntpServer = c.ntpServer;
     v.firewallOn = c.firewallOn;
+    v.files = Object.fromEntries(Object.entries(c.files ?? {}).map(([n, t]) => [n, t.length]));
     if (c.wifi) {
       const a = c.wifi.assoc;
       v.wifi = {
@@ -99,6 +102,7 @@ export function buildP5View(engine: Engine, d: Device): DeviceP5View {
     }
   }
   if (c.kind === 'router' || c.kind === 'switch') {
+    v.domainName = c.sys.domainName;
     const m = c.sys.mgmt;
     if (m) {
       const { users, ...rest } = structuredClone(m);

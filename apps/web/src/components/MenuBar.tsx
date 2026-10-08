@@ -65,7 +65,16 @@ export function MenuBar() {
       { label: t('view.zoomIn'), onClick: () => zoom(1.2) },
       { label: t('view.zoomOut'), onClick: () => zoom(1 / 1.2) },
       { label: t('view.zoomReset'), onClick: () => s.setStageView({ x: 0, y: 0, scale: 1 }) },
-      later('menu.physical'),
+      {
+        label: t('menu.logical'),
+        checked: s.viewMode === 'logical',
+        onClick: () => s.setViewMode('logical'),
+      },
+      {
+        label: t('menu.physical'),
+        checked: s.viewMode === 'physical',
+        onClick: () => s.setViewMode('physical'),
+      },
     ],
     tools: [later('menu.scripting'), later('menu.activities')],
     help: [{ label: t('menu.about'), onClick: () => window.alert(t('about.text')) }],

@@ -37,3 +37,4 @@ export { iotValue } from './p5/iot';
 export { parseLocation, formatLocation } from './p5/physical';
 export type { DeviceP5View } from './p5/view';
 export * from './p5types';
+export { EngineService5 } from './service5';

@@ -5,10 +5,13 @@ import { DEVICE_COLORS, ICON_PATHS } from '../icons';
 import { useStore, type CableChoice } from '../store';
 
 const CATEGORIES: { id: string; devices: DeviceType[] }[] = [
-  { id: 'end', devices: ['pc', 'laptop', 'server'] },
-  { id: 'network', devices: ['router', 'switch-l2', 'switch-l3', 'hub'] },
+  { id: 'end', devices: ['pc', 'laptop', 'server', 'tablet', 'smartphone', 'printer'] },
+  { id: 'network', devices: ['router', 'switch-l2', 'switch-l3', 'hub', 'firewall'] },
+  { id: 'wireless', devices: ['ap', 'wlc'] },
+  { id: 'wan', devices: ['cloud', 'dsl-modem', 'cable-modem'] },
+  { id: 'iot', devices: ['iot-sensor', 'iot-actuator', 'sbc'] },
 ];
-const CABLES: CableChoice[] = ['auto', 'straight', 'crossover'];
+const CABLES: CableChoice[] = ['auto', 'straight', 'crossover', 'phone', 'coax'];
 
 export function DeviceIcon({ type, size = 40 }: { type: DeviceType; size?: number }) {
   const color = DEVICE_COLORS[type] ?? '#6e7781';
@@ -79,7 +82,15 @@ export function Palette() {
                   d="M6 38C16 38 14 10 24 10S32 38 42 38"
                   stroke="currentColor"
                   strokeWidth={2.5}
-                  strokeDasharray={c === 'crossover' ? '6 3' : c === 'auto' ? '2 4' : undefined}
+                  strokeDasharray={
+                    c === 'crossover'
+                      ? '6 3'
+                      : c === 'auto'
+                        ? '2 4'
+                        : c === 'phone'
+                          ? '1 3'
+                          : undefined
+                  }
                 />
               </svg>
               <span>{t(`cable.${c}`)}</span>

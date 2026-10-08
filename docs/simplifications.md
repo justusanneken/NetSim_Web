@@ -117,3 +117,58 @@
 - **BGP:** Bestpath ohne Weight-/Community-Politik, keine Route-Maps/Filter, iBGP nur Full Mesh; eBGP ohne Multihop nur direkt verbunden (Fast-External-Fallover).
 - **IPv6:** keine Duplicate Address Detection, kein DHCPv6, keine Fragmentierung (zu große Pakete werden verworfen), kein Traceroute; Redistribution und EIGRP/RIPng/BGP für IPv6 fehlen. OSPFv3 nutzt dieselbe LSDB-Struktur wie v2 (Präfixe in Router-LSAs).
 - **Debug-Ausgabe:** Zeitstempel aus virtueller Zeit (`*Mar  1 …`); Meldungstexte sind englisch, nicht übersetzt.
+
+## Phase 5
+
+- **WLAN:** kein Funkphysikmodell. Ein Client wird assoziiert, wenn SSID und Schlüssel passen, das Band unterstützt wird
+  und der Canvas-Abstand die Reichweite nicht überschreitet (2,4 GHz 260 px, 5 GHz 170 px; 5 GHz wird bevorzugt). Je Radio
+  ein SSID; Kanäle beeinflussen sich nicht. Assoziation = ein dynamisch gelegter Link (`wireless`, 54 Mbit/s) zwischen
+  einem Funk-Steckplatz des AP (8 Stück) und der WLAN-Karte; Authentifizierung/Assoziation erscheinen als Log-Einträge
+  (keine 802.11-Frames/Beacons). Roaming: Wechsel erst, wenn der neue AP deutlich näher ist (< 70 % der Entfernung).
+  WPA2-Enterprise/802.1X fehlt.
+- **Physical View:** Entfernung für die Funkreichweite = Canvas-Abstand; liegen beide Geräte in der Physical View, gilt:
+  anderes Gebäude/andere Stadt = außer Reichweite, anderer Raum = + 120 px „Wandabschlag“. Keine Kabellängen/Dämpfung,
+  keine maßstäbliche Darstellung.
+- **WLC:** vereinfachtes CAPWAP (UDP 5246): der AP fragt den WLC periodisch (30 s) und übernimmt dessen WLANs; Roaming
+  zwischen APs ohne Controller-Koordination. Kein Lightweight-Tunneling der Nutzerdaten (der AP bridged lokal).
+- **Dienst-Transport:** Anwendungen (FTP, SMTP, POP3, Telnet, SSH) laufen über vereinfachte TCP-Verbindungen mit
+  strukturierten `svc`-Nachrichten (SYN/SYN-ACK mit Banner, Anfrage/Antwort mit PSH/ACK, FIN); keine Fenster,
+  Retransmission nur für das SYN (3 Versuche à 1 s) und ein 8-s-Anfrage-Timeout. TFTP, NTP, Syslog, SNMP, RADIUS, IoT und
+  CAPWAP sind UDP-Anfrage/Antwort (5 s Timeout, keine Wiederholung). Inhalte (Dateien, Mails) sind Textzeichenketten.
+- **Telnet/SSH:** Erreichbarkeit, Port (23/22), `transport input`, Login (Passwort/lokal/AAA) laufen über das simulierte Netz
+  und damit durch ACLs/Firewalls/NAT. Die Sitzung selbst (Tastatur/Ausgabe) wird nicht paketiert, sondern als CLI-Sitzung des
+  Zielgeräts im Worker an das Terminal gehängt; bricht der Pfad während der Sitzung ab, läuft sie weiter. SSH-Schlüssel sind
+  simuliert (Modulgröße wird gespeichert; Voraussetzung: `ip domain-name` + `crypto key generate rsa`). Maximal `line vty 0 N`
+  Sitzungen (Standard 5); alle vty-Leitungen teilen sich eine Konfiguration (`transport`, `login`, Passwort).
+- **Benutzer-Geheimnisse:** `username X secret Y` wird im Konfigurationsbaum im Klartext gehalten und als `secret 5 <Typ-7>`
+  gerendert (umkehrbar, damit Replay/`reload` funktionieren); RSA-Schlüssel überstehen `reload` (NVRAM).
+- **AAA:** nur Anmeldung an den vty-Leitungen (kein Console-/Enable-/Accounting-AAA, kein TACACS+). Methodenliste
+  `group radius`/`local`; bei RADIUS-Timeout (3 s) wird die nächste Methode genutzt, bei explizitem Reject nicht.
+- **NTP:** Anfrage/Antwort mit Zeitstempel (kein Offset-/Delay-Algorithmus, kein Stratum-Auswahlverfahren, keine Authentifizierung);
+  Abfrage 2 s nach Konfiguration, dann alle 64 s. Gerätezeit = Epoch-Basis + virtuelle Zeit; Router starten am 1.3.1993,
+  Hosts am 1.1.2026 12:00 UTC (deterministisch statt Wanduhr). Keine Zeitzonen/Sommerzeit (immer UTC).
+- **Syslog:** Meldungen für Link-/Leitungsstatus, Konfigurationsänderung (`%SYS-5-CONFIG_I`) und Logins; Schweregrad-Filter
+  (`logging trap`), Puffer 100 Zeilen. Keine Facility-Auswahl, kein `logging source-interface`.
+- **SNMP:** v2c-ähnlich mit Community (kein v1/v3, keine Traps/Informs); MIB: system-Gruppe und ifTable-Spalten (Index, Descr, Type,
+  Mtu, Speed, PhysAddress, Admin/Oper-Status, Zähler); `set` nur für `sysName.0` und `ifAdminStatus`.
+- **Mail:** SMTP mit Absender-Authentifizierung gegen die Konten des Servers, nur lokale Zustellung (eine Domäne); POP3 liefert
+  den gesamten Posteingang (kein Löschen, kein IMAP, kein TLS).
+- **FTP/TFTP:** Dateien sind kurze Texte; Hosts besitzen lokale Dateien (`echo text > datei`, Desktop → Dateien). FTP ohne
+  separaten Datenkanal, ohne passiven Modus; TFTP als ein Request/Response (keine Blöcke).
+- **Firewall:** zustandsbehaftete Prüfung nach dem Routing-Lookup (Ein-/Ausgangsschnittstelle): bestehende Verbindungen beider
+  Richtungen erlaubt; neue Verbindungen nur per ACL der Eingangsschnittstelle (`access-group`, implizites Deny) oder – ohne ACL –
+  von höherem zu niedrigerem Security-Level (`same-security-traffic permit inter-interface` für gleiche Level). TCP nur mit SYN
+  eröffnet; ICMP-Echo mit Typ-Unterscheidung; ICMP-Fehler nur zu bestehenden Verbindungen; Timeouts TCP 1 h, UDP 2 min, ICMP 1 min.
+  Verworfene Pakete erzeugen keine ICMP-Antwort. Objekt-NAT (`object network` + `nat (a,b) dynamic interface|static IP`) wird
+  auf den Router-NAT abgebildet; Proxy-ARP für statische globale Adressen. Rückverkehr einer von außen aufgebauten Verbindung wird
+  nicht dynamisch übersetzt. Verkehr **zur** Firewall (Ping auf eine Schnittstelle) ist nicht gefiltert; kein Failover, kein `inspect`,
+  keine Zonen/Class-Maps, kein `object-group`, kein Twice-NAT.
+- **Host-Firewall:** ein Schalter, blockiert eingehendes Echo (Ping); keine Regeln je Port.
+- **IoT:** Registrierung/Bericht per UDP 5683 an den IoT-Server (Berichtsintervall 10 s, Hintergrund-Timer), Regelauswertung
+  beim Eintreffen eines Berichts, Schaltbefehl per UDP; Wertverlauf manuell, Welle oder Rampe (deterministisch aus der virtuellen
+  Zeit). Kein JS-/Python-Scripting (spätere Phase).
+- **Cloud/Modem:** transparente lernende Bridge je Portgruppe; keine PPPoE-/DSL-Synchronisation, kein Frame-Relay/WAN-Emulation,
+  keine Bandbreitenprofile über die Port-Geschwindigkeit hinaus (DSL 24 Mbit/s, Koax 100 Mbit/s).
+- **Module:** Modul-Steckplätze nur bei Routern (HWIC-2T, HWIC-1GE) und Hosts (NIC-FE/-GE/-WIFI), Einsetzen/Entfernen nur
+  bei ausgeschaltetem Gerät; ein Host nutzt den ersten aktiven Datenport (kabelgebunden vor WLAN).
+- **Access Point/WLC als Host-Gerät:** AP und WLC besitzen einen IP-Stack für Verwaltung (DHCP/statisch, Ping), aber keine CLI.

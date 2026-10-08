@@ -195,6 +195,24 @@ export function Canvas() {
         <Layer>
           {/* Unsichtbare Fläche zum Fangen von Klicks im Leerraum */}
           <Rect name="bg" x={-50000} y={-50000} width={100000} height={100000} fill="transparent" />
+          {view?.devices
+            .filter((d) => d.p5?.ap && d.powered && selectedDevice === d.id)
+            .flatMap((d) => {
+              const pos = posOf(d.id);
+              return Object.entries(d.p5?.ap?.range ?? {}).map(([band, r]) => (
+                <Circle
+                  key={`${d.id}-${band}`}
+                  x={pos.x}
+                  y={pos.y}
+                  radius={r}
+                  stroke={band === '5' ? '#7048e8' : '#1c7ed6'}
+                  strokeWidth={1.5}
+                  dash={band === '5' ? [4, 6] : [10, 6]}
+                  fill={band === '5' ? 'rgba(112,72,232,0.04)' : 'rgba(28,126,214,0.05)'}
+                  listening={false}
+                />
+              ));
+            })}
           {view?.links.map((l) => (
             <LinkShape
               key={l.id}
@@ -347,6 +365,31 @@ function LinkShape(props: {
     );
   };
   const off = 38;
+  if (link.cable === 'wireless') {
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    return (
+      <Group>
+        <Line
+          points={[a.x, a.y, b.x, b.y]}
+          stroke={selected ? props.selColor : '#1c7ed6'}
+          strokeWidth={selected ? 3 : 2}
+          hitStrokeWidth={14}
+          dash={[7, 6]}
+          onClick={select}
+          onTap={select}
+        />
+        <Text
+          x={mx - 16}
+          y={my - 10}
+          text="((·))"
+          fontSize={15}
+          fill={blinking ? BLINK : '#1c7ed6'}
+          listening={false}
+        />
+      </Group>
+    );
+  }
   return (
     <Group>
       <Line

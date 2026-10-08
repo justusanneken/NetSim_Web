@@ -30,6 +30,23 @@ Voraussetzungen: Node ≥ 20, pnpm ≥ 10.
 | `apps/web`           | React-UI (Konva, Zustand, i18next), Engine-Worker (Comlink)                          |
 | `docs/`              | Architektur, Entscheidungen, Vereinfachungen, Coverage-Matrix, Erweiterungsanleitung |
 
+## Bedienung (Phase 5)
+
+- **Palette:** neue Kategorien _Drahtlos_ (Access Point, WLAN-Controller), _WAN / Modem_ (Cloud, DSL-/Kabelmodem), _IoT_ (Sensor,
+  Aktor, SBC) sowie Tablet, Smartphone, Drucker und Firewall. Kabel _Telefon_ und _Koax_ für Modems/Cloud.
+- **WLAN:** Access Point doppelklicken → _Konfiguration_ (SSID, WPA2-Schlüssel, Kanal je Band). Laptop/Tablet/Smartphone/Drucker:
+  _Desktop → PC Wireless_ (SSID + Schlüssel → _Verbinden_). Funklinks erscheinen gestrichelt; der Reichweitenkreis des ausgewählten APs wird
+  angezeigt, Ereignisse (Authentifizierung/Assoziation) stehen in der Ereignisliste. Lightweight-AP: WLC-Adresse im AP eintragen, WLANs im WLC pflegen.
+- **Server-Dienste:** Server → _Konfiguration_ → TFTP, FTP, Mail, NTP, Syslog, SNMP, AAA, IoT. Clients: _Desktop → E-Mail / MIB-Browser /
+  IoT-Monitor / Dateien_; in der Eingabeaufforderung `ftp`, `tftp`, `telnet`, `ssh -l`, `w32tm /resync`.
+- **Router/Switch:** `copy running-config tftp://10.0.0.10/r1-confg`, `ntp server`, `logging host`, `snmp-server community`, `username`,
+  `ip domain-name` + `crypto key generate rsa`, `line vty 0 4` / `transport input ssh` / `login local`; `telnet`/`ssh -l` öffnen weitere
+  Sitzungen (`exit` zurück, `show users`). Das Panel _Verwaltung_ zeigt dieselbe Konfiguration samt „Equivalent IOS Commands“.
+- **Firewall:** `nameif`/`security-level` je Schnittstelle, `access-list … extended`, `access-group … in interface`, `object network` + `nat`;
+  `show conn`, `show xlate`. Windows-Firewall am PC: _Desktop → Firewall_.
+- **Physical View:** Menü _Ansicht → Physical View_ (Orte `Stadt/Gebäude/Raum/Rack` anlegen, Geräte zuordnen); im Geräte-Dialog Tab
+  _Physical_ (Power-Taste, Module bei ausgeschaltetem Gerät, Standort).
+
 ## Bedienung (Phase 4)
 
 - Routing per CLI (`router ospf 1`, `network … area 0` …). Zeit beschleunigen (Geschwindigkeit bis 20×): OSPF braucht ca. 40–60 s virtuelle Zeit bis FULL.
