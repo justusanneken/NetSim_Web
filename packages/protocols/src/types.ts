@@ -369,6 +369,13 @@ export interface BgpAttrs {
   nextHop: string;
   med?: number;
   localPref?: number;
+  /** Communities (`65001:100`, `no-export`, `no-advertise`, `local-AS`). */
+  communities?: string[];
+  /** Route Reflection (RFC 4456). */
+  originatorId?: string;
+  clusterList?: string[];
+  /** MP-BGP IPv6: Next Hop der `nlri6`-Präfixe. */
+  nextHop6?: string;
 }
 
 export type BgpMsg =
@@ -379,6 +386,9 @@ export type BgpMsg =
       withdrawn: { prefix: string; plen: number }[];
       attrs?: BgpAttrs;
       nlri: { prefix: string; plen: number }[];
+      /** MP-BGP IPv6 (vereinfacht im selben Update). */
+      withdrawn6?: { prefix: string; plen: number }[];
+      nlri6?: { prefix: string; plen: number }[];
     }
   | { type: 'notification'; code: number; text: string };
 

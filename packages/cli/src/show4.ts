@@ -744,3 +744,65 @@ export function showOspfVirtualLinks(e: Engine, d: D): string[] {
   void e;
   return out;
 }
+
+export function showBgp6(e: Engine, d: D): string[] {
+  const c = l3(d)?.routing.bgp;
+  if (!c) return [];
+  const out = [
+    `BGP table version is ${Object.keys(c.locRib6 ?? {}).length}, local router ID is ${c.rid ?? c.routerId ?? '0.0.0.0'}`,
+    'Status codes: s suppressed, d damped, h history, * valid, > best, i - internal,',
+    '              r RIB-failure, S Stale',
+    'Origin codes: i - IGP, e - EGP, ? - incomplete',
+    '',
+    '   Network          Next Hop                  Metric LocPrf Weight Path',
+  ];
+  for (const [k, p] of Object.entries(c.locRib6 ?? {})) {
+    const lp = p.attrs.localPref !== undefined ? String(p.attrs.localPref) : '';
+    out.push(
+      `*>${p.ebgp || p.local ? ' ' : 'i'}${k.toUpperCase()}`,
+      `${' '.repeat(20)}${(p.attrs.nextHop6 ?? '::').toUpperCase().padEnd(26)}${String(p.attrs.med ?? 0).padStart(6)} ${lp.padStart(6)} ${String(p.weight).padStart(6)} ${pathText(p)}`,
+    );
+  }
+  void e;
+  return out;
+}
+
+export function showBgpDetail(d: D, net: string): string[] {
+  const c = l3(d)?.routing.bgp;
+  if (!c) return [];
+  const hits = Object.entries(c.locRib).filter(([k]) => k.split('/')[0] === net);
+  if (hits.length === 0) return ['% Network not in table'];
+  const out: string[] = [];
+  for (const [k, best] of hits) {
+    out.push(`BGP routing table entry for ${k}`);
+    const all = [
+      best,
+      ...Object.values(c.neighbors)
+        .map((n) => n.ribIn[k])
+        .filter((x): x is BgpPath => !!x && x.from !== best.from),
+    ];
+    out.push(`Paths: (${all.length} available, best #1)`);
+    for (const p of all) {
+      out.push(`  ${p.attrs.asPath.join(' ') || 'Local'}`);
+      out.push(
+        `    ${p.attrs.nextHop} from ${p.local ? '0.0.0.0 (' + (c.rid ?? c.routerId ?? '0.0.0.0') + ')' : p.from + ' (' + p.fromRid + ')'}`,
+      );
+      const bits = [
+        `Origin ${p.attrs.origin === 'igp' ? 'IGP' : p.attrs.origin === 'egp' ? 'EGP' : 'incomplete'}`,
+        `metric ${p.attrs.med ?? 0}`,
+        `localpref ${p.attrs.localPref ?? c.defaultLocalPref}`,
+        `weight ${p.weight}`,
+        p.ebgp || p.local ? 'external' : 'internal',
+        ...(p === best ? ['best'] : []),
+      ];
+      out.push(`      ${bits.join(', ')}`);
+      if (p.attrs.communities?.length)
+        out.push(`      Community: ${p.attrs.communities.join(' ')}`);
+      if (p.attrs.originatorId)
+        out.push(
+          `      Originator: ${p.attrs.originatorId}, Cluster list: ${(p.attrs.clusterList ?? []).join(', ')}`,
+        );
+    }
+  }
+  return out;
+}

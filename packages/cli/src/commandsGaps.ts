@@ -4,6 +4,7 @@ import type { RouterConfig, SwitchConfig } from '@netsim/engine';
 import { addRouteMap } from './cmdRouteMap';
 import { addOspfAreas } from './cmdOspf';
 import { addHsrpGaps } from './cmdHsrp';
+import { addBgpGaps } from './cmdBgp';
 import * as showGaps from './showGaps';
 
 /**
@@ -56,6 +57,7 @@ export function addGaps(r: Registry<CliSession>): void {
   addRouteMap(r);
   addOspfAreas(r);
   addHsrpGaps(r);
+  addBgpGaps(r);
   // ------------------------------------------------------------ show (Policies)
   const SHOW = K('show', 'Show running system information');
   const U: ModeId[] = ['user', 'priv'];

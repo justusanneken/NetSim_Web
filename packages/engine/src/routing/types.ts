@@ -323,6 +323,17 @@ export interface BgpNbrCfg {
   shutdown: boolean;
   description?: string;
   weight?: number;
+  /** `neighbor X prefix-list NAME in|out`, `neighbor X route-map NAME in|out`. */
+  prefixListIn?: string;
+  prefixListOut?: string;
+  routeMapIn?: string;
+  routeMapOut?: string;
+  /** `neighbor X send-community`. */
+  sendCommunity?: boolean;
+  /** `neighbor X route-reflector-client`. */
+  rrClient?: boolean;
+  /** `address-family ipv6` → `neighbor X activate`. */
+  activate6?: boolean;
   // ---- Laufzeit
   state: BgpState;
   routerId?: string;
@@ -336,6 +347,9 @@ export interface BgpNbrCfg {
   advertised: Record<string, string>;
   /** Adj-RIB-In: Präfix → Pfad. */
   ribIn: Record<string, BgpPath>;
+  /** IPv6-Adressfamilie (MP-BGP, vereinfacht im selben Update). */
+  advertised6?: Record<string, string>;
+  ribIn6?: Record<string, BgpPath>;
 }
 
 export interface BgpCfg {
@@ -345,9 +359,14 @@ export interface BgpCfg {
   routerId?: string;
   neighbors: Record<string, BgpNbrCfg>;
   networks: { prefix: string; plen: number }[];
+  /** IPv6-Adressfamilie: `network X::/L`. */
+  networks6?: { prefix: string; plen: number }[];
   redistribute: RedistCfg[];
+  /** Route-Reflector-Cluster-ID (`bgp cluster-id`); Default: Router-ID. */
+  clusterId?: string;
   /** Laufzeit: Loc-RIB (Präfix-Schlüssel → bester Pfad). */
   locRib: Record<string, BgpPath>;
+  locRib6?: Record<string, BgpPath>;
   rid?: string;
   defaultLocalPref: number;
   timersArmed?: boolean;

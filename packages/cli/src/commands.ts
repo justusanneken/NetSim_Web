@@ -341,7 +341,8 @@ export function buildRegistry(): Registry<CliSession> {
     modes: ['user', 'priv', ...ANYCFG],
     slots: [K('exit', 'Exit from the EXEC / current mode')],
     run: (s) => {
-      if (SUBMODES.includes(s.mode)) s.mode = 'config';
+      if (s.mode === 'config-bgp-af6') s.mode = 'config-bgp';
+      else if (SUBMODES.includes(s.mode)) s.mode = 'config';
       else if (s.mode === 'config') s.mode = 'priv';
       else logout(s);
     },

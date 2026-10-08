@@ -14,6 +14,14 @@ import {
   type Rt,
 } from './core';
 import { lookupRib } from '../rib';
+import { buildRib6 } from '../l3v6';
+import {
+  applyCommunities,
+  evalRouteMap,
+  prefixListPermits,
+  type RouteInfo,
+  type RouteMapSet,
+} from './routemap';
 import type { Iface } from '../ifaces';
 import { maxPathsOf, type BgpCfg, type BgpNbrCfg, type BgpPath } from './types';
 
@@ -42,6 +50,8 @@ export const newBgpNbr = (ip: string, asn: number): BgpNbrCfg => ({
   prefixesRx: 0,
   advertised: {},
   ribIn: {},
+  advertised6: {},
+  ribIn6: {},
 });
 
 const ipNum = (ip: string): number => parseIpv4(ip) ?? 0;
@@ -67,7 +77,75 @@ function sourceFor(rt: Rt, n: BgpNbrCfg): string | undefined {
 }
 
 const attrKey = (a: BgpAttrs): string =>
-  `${a.origin}|${a.asPath.join(' ')}|${a.nextHop}|${a.med ?? ''}|${a.localPref ?? ''}`;
+  `${a.origin}|${a.asPath.join(' ')}|${a.nextHop}|${a.med ?? ''}|${a.localPref ?? ''}|${(a.communities ?? []).join(',')}|${a.originatorId ?? ''}|${(a.clusterList ?? []).join(',')}|${a.nextHop6 ?? ''}`;
+
+const clusterIdOf = (rt: Rt, c: BgpCfg): string => c.clusterId ?? bgpRid(rt, c);
+
+/** Wendet `set`-Aktionen einer Route-Map auf Pfadattribute an. */
+function applySet(attrs: BgpAttrs, set: RouteMapSet | undefined): BgpAttrs {
+  if (!set) return attrs;
+  const a: BgpAttrs = { ...attrs };
+  if (set.localPref !== undefined) a.localPref = set.localPref;
+  if (set.metric !== undefined) a.med = set.metric;
+  if (set.asPathPrepend?.length) a.asPath = [...set.asPathPrepend, ...a.asPath];
+  if (set.community) a.communities = applyCommunities(a.communities, set.community);
+  if (set.nextHop) a.nextHop = set.nextHop;
+  if (set.origin) a.origin = set.origin;
+  return a;
+}
+
+const env = (rt: Rt): { routing: Rt['r']; acls: Rt['cfg']['acls'] } => ({
+  routing: rt.r,
+  acls: rt.cfg.acls,
+});
+
+/** Eingehende Policy (Prefix-List, Route-Map); `undefined` = verworfen. */
+function policyIn(rt: Rt, n: BgpNbrCfg, p: BgpPath, v6: boolean): BgpPath | undefined {
+  const info: RouteInfo = {
+    prefix: p.prefix,
+    plen: p.plen,
+    v6,
+    metric: p.attrs.med,
+    nextHop: v6 ? p.attrs.nextHop6 : p.attrs.nextHop,
+    communities: p.attrs.communities,
+  };
+  const lists = v6 ? rt.r.prefixLists6 : rt.r.prefixLists;
+  if (n.prefixListIn && lists[n.prefixListIn] && !prefixListPermits(lists[n.prefixListIn], info))
+    return undefined;
+  const res = evalRouteMap(env(rt), n.routeMapIn, info);
+  if (!res.permit) return undefined;
+  if (!res.set) return p;
+  return {
+    ...p,
+    attrs: applySet(p.attrs, res.set),
+    weight: res.set.weight ?? p.weight,
+  };
+}
+
+/** Ausgehende Policy; `undefined` = nicht ankündigen. */
+function policyOut(
+  rt: Rt,
+  n: BgpNbrCfg,
+  attrs: BgpAttrs,
+  prefix: string,
+  plen: number,
+  v6: boolean,
+): BgpAttrs | undefined {
+  const info: RouteInfo = {
+    prefix,
+    plen,
+    v6,
+    metric: attrs.med,
+    nextHop: v6 ? attrs.nextHop6 : attrs.nextHop,
+    communities: attrs.communities,
+  };
+  const lists = v6 ? rt.r.prefixLists6 : rt.r.prefixLists;
+  if (n.prefixListOut && lists[n.prefixListOut] && !prefixListPermits(lists[n.prefixListOut], info))
+    return undefined;
+  const res = evalRouteMap(env(rt), n.routeMapOut, info);
+  if (!res.permit) return undefined;
+  return applySet(attrs, res.set);
+}
 
 function send(rt: Rt, c: BgpCfg, n: BgpNbrCfg, msg: BgpMsg): boolean {
   const src = sourceFor(rt, n);
@@ -127,7 +205,10 @@ export function bgpReset(c: BgpCfg): void {
     n.prefixesRx = 0;
     n.routerId = undefined;
     n.established = undefined;
+    n.ribIn6 = {};
+    n.advertised6 = {};
   }
+  c.locRib6 = {};
 }
 
 function resetSession(rt: Rt, c: BgpCfg, n: BgpNbrCfg, why: string, notify: boolean): void {
@@ -136,6 +217,8 @@ function resetSession(rt: Rt, c: BgpCfg, n: BgpNbrCfg, why: string, notify: bool
   n.state = 'idle';
   n.ribIn = {};
   n.advertised = {};
+  n.ribIn6 = {};
+  n.advertised6 = {};
   n.prefixesRx = 0;
   n.routerId = undefined;
   n.established = undefined;
@@ -256,24 +339,34 @@ export function bgpRx(rt: Rt, _iface: Iface, ip: Ipv4Pdu, msg: BgpMsg): void {
 
 function rxUpdate(rt: Rt, c: BgpCfg, n: BgpNbrCfg, m: Extract<BgpMsg, { type: 'update' }>): void {
   for (const w of m.withdrawn) delete n.ribIn[pkey(w.prefix, w.plen)];
+  for (const w of m.withdrawn6 ?? []) delete n.ribIn6?.[pkey(w.prefix, w.plen)];
   if (m.attrs) {
     const a = m.attrs;
     const ebgp = isEbgp(c, n);
     if (ebgp && a.asPath.includes(c.asn)) {
       // AS-Pfad-Schleife
       dbg(rt, 'BGP', 'bgp', () => `BGP: ${n.ip} rejected NLRI, AS path loop`);
+    } else if (
+      !ebgp &&
+      (a.originatorId === bgpRid(rt, c) || a.clusterList?.includes(clusterIdOf(rt, c)))
+    ) {
+      // Route-Reflection-Schleife (eigene Router-ID bzw. Cluster-ID)
+      dbg(rt, 'BGP', 'bgp', () => `BGP: ${n.ip} rejected NLRI, originator/cluster loop`);
     } else {
-      for (const p of m.nlri) {
-        n.ribIn[pkey(p.prefix, p.plen)] = {
-          prefix: p.prefix,
-          plen: p.plen,
-          attrs: { ...a, localPref: ebgp ? undefined : (a.localPref ?? c.defaultLocalPref) },
-          from: n.ip,
-          ebgp,
-          fromRid: n.routerId ?? n.ip,
-          weight: n.weight ?? 0,
-          local: false,
-        };
+      const mk = (p: { prefix: string; plen: number }): BgpPath => ({
+        prefix: p.prefix,
+        plen: p.plen,
+        attrs: { ...a, localPref: ebgp ? undefined : (a.localPref ?? c.defaultLocalPref) },
+        from: n.ip,
+        ebgp,
+        fromRid: n.routerId ?? n.ip,
+        weight: n.weight ?? 0,
+        local: false,
+      });
+      for (const p of m.nlri) n.ribIn[pkey(p.prefix, p.plen)] = mk(p);
+      if (n.activate6) {
+        n.ribIn6 ??= {};
+        for (const p of m.nlri6 ?? []) n.ribIn6[pkey(p.prefix, p.plen)] = mk(p);
       }
     }
   }
@@ -361,9 +454,11 @@ export function bgpRecompute(rt: Rt): boolean {
   }
   for (const n of Object.values(c.neighbors)) {
     if (n.state !== 'established') continue;
-    for (const p of Object.values(n.ribIn)) {
+    for (const p0 of Object.values(n.ribIn)) {
+      const p = policyIn(rt, n, p0, false);
+      if (!p) continue;
       if (igpMetric(rt, p.attrs.nextHop) === undefined) continue; // Next-Hop unerreichbar
-      add({ ...p, weight: n.weight ?? p.weight });
+      add({ ...p, weight: p.weight !== p0.weight ? p.weight : (n.weight ?? p.weight) });
     }
   }
   const loc: Record<string, BgpPath> = {};
@@ -413,33 +508,62 @@ export function bgpRecompute(rt: Rt): boolean {
     }
   }
   let changed = installRoutes(rt, 'bgp', routes);
+  if (recompute6(rt, c)) changed = true;
   if (advertise(rt, c)) changed = true;
   return changed || locChanged;
 }
 
 // ------------------------------------------------------------------ Advertise
 
-function exportAttrs(rt: Rt, c: BgpCfg, n: BgpNbrCfg, p: BgpPath): BgpAttrs | undefined {
+function exportAttrs(
+  rt: Rt,
+  c: BgpCfg,
+  n: BgpNbrCfg,
+  p: BgpPath,
+  v6 = false,
+): BgpAttrs | undefined {
   const ebgp = isEbgp(c, n);
   if (p.from === n.ip) return undefined; // nicht zurück zum Absender
-  if (!ebgp && !p.local && !p.ebgp) return undefined; // iBGP → iBGP nicht weitergeben
+  const comms = p.attrs.communities ?? [];
+  if (comms.includes('no-advertise')) return undefined;
+  if (ebgp && (comms.includes('no-export') || comms.includes('local-AS'))) return undefined;
+  let reflect = false;
+  if (!ebgp && !p.local && !p.ebgp) {
+    // iBGP → iBGP nur als Route Reflector (Quelle oder Ziel ist Client)
+    const from = c.neighbors[p.from];
+    if (!(from?.rrClient || n.rrClient)) return undefined;
+    reflect = true;
+  }
   if (ebgp && p.attrs.asPath.includes(n.asn)) return undefined;
   const self = sourceFor(rt, n) ?? '0.0.0.0';
+  let out: BgpAttrs;
   if (ebgp) {
-    return {
+    out = {
       origin: p.attrs.origin,
       asPath: [c.asn, ...p.attrs.asPath],
       nextHop: self,
       med: p.local ? p.attrs.med : undefined,
+      communities: p.attrs.communities,
     };
+  } else {
+    out = {
+      origin: p.attrs.origin,
+      asPath: p.attrs.asPath,
+      nextHop: p.local || n.nextHopSelf ? self : p.attrs.nextHop,
+      med: p.attrs.med,
+      localPref: p.attrs.localPref ?? c.defaultLocalPref,
+      communities: p.attrs.communities,
+    };
+    if (reflect) {
+      out.originatorId = p.attrs.originatorId ?? p.fromRid;
+      out.clusterList = [clusterIdOf(rt, c), ...(p.attrs.clusterList ?? [])];
+    }
   }
-  return {
-    origin: p.attrs.origin,
-    asPath: p.attrs.asPath,
-    nextHop: p.local || n.nextHopSelf ? self : p.attrs.nextHop,
-    med: p.attrs.med,
-    localPref: p.attrs.localPref ?? c.defaultLocalPref,
-  };
+  const pol = policyOut(rt, n, out, p.prefix, p.plen, v6);
+  if (!pol) return undefined;
+  if (!n.sendCommunity) pol.communities = undefined;
+  else if (!pol.communities?.length) pol.communities = undefined;
+  return pol;
 }
 
 /** Adj-RIB-Out abgleichen und Updates/Withdraws senden. Liefert `true`, wenn etwas gesendet wurde. */
@@ -464,6 +588,7 @@ function advertise(rt: Rt, c: BgpCfg): boolean {
       send(rt, c, n, { type: 'update', withdrawn: withdraw, nlri: [] });
       sent = true;
     }
+    if (advertise6(rt, c, n)) sent = true;
     const groups = new Map<string, { attrs: BgpAttrs; nlri: { prefix: string; plen: number }[] }>();
     for (const [k, w] of want) {
       const ak = attrKey(w.attrs);
@@ -477,6 +602,122 @@ function advertise(rt: Rt, c: BgpCfg): boolean {
       send(rt, c, n, { type: 'update', withdrawn: [], attrs: g.attrs, nlri: g.nlri });
       sent = true;
     }
+  }
+  return sent;
+}
+
+// ------------------------------------------------------------------ IPv6-Adressfamilie (MP-BGP, vereinfacht)
+
+/** Eigene globale IPv6-Adresse an der Schnittstelle, über die die Sitzung läuft. */
+function selfAddr6(rt: Rt, n: BgpNbrCfg): string | undefined {
+  const src = sourceFor(rt, n);
+  const v4 = rt.node.ifaces.find((i) => i.ip === src);
+  const v6 = rt.node.v6?.ifaces.find((i) => i.id === v4?.id);
+  return v6 ? (v6.addrs[0]?.addr ?? v6.ll) : undefined;
+}
+
+function recompute6(rt: Rt, c: BgpCfg): boolean {
+  if (!rt.node.v6 && !(c.networks6?.length ?? 0)) {
+    c.locRib6 = {};
+    return installRoutes(rt, 'bgp', [], true);
+  }
+  const cand = new Map<string, BgpPath[]>();
+  const add = (p: BgpPath): void => {
+    const k = pkey(p.prefix, p.plen);
+    cand.set(k, [...(cand.get(k) ?? []), p]);
+  };
+  const rib6 = rt.node.v6 ? buildRib6(rt.cfg, rt.node.v6.ifaces) : [];
+  for (const nw of c.networks6 ?? []) {
+    if (
+      rib6.some(
+        (e) => e.type !== 'L' && e.type !== 'B' && e.prefix === nw.prefix && e.plen === nw.plen,
+      )
+    )
+      add({
+        prefix: nw.prefix,
+        plen: nw.plen,
+        attrs: { origin: 'igp', asPath: [], nextHop: '0.0.0.0', nextHop6: '::' },
+        from: 'local',
+        ebgp: false,
+        fromRid: bgpRid(rt, c),
+        weight: 32768,
+        local: true,
+      });
+  }
+  {
+    for (const n of Object.values(c.neighbors)) {
+      if (n.state !== 'established' || !n.activate6) continue;
+      for (const p0 of Object.values(n.ribIn6 ?? {})) {
+        const p = policyIn(rt, n, p0, true);
+        if (!p || !p.attrs.nextHop6 || !rt.node.v6?.lookup(p.attrs.nextHop6)) continue;
+        add({ ...p, weight: p.weight !== p0.weight ? p.weight : (n.weight ?? p.weight) });
+      }
+    }
+  }
+  const loc: Record<string, BgpPath> = {};
+  for (const [k, list] of cand) {
+    let best = list[0] as BgpPath;
+    for (const p of list.slice(1)) if (betterPath(rt, c, p, best)) best = p;
+    loc[k] = best;
+  }
+  c.locRib6 = loc;
+  const routes = [];
+  for (const p of Object.values(loc)) {
+    if (p.local || !p.attrs.nextHop6) continue;
+    const hop = rt.node.v6?.lookup(p.attrs.nextHop6);
+    if (!hop) continue;
+    routes.push({
+      proto: 'B' as const,
+      sub: undefined,
+      prefix: p.prefix,
+      plen: p.plen,
+      ad: p.ebgp ? AD.ebgp : AD.ibgp,
+      metric: p.attrs.med ?? 0,
+      nextHop: hop.nextHop,
+      ifaceId: hop.iface.id,
+    });
+  }
+  return installRoutes(rt, 'bgp', routes, true);
+}
+
+/** IPv6-Präfixe an aktivierte Nachbarn ankündigen (im selben Update-Nachrichtentyp). */
+function advertise6(rt: Rt, c: BgpCfg, n: BgpNbrCfg): boolean {
+  if (!n.activate6 || n.state !== 'established') return false;
+  n.advertised6 ??= {};
+  const ebgp = isEbgp(c, n);
+  const self6 = selfAddr6(rt, n);
+  const want = new Map<string, { attrs: BgpAttrs; prefix: string; plen: number }>();
+  for (const [k, p] of Object.entries(c.locRib6 ?? {})) {
+    const base = exportAttrs(rt, c, n, { ...p, attrs: { ...p.attrs } }, true);
+    if (!base || !self6) continue;
+    const nh6 = ebgp || p.local || n.nextHopSelf ? self6 : (p.attrs.nextHop6 ?? self6);
+    want.set(k, { attrs: { ...base, nextHop6: nh6 }, prefix: p.prefix, plen: p.plen });
+  }
+  const withdraw: { prefix: string; plen: number }[] = [];
+  for (const k of Object.keys(n.advertised6)) {
+    if (!want.has(k)) {
+      const [prefix, plen] = k.split('/') as [string, string];
+      withdraw.push({ prefix, plen: Number(plen) });
+      delete n.advertised6[k];
+    }
+  }
+  let sent = false;
+  if (withdraw.length) {
+    send(rt, c, n, { type: 'update', withdrawn: [], nlri: [], withdrawn6: withdraw });
+    sent = true;
+  }
+  const groups = new Map<string, { attrs: BgpAttrs; nlri6: { prefix: string; plen: number }[] }>();
+  for (const [k, w] of want) {
+    const ak = attrKey(w.attrs);
+    if (n.advertised6[k] === ak) continue;
+    n.advertised6[k] = ak;
+    const g = groups.get(ak) ?? { attrs: w.attrs, nlri6: [] };
+    g.nlri6.push({ prefix: w.prefix, plen: w.plen });
+    groups.set(ak, g);
+  }
+  for (const g of groups.values()) {
+    send(rt, c, n, { type: 'update', withdrawn: [], attrs: g.attrs, nlri: [], nlri6: g.nlri6 });
+    sent = true;
   }
   return sent;
 }

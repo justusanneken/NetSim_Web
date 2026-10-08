@@ -522,11 +522,25 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
       if (n.ebgpMultihop) L.push(` neighbor ${n.ip} ebgp-multihop ${n.ebgpMultihop}`);
       if (n.nextHopSelf) L.push(` neighbor ${n.ip} next-hop-self`);
       if (n.weight !== undefined) L.push(` neighbor ${n.ip} weight ${n.weight}`);
+      if (n.sendCommunity) L.push(` neighbor ${n.ip} send-community`);
+      if (n.rrClient) L.push(` neighbor ${n.ip} route-reflector-client`);
+      if (n.prefixListIn) L.push(` neighbor ${n.ip} prefix-list ${n.prefixListIn} in`);
+      if (n.prefixListOut) L.push(` neighbor ${n.ip} prefix-list ${n.prefixListOut} out`);
+      if (n.routeMapIn) L.push(` neighbor ${n.ip} route-map ${n.routeMapIn} in`);
+      if (n.routeMapOut) L.push(` neighbor ${n.ip} route-map ${n.routeMapOut} out`);
       if (n.shutdown) L.push(` neighbor ${n.ip} shutdown`);
     }
     for (const n of c.networks) L.push(` network ${n.prefix} mask ${prefixMaskText(n.plen)}`);
     if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
     for (const x of c.redistribute) L.push(redistText(x, 'bgp'));
+    if (c.clusterId) L.push(` bgp cluster-id ${c.clusterId}`);
+    const af6 = Object.values(c.neighbors).filter((n) => n.activate6);
+    if (af6.length > 0 || (c.networks6?.length ?? 0) > 0) {
+      L.push(' address-family ipv6');
+      for (const n of af6) L.push(`  neighbor ${n.ip} activate`);
+      for (const n of c.networks6 ?? []) L.push(`  network ${n.prefix.toUpperCase()}/${n.plen}`);
+      L.push(' exit-address-family');
+    }
     L.push('!');
   }
 }

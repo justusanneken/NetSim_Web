@@ -43,6 +43,7 @@ const MODE_SUFFIX: Record<ModeId, string> = {
   'config-eigrp': '(config-router)#',
   'config-bgp': '(config-router)#',
   'config-route-map': '(config-route-map)#',
+  'config-bgp-af6': '(config-router-af)#',
 };
 
 let REGISTRY: Registry<CliSession> | undefined;

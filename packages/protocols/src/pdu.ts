@@ -67,8 +67,8 @@ function routingSize(p: RoutingPdu): number {
       if (m.type === 'notification') return 21;
       return (
         23 +
-        m.nlri.length * 5 +
-        m.withdrawn.length * 5 +
+        (m.nlri.length + (m.nlri6?.length ?? 0)) * 5 +
+        (m.withdrawn.length + (m.withdrawn6?.length ?? 0)) * 5 +
         (m.attrs ? 20 + m.attrs.asPath.length * 2 : 0)
       );
     }
@@ -342,8 +342,14 @@ function describeRouting(p: RoutingPdu): HeaderField[] {
         f('NEXT_HOP', m.attrs.nextHop),
         ...(m.attrs.med !== undefined ? [f('MED', m.attrs.med)] : []),
         ...(m.attrs.localPref !== undefined ? [f('LOCAL_PREF', m.attrs.localPref)] : []),
+        ...(m.attrs.communities?.length ? [f('COMMUNITY', m.attrs.communities.join(' '))] : []),
+        ...(m.attrs.originatorId ? [f('ORIGINATOR_ID', m.attrs.originatorId)] : []),
+        ...(m.attrs.clusterList?.length ? [f('CLUSTER_LIST', m.attrs.clusterList.join(' '))] : []),
+        ...(m.attrs.nextHop6 ? [f('MP_NEXT_HOP', m.attrs.nextHop6)] : []),
       );
     for (const n of m.nlri) out.push(f('NLRI', `${n.prefix}/${n.plen}`));
+    for (const n of m.nlri6 ?? []) out.push(f('MP_REACH_NLRI', `${n.prefix}/${n.plen}`));
+    for (const n of m.withdrawn6 ?? []) out.push(f('MP_UNREACH_NLRI', `${n.prefix}/${n.plen}`));
     for (const n of m.withdrawn) out.push(f('Withdrawn', `${n.prefix}/${n.plen}`));
   }
   if (m.type === 'notification') out.push(f('Error', `${m.code} ${m.text}`));
