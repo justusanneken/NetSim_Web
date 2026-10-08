@@ -1,8 +1,10 @@
+import { renderPolicyConfig } from './showGaps';
 import { maskToPrefix, parseIpv4 } from '@netsim/protocols';
 import type {
   AclEntry,
   AddrMatch,
   Device,
+  DistList,
   Engine,
   IfaceCfg,
   L3Cfg,
@@ -332,6 +334,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     }
   }
   renderRouting(d, L);
+  L.push(...renderPolicyConfig(cfg.routing));
   if (cfg.defaultGateway) L.push(`ip default-gateway ${cfg.defaultGateway}`);
   if (cfg.staticRoutes.length > 0) {
     const routes = [...cfg.staticRoutes].sort(
@@ -390,8 +393,16 @@ const redistText = (r: RedistCfg, proto: 'rip' | 'ospf' | 'eigrp' | 'bgp'): stri
     if (r.metricType) s += ` metric-type ${r.metricType}`;
     if (r.subnets) s += ' subnets';
   }
+  if (r.routeMap) s += ` route-map ${r.routeMap}`;
   return s;
 };
+
+function distLines(d: Device, lists: DistList[] | undefined, L: string[]): void {
+  for (const l of lists ?? [])
+    L.push(
+      ` distribute-list ${l.kind === 'prefix-list' ? 'prefix ' : ''}${l.name} ${l.dir}${l.ifaceId ? ' ' + ifDisplay(d, l.ifaceId) : ''}`,
+    );
+}
 
 function passiveLines(
   d: Device,
@@ -413,11 +424,12 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     for (const n of c.networks) L.push(` network ${n}`);
     if (!c.autoSummary) L.push(' no auto-summary');
     if (c.defaultOriginate) L.push(' default-information originate');
-    if (c.defaultMetric !== 1) L.push(` default-metric ${c.defaultMetric}`);
+    if (c.defaultMetric !== undefined) L.push(` default-metric ${c.defaultMetric}`);
     const t = c.timers;
     if (t.update !== 30 || t.invalid !== 180 || t.holddown !== 180 || t.flush !== 240)
       L.push(` timers basic ${t.update} ${t.invalid} ${t.holddown} ${t.flush}`);
     if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    distLines(d, c.distributeLists, L);
     for (const x of c.redistribute) L.push(redistText(x, 'rip'));
     L.push('!');
   }
@@ -438,6 +450,7 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
       );
     }
     if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    distLines(d, c.distributeLists, L);
     for (const x of c.redistribute) L.push(redistText(x, 'ospf'));
     L.push('!');
   }
@@ -463,6 +476,7 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     if (!c.autoSummary) L.push(' no auto-summary');
     if (c.variance !== 1) L.push(` variance ${c.variance}`);
     if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    distLines(d, c.distributeLists, L);
     for (const x of c.redistribute) L.push(redistText(x, 'eigrp'));
     L.push('!');
   }

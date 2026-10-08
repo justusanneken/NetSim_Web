@@ -10,6 +10,7 @@ import {
   classfulNet,
   classfulPlen,
   dbg,
+  distPermits,
   inNet,
   installRoutes,
   pfxKey,
@@ -34,7 +35,6 @@ export const newRip = (): RipCfg => ({
   autoSummary: true,
   defaultOriginate: false,
   redistribute: [],
-  defaultMetric: 1,
   timers: { update: 30, invalid: 180, holddown: 180, flush: 240 },
   poison: false,
   routes: {},
@@ -111,6 +111,13 @@ export function ripRecompute(rt: Rt): boolean {
   const c = rt.r.rip;
   if (!c) return false;
   let changed = false;
+  // geänderte `distribute-list in`: bereits gelernte, nun gefilterte Routen verwerfen
+  for (const [k, r] of Object.entries(c.routes)) {
+    if (r.origin === 'rip' && !distPermits(rt, c.distributeLists, 'in', r.ifaceId, r)) {
+      delete c.routes[k];
+      changed = true;
+    }
+  }
   const want = new Map<string, RipRoute>();
   const add = (r: RipRoute): void => {
     const k = pfxKey(r.prefix, r.plen);
@@ -132,14 +139,17 @@ export function ripRecompute(rt: Rt): boolean {
   for (const red of c.redistribute) {
     for (const s of redistSource(rt, red, 'rip')) {
       if (s.plen === 0) continue;
+      // IOS: ohne Metrik (weder `metric` noch `default-metric`) ist die Metrik unendlich
+      const m = s.set?.metric ?? red.metric ?? c.defaultMetric;
+      if (m === undefined || m >= INF) continue;
       add({
         prefix: s.prefix,
         plen: s.plen,
-        metric: Math.min(INF - 1, red.metric ?? c.defaultMetric),
+        metric: m,
         ifaceId: s.ifaceId,
         changed: false,
         origin: 'redistributed',
-        tag: red.tag ?? 0,
+        tag: s.set?.tag ?? red.tag ?? 0,
       });
     }
   }
@@ -203,6 +213,7 @@ function entriesFor(rt: Rt, c: RipCfg, iface: Iface, onlyChanged: boolean): RipE
   const agg = new Map<string, RipEntry>();
   for (const r of Object.values(c.routes)) {
     if (onlyChanged && !r.changed) continue;
+    if (!distPermits(rt, c.distributeLists, 'out', iface.id, r)) continue;
     let metric = r.metric >= INF ? INF : Math.min(INF, r.metric + 1);
     if (r.origin === 'rip' && r.ifaceId === iface.id && split) {
       if (!c.poison) continue;
@@ -378,6 +389,7 @@ export function ripRx(rt: Rt, iface: Iface, base: Base, ip: Ipv4Pdu, pdu: RipPdu
   const now = rt.ctx.now;
   for (const e of pdu.entries) {
     const plen = plenOfMask(e.mask);
+    if (!distPermits(rt, c.distributeLists, 'in', iface.id, { prefix: e.prefix, plen })) continue;
     const key = pfxKey(e.prefix, plen);
     const metric = Math.min(INF, e.metric);
     const nh = e.nextHop === '0.0.0.0' ? ip.src : e.nextHop;

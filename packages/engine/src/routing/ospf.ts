@@ -13,6 +13,7 @@ import {
   SEC,
   cancelBg,
   dbg,
+  distPermits,
   ifaceBwKbps,
   inNet,
   installRoutes,
@@ -1095,6 +1096,7 @@ export function ospfRecompute(rt: Rt): boolean {
     rlog(rt, 'OSPF', { key: 'ospf.spf', params: { pid: c.pid, routes: res.routes.length } });
     const max = maxPathsOf(c);
     const out = res.routes
+      .filter((r) => distPermits(rt, c.distributeLists, 'in', undefined, { ...r, v6: c.v6 }))
       .flatMap((r) =>
         r.nhs
           .filter((n) => n.addr !== undefined)
@@ -1141,9 +1143,9 @@ function syncExternals(rt: Rt, c: OspfCfg): boolean {
       want.set(externalKey(s.prefix, s.plen), {
         prefix: s.prefix,
         plen: s.plen,
-        metric: red.metric ?? 20,
-        eType: red.metricType ?? 2,
-        tag: red.tag ?? 0,
+        metric: s.set?.metric ?? red.metric ?? 20,
+        eType: s.set?.metricType ?? red.metricType ?? 2,
+        tag: s.set?.tag ?? red.tag ?? 0,
       });
     }
   }

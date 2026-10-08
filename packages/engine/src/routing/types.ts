@@ -1,4 +1,5 @@
 import type { BgpAttrs, EigrpRoute, HsrpState, OspfLsa } from '@netsim/protocols';
+import type { CommunityList, PrefixList, RouteMap } from './routemap';
 
 /** Konfiguration und Laufzeitzustand der dynamischen Routing-Protokolle (alles JSON-serialisierbar). */
 
@@ -17,6 +18,16 @@ export interface RedistCfg {
   /** EIGRP: Seed-Metrik (Bandbreite kbit/s, Delay in 10 µs). */
   bw?: number;
   delay?: number;
+  /** `redistribute … route-map NAME`. */
+  routeMap?: string;
+}
+
+/** `distribute-list ACL|prefix-list NAME in|out [Schnittstelle]`. */
+export interface DistList {
+  kind: 'acl' | 'prefix-list';
+  name: string;
+  dir: 'in' | 'out';
+  ifaceId?: string;
 }
 
 // ---------------------------------------------------------------- RIP
@@ -40,6 +51,7 @@ export interface RipRoute {
 }
 
 export interface RipCfg {
+  distributeLists?: DistList[];
   /** `maximum-paths` (ECMP). */
   maxPaths?: number;
   networks: string[];
@@ -50,7 +62,8 @@ export interface RipCfg {
   autoSummary: boolean;
   defaultOriginate: boolean;
   redistribute: RedistCfg[];
-  defaultMetric: number;
+  /** `default-metric`; ohne Wert ist die Metrik redistribuierter Routen unendlich (IOS). */
+  defaultMetric?: number;
   timers: { update: number; invalid: number; holddown: number; flush: number };
   /** Split Horizon mit Poison Reverse an? (Default: Split Horizon ohne Poison). */
   poison: boolean;
@@ -130,6 +143,7 @@ export interface OspfExternal {
 }
 
 export interface OspfCfg {
+  distributeLists?: DistList[];
   /** `maximum-paths` (ECMP). */
   maxPaths?: number;
   pid: number;
@@ -221,6 +235,7 @@ export interface EigrpTopo {
 }
 
 export interface EigrpCfg {
+  distributeLists?: DistList[];
   /** `maximum-paths` (ECMP). */
   maxPaths?: number;
   asn: number;
@@ -238,6 +253,8 @@ export interface EigrpCfg {
   topology: Record<string, EigrpTopo>;
   /** Zu verbreitende Präfixe (gebündelte Updates). */
   advQueue: string[];
+  /** Laufzeit: Signatur der `distribute-list`-Konfiguration (Änderung ⇒ Neuankündigung). */
+  distSig?: string;
   /** Schnittstellen, auf denen der Hello-Timer läuft. */
   helloIfs: string[];
 }
@@ -342,9 +359,22 @@ export interface RoutingCfg {
   bgp?: BgpCfg;
   /** Aktive `debug`-Schalter (z. B. `ospf.adj`). */
   debug: string[];
+  prefixLists: Record<string, PrefixList>;
+  prefixLists6: Record<string, PrefixList>;
+  routeMaps: Record<string, RouteMap>;
+  communityLists: Record<string, CommunityList>;
 }
 
-export const newRouting = (): RoutingCfg => ({ ospf: {}, ospf6: {}, eigrp: {}, debug: [] });
+export const newRouting = (): RoutingCfg => ({
+  ospf: {},
+  ospf6: {},
+  eigrp: {},
+  debug: [],
+  prefixLists: {},
+  prefixLists6: {},
+  routeMaps: {},
+  communityLists: {},
+});
 
 /** `maximum-paths`: IGPs Default 4, BGP Default 1. */
 export const maxPathsOf = (c: { maxPaths?: number }, def = 4): number => c.maxPaths ?? def;

@@ -42,6 +42,7 @@ const MODE_SUFFIX: Record<ModeId, string> = {
   'config-ospf6': '(config-rtr)#',
   'config-eigrp': '(config-router)#',
   'config-bgp': '(config-router)#',
+  'config-route-map': '(config-route-map)#',
 };
 
 let REGISTRY: Registry<CliSession> | undefined;
@@ -61,6 +62,9 @@ export class CliSession implements Shell {
   aclName = '';
   /** Prozess-ID (OSPF/EIGRP/BGP-AS) im Router-Konfigurationsmodus. */
   procId = 0;
+  /** Route-Map im Route-Map-Modus (Name + Sequenznummer). */
+  rmName = '';
+  rmSeq = 10;
   /** Zeilenziel im Line-Modus. */
   lineTarget: 'con' | 'vty' = 'con';
   silent = false;

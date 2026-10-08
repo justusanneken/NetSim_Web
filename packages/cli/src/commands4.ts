@@ -72,6 +72,11 @@ const err = (r: { error: string; params?: Record<string, string | number> }): Cl
   }
 };
 
+const RMAP = [
+  opt(K('route-map', 'Route map reference')),
+  opt(P('rm', 'word', 'WORD', 'Pointer to route-map entries')),
+];
+
 /** Gemeinsame Slots für `redistribute …`. */
 const REDIST_SRC = (extra: RedistSource[]): ReturnType<typeof choice> => {
   const all: [RedistSource, string][] = [
@@ -109,6 +114,7 @@ function applyRedist(
     tag: a.tag !== undefined ? Number(a.tag) : undefined,
     bw: a.bw !== undefined ? Number(a.bw) : undefined,
     delay: a.dly !== undefined ? Number(a.dly) : undefined,
+    routeMap: a.rm,
   };
   if (idx >= 0) list[idx] = entry;
   else list.push(entry);
@@ -354,7 +360,7 @@ export function addPhase4(r: Registry<CliSession>): void {
       P('m', 'int', '<1-15>', 'Default metric', [1, 15]),
     ],
     run: (s, a) => {
-      ripCfg(s).defaultMetric = s.negated ? 1 : Number(a.m);
+      ripCfg(s).defaultMetric = s.negated ? undefined : Number(a.m);
       touch(s);
     },
   });
@@ -394,6 +400,7 @@ export function addPhase4(r: Registry<CliSession>): void {
       opt(P('id', 'int', '<1-65535>', 'Process ID / AS number', [1, 65535])),
       opt(K('metric', 'Metric for redistributed routes')),
       opt(P('metric', 'int', '<0-16>', 'Default metric', [0, 16])),
+      ...RMAP,
     ],
     run: (s, a) => {
       applyRedist(s, ripCfg(s).redistribute, { proto: 'rip' }, a);
@@ -519,6 +526,7 @@ export function addPhase4(r: Registry<CliSession>): void {
       opt(K('metric-type', 'OSPF/IS-IS exterior metric type for redistributed routes')),
       opt(P('mtype', 'int', '<1-2>', 'Set OSPF External Type 1/2 metrics', [1, 2])),
       opt(choice('subnets', ['subnets', 'Consider subnets for redistribution into OSPF'])),
+      ...RMAP,
     ],
     run: (s, a) => {
       applyRedist(s, ospfCfg(s, false).redistribute, { proto: 'ospf', id: s.procId }, a);
@@ -618,6 +626,7 @@ export function addPhase4(r: Registry<CliSession>): void {
       opt(P('rel', 'int', '<0-255>', 'EIGRP reliability metric where 255 is 100% reliable')),
       opt(P('load', 'int', '<1-255>', 'EIGRP Effective bandwidth metric (Loading)')),
       opt(P('mtu', 'int', '<1-65535>', 'EIGRP MTU of the path')),
+      ...RMAP,
     ],
     run: (s, a) => {
       applyRedist(s, eigrpCfg(s).redistribute, { proto: 'eigrp', id: s.procId }, a);
@@ -806,6 +815,7 @@ export function addPhase4(r: Registry<CliSession>): void {
       opt(P('id', 'int', '<1-65535>', 'Process ID / AS number', [1, 65535])),
       opt(K('metric', 'Metric for redistributed routes')),
       opt(P('metric', 'int', '<0-4294967295>', 'Default metric', [0, 4294967295])),
+      ...RMAP,
     ],
     run: (s, a) => {
       applyRedist(s, bgpCfg(s).redistribute, { proto: 'bgp', id: s.procId }, a);

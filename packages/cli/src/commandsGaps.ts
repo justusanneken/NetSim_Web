@@ -1,6 +1,8 @@
 import { K, P, opt, type ModeId, type Registry } from './parser';
 import { CliError, type CliSession } from './session';
 import type { RouterConfig, SwitchConfig } from '@netsim/engine';
+import { addRouteMap } from './cmdRouteMap';
+import * as showGaps from './showGaps';
 
 /**
  * Befehle, die die bekannten Lücken der Phasen 1–4 schließen (ECMP, OSPF-Bereichstypen,
@@ -49,5 +51,49 @@ export function addGaps(r: Registry<CliSession>): void {
       },
     });
   }
-  void opt;
+  addRouteMap(r);
+  // ------------------------------------------------------------ show (Policies)
+  const SHOW = K('show', 'Show running system information');
+  const U: ModeId[] = ['user', 'priv'];
+  for (const v6 of [false, true]) {
+    r.add({
+      modes: U,
+      only: 'l3',
+      slots: [
+        SHOW,
+        K(v6 ? 'ipv6' : 'ip', 'IP information'),
+        K('prefix-list', 'List IP prefix lists'),
+        opt(P('name', 'word', 'WORD', 'Name of a prefix list')),
+      ],
+      run: (s, a) =>
+        s.outLines(
+          showGaps.showPrefixLists(
+            v6 ? l3c(s).routing.prefixLists6 : l3c(s).routing.prefixLists,
+            a.name,
+            v6,
+          ),
+        ),
+    });
+  }
+  r.add({
+    modes: U,
+    only: 'l3',
+    slots: [
+      SHOW,
+      K('route-map', 'route-map information'),
+      opt(P('name', 'word', 'WORD', 'route-map name')),
+    ],
+    run: (s, a) => s.outLines(showGaps.showRouteMaps(l3c(s).routing.routeMaps, a.name)),
+  });
+  r.add({
+    modes: U,
+    only: 'l3',
+    slots: [
+      SHOW,
+      K('ip', 'IP information'),
+      K('community-list', 'List community-list'),
+      opt(P('name', 'word', 'WORD', 'Community-list name')),
+    ],
+    run: (s, a) => s.outLines(showGaps.showCommunityLists(l3c(s).routing, a.name)),
+  });
 }
