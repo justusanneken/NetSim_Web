@@ -72,6 +72,36 @@ describe('QA mutual redistribution', () => {
   });
 });
 
+describe('QA EIGRP seed metric', () => {
+  it('redistribute ospf into EIGRP without a metric announces nothing (IOS: infinite)', () => {
+    const { e, r1, r2, r4 } = diamond();
+    r1.run('configure terminal', 'router eigrp 10', 'network 10.0.12.0 0.0.0.255', 'end');
+    r2.run(
+      'configure terminal',
+      'router eigrp 10',
+      'network 10.0.12.0 0.0.0.255',
+      'redistribute ospf 1',
+      'exit',
+      'router ospf 1',
+      'network 10.0.24.0 0.0.0.255 area 0',
+      'end',
+    );
+    r4.run('configure terminal', 'router ospf 1', 'network 10.0.0.0 0.255.255.255 area 0', 'end');
+    sec(e, 90);
+    expect(r2.run('show ip route')).toMatch(/O\s+10\.4\.0\.0\/24/);
+    expect(r1.run('show ip route')).not.toContain('10.4.0.0');
+    // with a seed metric the routes appear as D EX
+    r2.run(
+      'configure terminal',
+      'router eigrp 10',
+      'redistribute ospf 1 metric 10000 100 255 1 1500',
+      'end',
+    );
+    sec(e, 20);
+    expect(r1.run('show ip route')).toMatch(/D EX\s+10\.4\.0\.0\/24/);
+  });
+});
+
 describe('QA ECMP', () => {
   it('load-shares per flow and fails over on link shut', () => {
     const { e, r1, r2, r3, r4, pc1 } = diamond();
