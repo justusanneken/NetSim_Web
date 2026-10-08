@@ -269,6 +269,7 @@ export class Engine {
     if (!dev) return;
     for (const p of dev.ports) if (p.linkId) this.disconnect(p.linkId);
     heapRemove(this.state.queue, (e) => e.deviceId === deviceId);
+    this.p5.powerOff(dev);
     delete this.state.devices[deviceId];
     this.p5.wirelessSync();
   }

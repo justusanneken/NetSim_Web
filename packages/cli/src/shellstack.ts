@@ -63,44 +63,69 @@ export class ShellStack implements Shell, ShellNest {
     return sh ? sh.start() : '';
   }
 
+  /** Text eines Übergangs, der außerhalb von input/poll erkannt wurde (z. B. Zielgerät ausgeschaltet). */
+  private carry = '';
+
+  /** Von außen beendete Sitzungen (Zielgerät entfernt/aus) abbauen, bevor die oberste Shell benutzt wird. */
+  private reap(): void {
+    if (this.top.closed && this.stack.length > 1)
+      this.carry += this.settle(this.top, this.stack.length);
+  }
+  private takeCarry(): string {
+    const c = this.carry;
+    this.carry = '';
+    return c;
+  }
+
   // ---- Shell
   prompt(): string {
+    this.reap();
     return this.top.prompt();
   }
   secret(): boolean {
+    this.reap();
     return this.top.secret();
   }
   input(line: string): string {
+    this.reap();
     const t = this.top;
     const d = this.stack.length;
-    return t.input(line) + this.settle(t, d);
+    return this.takeCarry() + t.input(line) + this.settle(t, d);
   }
   help(line: string): string | undefined {
+    this.reap();
     return this.top.help(line);
   }
   complete(line: string): string {
+    this.reap();
     return this.top.complete(line);
   }
   interrupt(): string {
+    this.reap();
     const t = this.top;
     const d = this.stack.length;
-    return t.interrupt() + this.settle(t, d);
+    return this.takeCarry() + t.interrupt() + this.settle(t, d);
   }
   end(): string {
+    this.reap();
     const t = this.top;
     const d = this.stack.length;
-    return t.end() + this.settle(t, d);
+    return this.takeCarry() + t.end() + this.settle(t, d);
   }
   start(): string {
     return this.stack[0]?.start() ?? '';
   }
   poll(): string {
-    return this.top.poll?.() ?? '';
+    const t = this.top;
+    const d = this.stack.length;
+    return this.takeCarry() + (t.poll?.() ?? '') + this.settle(t, d);
   }
   get history(): readonly string[] {
+    this.reap();
     return this.top.history;
   }
   get terminalLength(): number {
+    this.reap();
     return this.top.terminalLength;
   }
 }
