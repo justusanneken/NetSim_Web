@@ -17,6 +17,7 @@ import {
   type ProtoTag,
   type TcpPdu,
   type UdpPdu,
+  type SvcPdu,
   type VtpPdu,
 } from './types';
 
@@ -88,6 +89,8 @@ function appSize(p: UdpPdu['app'] | TcpPdu['app']): number {
       return 12 + 20 + p.answers.length * 16;
     case 'http':
       return (p.body?.length ?? 0) + 60 + (p.path?.length ?? 0);
+    case 'svc':
+      return 24 + (p.body?.length ?? 0) + Object.keys(p.args).length * 12;
   }
 }
 
@@ -106,6 +109,7 @@ export function pduSize(pdu: Pdu): number {
     case 'dns':
       return appSize(pdu);
     case 'http':
+    case 'svc':
       return appSize(pdu);
     case 'bpdu':
       return BPDU_SIZE;
@@ -164,6 +168,21 @@ const ICMP_TYPE_TEXT = {
   'dest-unreachable': '3 (destination unreachable)',
   'time-exceeded': '11 (time exceeded)',
 } as const;
+
+const SVC_TAG: Record<SvcPdu['proto'], ProtoTag> = {
+  tftp: 'TFTP',
+  ftp: 'FTP',
+  smtp: 'SMTP',
+  pop3: 'POP3',
+  ntp: 'NTP',
+  syslog: 'SYSLOG',
+  snmp: 'SNMP',
+  radius: 'RADIUS',
+  telnet: 'TELNET',
+  ssh: 'SSH',
+  iot: 'IOT',
+  capwap: 'CAPWAP',
+};
 
 const hex = (n: number, w = 4): string => '0x' + n.toString(16).padStart(w, '0');
 const f = (name: string, value: string | number | boolean): HeaderField => ({
@@ -240,6 +259,8 @@ export function describePdu(pdu: Pdu): HeaderField[] {
       return pdu.method
         ? [f('Request', `${pdu.method} ${pdu.path}`), f('Host', pdu.host ?? '')]
         : [f('Status', pdu.status ?? 0), f('Body', `${pdu.body?.length ?? 0} bytes`)];
+    case 'svc':
+      return describeSvc(pdu);
     case 'bpdu':
       return describeBpdu(pdu);
     case 'vtp':
@@ -276,6 +297,18 @@ export function describePdu(pdu: Pdu): HeaderField[] {
     case 'icmp6':
       return describeIcmp6(pdu);
   }
+}
+
+function describeSvc(p: SvcPdu): HeaderField[] {
+  return [
+    f('Protocol', p.proto.toUpperCase()),
+    f('Operation', p.op),
+    // Geheimnisse (Passwörter, Schlüssel) werden im Inspektor nicht angezeigt
+    ...Object.entries(p.args).map(([k, v]) =>
+      f(k, /pass|secret|key/i.test(k) ? '********' : String(v)),
+    ),
+    ...(p.body !== undefined ? [f('Data', `${p.body.length} bytes`)] : []),
+  ];
 }
 
 function describeIcmp6(p: Icmp6Pdu): HeaderField[] {
@@ -435,6 +468,7 @@ const LAYER_META: Record<Pdu['kind'], { osi: number; name: string }> = {
   dhcp: { osi: 7, name: 'DHCP' },
   dns: { osi: 7, name: 'DNS' },
   http: { osi: 7, name: 'HTTP' },
+  svc: { osi: 7, name: 'Application' },
 };
 
 export function describeFrame(frame: EthernetPdu): LayerView[] {
@@ -534,7 +568,13 @@ function summarizeIp(p: Ipv4Pdu): { proto: ProtoTag; info: string } {
       l4.inner.kind === 'ipv4' ? summarizeIp(l4.inner).info : summarizeIp6(l4.inner).info;
     return { proto: 'GRE', info: `${p.src} → ${p.dst} [${inner}]${tail}` };
   }
-  const a: HttpPdu | undefined = l4.app;
+  const a: HttpPdu | SvcPdu | undefined = l4.app;
+  if (a?.kind === 'svc') {
+    return {
+      proto: SVC_TAG[a.proto],
+      info: `${p.src}:${l4.srcPort} → ${p.dst}:${l4.dstPort} [${tcpFlags(l4)}] ${a.op}${tail}`,
+    };
+  }
   const app = a ? (a.method ? ` ${a.method} ${a.path}` : ` HTTP ${a.status}`) : '';
   return {
     proto: a ? 'HTTP' : 'TCP',
@@ -555,6 +595,12 @@ function summarizeUdp(p: Ipv4Pdu, u: UdpPdu, tail: string): { proto: ProtoTag; i
     return {
       proto: 'RIP',
       info: `${a.command} ${a.entries.length} route(s) ${p.src} → ${p.dst}${tail}`,
+    };
+  }
+  if (a?.kind === 'svc') {
+    return {
+      proto: SVC_TAG[a.proto],
+      info: `${a.op} ${p.src}:${u.srcPort} → ${p.dst}:${u.dstPort}${tail}`,
     };
   }
   if (a?.kind === 'hsrp') {

@@ -29,7 +29,9 @@ import { natHasInbound, natInside2Outside, natOutside2Inside } from './nat';
 import type { Node6 } from './l3v6';
 import { routingRx } from './routing';
 import { tcpRx } from './svc/tcp';
-import type { Device, HostConfig, IpCore, L3Cfg, Port } from './types';
+import { fwPermit } from './p5/fw';
+import { svcTcpRx, svcUdpRx } from './p5/dispatch';
+import type { Device, HostConfig, IpCore, L3Cfg, Port, RouterConfig } from './types';
 
 export const ARP_RETRY_US = 1_000_000;
 export const ARP_MAX_ATTEMPTS = 3;
@@ -491,6 +493,8 @@ function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn:
     sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.net, ip, ifaceIn.ip);
     return;
   }
+  // 2b) Firewall (Phase 5): Zustandsverfolgung, Security-Levels, ACL der Eingangsschnittstelle
+  if (l3 && (l3 as RouterConfig).fw && !fwPermit(ctx, node, ifaceIn, hop.iface, ip, base)) return;
   let out: Ipv4Pdu = { ...structuredClone(ip), ttl: ip.ttl - 1 };
   // 3) NAT inside → outside (nach dem Routing)
   if (l3 && ifaceIn.cfg.natSide === 'inside' && hop.iface.cfg.natSide === 'outside') {
@@ -625,6 +629,7 @@ function deliverLocal(
     return;
   }
   if (l4.kind === 'tcp') {
+    if (!broadcast && svcTcpRx(ctx, node, iface, base, ip, l4)) return;
     if (node.host && !broadcast) tcpRx(ctx, node, node.host, iface, base, ip, l4);
     else
       ctx.log({
@@ -642,6 +647,16 @@ function deliverLocal(
         kind: 'drop',
         status: 'drop',
         msg: { key: 'host.icmp.broadcastIgnored' },
+      });
+      return;
+    }
+    if (node.host?.firewallOn) {
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        proto: 'FW',
+        status: 'drop',
+        msg: { key: 'host.fw.blockedPing', params: { src: ip.src } },
       });
       return;
     }
@@ -697,6 +712,7 @@ function udpIn(
     if (node.l3) routingRx(ctx, node, iface, base, ip);
     return;
   }
+  if (app?.kind === 'svc' && svcUdpRx(ctx, node, iface, base, ip, udp, app)) return;
   if (app?.kind === 'dhcp' && dhcpRx(ctx, node, iface, base, ip, udp, app, frame)) return;
   if (app?.kind === 'dns' && dnsRx(ctx, node, iface, base, ip, udp, app)) return;
   ctx.log({

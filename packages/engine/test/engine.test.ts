@@ -360,7 +360,8 @@ describe('Topologie', () => {
     const A = { deviceId: a, portId: 'p0' };
     const B = { deviceId: b, portId: 'p0' };
     expect(e.connect(A, B, 'fiber')).toMatchObject({ error: 'cable.reject.fiber' });
-    expect(e.connect(A, B, 'coax')).toMatchObject({ error: 'cable.reject.unsupported' });
+    expect(e.connect(A, B, 'coax')).toMatchObject({ error: 'cable.reject.plug' });
+    expect(e.connect(A, B, 'usb')).toMatchObject({ error: 'cable.reject.unsupported' });
     const r = e.connect(A, B, 'rollover');
     expect(r.ok && r.value.operUp).toBe(false);
     if (r.ok) e.disconnect(r.value.id);
@@ -486,15 +487,27 @@ describe('Topologie', () => {
     e.moveDevice('nope', { x: 0, y: 0 });
     expect(e.getDevice(sw)).toMatchObject({ name: 'Core', pos: { x: 5, y: 6 } });
     expect(e.getDevice(sw)?.config).toMatchObject({ sys: { hostname: 'Core' } });
-    expect(() => e.addDevice('firewall')).toThrow(/not supported/);
+    expect(() => e.addDevice('note')).toThrow(/not supported/);
     expect(Object.keys(CATALOG).sort()).toEqual([
+      'ap',
+      'cable-modem',
+      'cloud',
+      'dsl-modem',
+      'firewall',
       'hub',
+      'iot-actuator',
+      'iot-sensor',
       'laptop',
       'pc',
+      'printer',
       'router',
+      'sbc',
       'server',
+      'smartphone',
       'switch-l2',
       'switch-l3',
+      'tablet',
+      'wlc',
     ]);
   });
 });

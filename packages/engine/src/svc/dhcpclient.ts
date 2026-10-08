@@ -1,3 +1,4 @@
+import { hostPort } from '../p5/hostport';
 import type { DhcpOp, DhcpPdu, Ipv4Addr } from '@netsim/protocols';
 import type { DeviceCtx } from '../ctx';
 import { eth, newIpPacket, sendBroadcast, sendDirect, type Base, type IpNode } from '../l3';
@@ -8,7 +9,7 @@ const RETRY_US = 4_000_000;
 const PROBE_US = 1_000_000;
 
 function pseudoIface(node: IpNode): Iface | undefined {
-  const port = node.dev.ports[0];
+  const port = hostPort(node.dev);
   if (!port) return undefined;
   return {
     id: port.id,
@@ -94,7 +95,7 @@ export function clientRx(
   m: DhcpPdu,
 ): boolean {
   const c = h.dhcpClient;
-  const port = node.dev.ports[0];
+  const port = hostPort(node.dev);
   if (!c.enabled || m.xid !== c.xid || m.chaddr !== port?.mac) return false;
   const log = (
     key: string,

@@ -1,3 +1,4 @@
+import { hostPort } from './p5/hostport';
 import {
   ETHERTYPE,
   IP_PROTO,
@@ -120,7 +121,7 @@ function macWithTag(mac: Mac, id: string): Mac {
 }
 
 export function hostIfaces6(dev: Device, cfg: HostConfig): Iface6[] {
-  const port = dev.ports[0];
+  const port = hostPort(dev);
   if (!port || !cfg.v6.enabled) return [];
   return [
     {

@@ -45,6 +45,8 @@ import { stpPortsChanged } from './devices/stp';
 import { vtpSend } from './devices/vtp';
 import { heapPop, heapPush, heapRemove } from './heap';
 import { mulberry32 } from './rng';
+import { bridgeRx } from './p5/bridge';
+import { Phase5 } from './p5/api';
 import type {
   HostConfig,
   V6IfCfg,
@@ -91,6 +93,10 @@ export class Engine {
   /** Event-Log (außerhalb des Zustands, damit Snapshots klein bleiben). */
   log: LogEntry[] = [];
   private refreshWanted = false;
+  /** Phase 5: WLAN-Assoziationen nach dem aktuellen Ereignis neu berechnen. */
+  private wifiWanted = false;
+  /** Phase 5: WLAN, Server-Dienste, Management, Firewall, IoT, Physical View. */
+  readonly p5 = new Phase5(this);
   /** Signatur der zuletzt verarbeiteten Switch-Konfiguration (löst STP-Neuaufbau aus). */
   private readonly switchSig = new Map<string, string>();
 
@@ -165,6 +171,7 @@ export class Engine {
           cfg.stp.instances = {};
         }
       } else if (cfg.kind === 'hub') cfg.busyUntil = 0;
+      this.p5.powerOff(dev);
       for (const p of dev.ports) {
         p.txBusyUntil = 0;
         p.counters = {
@@ -195,6 +202,7 @@ export class Engine {
       const h = dev.config;
       this.withCtx(dev, (ctx) => hostV6(ctx, h));
     }
+    this.p5.startTimers(dev);
   }
 
   /** Routing-Konfiguration (CLI/GUI) oder Topologie geändert: Protokollprozesse nachziehen. */
@@ -261,6 +269,7 @@ export class Engine {
     for (const p of dev.ports) if (p.linkId) this.disconnect(p.linkId);
     heapRemove(this.state.queue, (e) => e.deviceId === deviceId);
     delete this.state.devices[deviceId];
+    this.p5.wirelessSync();
   }
 
   renameDevice(deviceId: string, name: string): void {
@@ -274,6 +283,7 @@ export class Engine {
   moveDevice(deviceId: string, pos: Point): void {
     const dev = this.state.devices[deviceId];
     if (dev) dev.pos = pos;
+    this.p5.wirelessSync();
   }
 
   getDevice(deviceId: string): Device | undefined {
@@ -338,8 +348,8 @@ export class Engine {
     const devA = this.state.devices[deviceA];
     const devB = this.state.devices[deviceB];
     if (!devA || !devB) return { ok: false, error: 'cable.reject.notFound' };
-    const pa = devA.ports.find((p) => !p.linkId && p.kind !== 'console');
-    const pb = devB.ports.find((p) => !p.linkId && p.kind !== 'console');
+    const pa = devA.ports.find((p) => !p.linkId && p.kind !== 'console' && p.kind !== 'wifi');
+    const pb = devB.ports.find((p) => !p.linkId && p.kind !== 'console' && p.kind !== 'wifi');
     if (!pa || !pb) return { ok: false, error: 'cable.reject.noFreePort' };
     return this.connect(
       { deviceId: deviceA, portId: pa.id },
@@ -394,11 +404,13 @@ export class Engine {
       }
       if (dev.config.kind === 'hub') dev.config.busyUntil = 0;
       for (const p of dev.ports) p.txBusyUntil = 0;
+      this.p5.powerOff(dev);
     } else {
       delete dev.crashed;
     }
     this.refreshLinks();
     if (on) this.startTimers(dev);
+    this.p5.wirelessSync();
   }
 
   setPortAdmin(deviceId: string, portId: string, up: boolean): void {
@@ -451,7 +463,12 @@ export class Engine {
   /** Ping von einem Host oder Router aus (Ergebnisse in `config.pings`). */
   ping(deviceId: string, dst: string, opts?: PingOptions): Result<number> {
     const dev = this.state.devices[deviceId];
-    if (!dev || dev.config.kind === 'hub' || dev.config.kind === 'none')
+    if (
+      !dev ||
+      dev.config.kind === 'hub' ||
+      dev.config.kind === 'none' ||
+      dev.config.kind === 'bridge'
+    )
       return { ok: false, error: 'ip.notAHost' };
     if (!dev.powered || dev.crashed) return { ok: false, error: 'dev.off' };
     const v6 = isValidIpv6(dst);
@@ -468,7 +485,12 @@ export class Engine {
   /** Traceroute (Ergebnis in `config.traces`). */
   trace(deviceId: string, dst: string, maxHops = 30): Result<number> {
     const dev = this.state.devices[deviceId];
-    if (!dev || dev.config.kind === 'hub' || dev.config.kind === 'none')
+    if (
+      !dev ||
+      dev.config.kind === 'hub' ||
+      dev.config.kind === 'none' ||
+      dev.config.kind === 'bridge'
+    )
       return { ok: false, error: 'ip.notAHost' };
     if (!dev.powered || dev.crashed) return { ok: false, error: 'dev.off' };
     if (!isValidIpv4(dst)) return { ok: false, error: 'ip.invalidIp' };
@@ -1159,6 +1181,7 @@ export class Engine {
       const h = dev.config;
       this.withCtx(dev, (ctx) => hostV6(ctx, h));
     }
+    this.p5.linkChanged(dev, p, up);
     this.addLog(dev, {
       kind: 'info',
       proto: 'LINK',
@@ -1210,7 +1233,13 @@ export class Engine {
 
   arpTable(deviceId: string): { ip: string; mac: string }[] {
     const dev = this.state.devices[deviceId];
-    if (!dev || dev.config.kind === 'hub' || dev.config.kind === 'none') return [];
+    if (
+      !dev ||
+      dev.config.kind === 'hub' ||
+      dev.config.kind === 'none' ||
+      dev.config.kind === 'bridge'
+    )
+      return [];
     const now = this.state.now;
     return Object.entries(dev.config.arpCache)
       .filter(([, e]) => e.expiresAt > now)
@@ -1263,6 +1292,10 @@ export class Engine {
           break;
       }
       if (this.refreshWanted) this.refreshLinks();
+      if (this.wifiWanted) {
+        this.wifiWanted = false;
+        this.p5.wirelessSync();
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       dev.crashed = { message, t: this.state.now };
@@ -1403,6 +1436,9 @@ export class Engine {
         case 'hub':
           hubRx(ctx, cfg, p.portId, p.frame, p.txId, fromId);
           break;
+        case 'bridge':
+          bridgeRx(ctx, cfg, p.portId, p.frame, fromId);
+          break;
         case 'none':
           break;
       }
@@ -1421,6 +1457,10 @@ export class Engine {
     }
     const cfg = dev.config;
     const name = p.name.startsWith('bg:') ? p.name.slice(3) : p.name;
+    if (name.startsWith('svc:')) {
+      this.withCtx(dev, (ctx) => this.p5.timer(ctx, dev, name.slice(4)));
+      return;
+    }
     if (cfg.kind === 'host') this.withCtx(dev, (ctx) => hostTimer(ctx, cfg, name));
     else if (cfg.kind === 'router') this.withCtx(dev, (ctx) => l3Timer(ctx, dev as L3Dev, name));
     else if (cfg.kind === 'switch') {
@@ -1489,7 +1529,7 @@ export class Engine {
     });
   }
 
-  private withCtx<T>(dev: Device, fn: (ctx: DeviceCtx) => T): T {
+  withCtx<T>(dev: Device, fn: (ctx: DeviceCtx) => T): T {
     const eng = this;
     const s = this.state;
     const ctx: DeviceCtx = {
@@ -1501,6 +1541,9 @@ export class Engine {
       deviceIfaceName: (id) => ifaceName(dev, id),
       requestRefresh: () => {
         eng.refreshWanted = true;
+      },
+      requestWifiSync: () => {
+        eng.wifiWanted = true;
       },
       port(portId) {
         const p = dev.ports.find((x) => x.id === portId);
