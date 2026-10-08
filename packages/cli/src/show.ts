@@ -176,7 +176,8 @@ export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): s
   const byPrefix = (entries: RibEntry[]): RibEntry[][] => {
     const m = new Map<string, RibEntry[]>();
     for (const x of entries) {
-      const k = `${x.prefix}/${x.plen}`;
+      // C und L einer /32-Adresse sind verschiedene Einträge, keine ECMP-Pfade
+      const k = `${x.type}|${x.prefix}/${x.plen}`;
       (m.get(k) ?? m.set(k, []).get(k))?.push(x);
     }
     return [...m.values()];

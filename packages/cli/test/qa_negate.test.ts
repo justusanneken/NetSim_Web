@@ -2,6 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from '@netsim/engine';
 import { router } from './gapsLab';
 
+describe('QA show ip route', () => {
+  it('a /32 loopback shows C and L as separate entries, not as an ECMP continuation', () => {
+    const e = new Engine({ seed: 1 });
+    const r = router(e, 'R1');
+    const out = r.run(
+      'enable',
+      'configure terminal',
+      'interface loopback0',
+      'ip address 1.1.1.1 255.255.255.255',
+      'end',
+      'show ip route',
+    );
+    expect(out).toMatch(/^C\s+1\.1\.1\.1\/32 is directly connected, Loopback0$/m);
+    expect(out).toMatch(/^L\s+1\.1\.1\.1\/32 is directly connected, Loopback0$/m);
+    expect(out).not.toMatch(/^\s+is directly connected/m);
+  });
+});
+
 /** Jede Zeile: [Kontext-Befehle, Befehl, Zeile in der running-config]. */
 const CASES: [string[], string, string][] = [
   [[], 'ntp server 10.0.1.10', 'ntp server 10.0.1.10'],
