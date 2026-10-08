@@ -96,6 +96,9 @@ test('Phase 2: Router per CLI konfigurieren, Ping/Tracert vom PC, Inspektor', as
   await page.locator('.xterm').click();
   await typeLines(page, ['ping 10.0.2.10 -n 1']);
   await page.getByRole('dialog').getByRole('button', { name: 'Schließen' }).click();
+  await expect(page.locator('.event')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Schritt vor' }).click();
+  await page.getByRole('button', { name: 'Schritt vor' }).click();
   await page.locator('.event').first().click();
   await expect(page.locator('.inspector table.osi')).toBeVisible();
   expect(errors).toEqual([]);
