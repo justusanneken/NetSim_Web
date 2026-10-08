@@ -8,7 +8,7 @@ import { selectedDeviceView, useStore } from '../store';
 export function DevicePanel() {
   const dev = useStore(selectedDeviceView);
   if (!dev) return <EmptyPanel />;
-  return <Panel key={dev.id} dev={dev} />;
+  return <DeviceConfig key={dev.id} dev={dev} />;
 }
 
 function EmptyPanel() {
@@ -16,9 +16,10 @@ function EmptyPanel() {
   return <p className="muted pad">{t('panel.none')}</p>;
 }
 
-function Panel({ dev }: { dev: DeviceView }) {
+export function DeviceConfig({ dev }: { dev: DeviceView }) {
   const { t } = useTranslation();
   const [name, setName] = useState(dev.name);
+  const openDialog = useStore((s) => s.openDialog);
   return (
     <div className="device-panel">
       <div className="row">
@@ -39,14 +40,20 @@ function Panel({ dev }: { dev: DeviceView }) {
           ⏻ {dev.powered ? t('dev.powerOn') : t('dev.powerOff')}
         </button>
       </div>
-      <div className="muted">{dev.model}</div>
+      <div className="row">
+        <span className="muted grow">{dev.model}</span>
+        {dev.type !== 'hub' && (
+          <button onClick={() => openDialog(dev.id)}>{t('dialog.open')}</button>
+        )}
+      </div>
       {dev.crashed && (
         <div className="error" role="alert">
           {t('dev.crashed')}: {dev.crashed}
         </div>
       )}
 
-      {dev.type === 'pc' && <HostConfig dev={dev} />}
+      {isHost(dev) && <HostIpConfig dev={dev} />}
+      {dev.type === 'router' && <RouterConfig dev={dev} />}
 
       <h4>{t('panel.ports')}</h4>
       <table className="grid">
@@ -118,7 +125,10 @@ function Panel({ dev }: { dev: DeviceView }) {
   );
 }
 
-function HostConfig({ dev }: { dev: DeviceView }) {
+const isHost = (d: DeviceView): boolean =>
+  d.type === 'pc' || d.type === 'laptop' || d.type === 'server';
+
+export function HostIpConfig({ dev }: { dev: DeviceView }) {
   const { t } = useTranslation();
   const [ip, setIp] = useState(dev.ip ?? '');
   const [mask, setMask] = useState(dev.mask ?? '255.255.255.0');
@@ -131,7 +141,7 @@ function HostConfig({ dev }: { dev: DeviceView }) {
   const apply = async () => {
     const r = await api.setHostIp(dev.id, ip.trim(), mask.trim(), gw.trim() || undefined);
     if (r.ok) showToast('toast.ipApplied', undefined, 'ok');
-    else showToast(r.error);
+    else showToast(r.error, r.params);
   };
 
   return (
@@ -181,7 +191,10 @@ function HostConfig({ dev }: { dev: DeviceView }) {
             .reverse()
             .map((p) => (
               <li key={`${p.id}-${p.seq}`} className={`ping-${p.status}`}>
-                {p.dst} #{p.seq}: {t(`ping.status.${p.status}`)}
+                {p.dst} #{p.seq}:{' '}
+                {p.note
+                  ? t(p.note, { ip: p.from ?? p.dst, dst: p.dst })
+                  : t(`ping.status.${p.status}`)}
                 {p.rttUs !== undefined && ` (${formatTime(p.rttUs)})`}
               </li>
             ))}
@@ -204,5 +217,159 @@ function HostConfig({ dev }: { dev: DeviceView }) {
         <p className="muted small">{t('panel.empty')}</p>
       )}
     </>
+  );
+}
+
+function RouterConfig({ dev }: { dev: DeviceView }) {
+  const { t } = useTranslation();
+  const showToast = useStore((s) => s.showToast);
+  const [route, setRoute] = useState({ prefix: '', mask: '255.255.255.0', nextHop: '' });
+
+  const setIp = async (portId: string, ip: string, mask: string) => {
+    const r = await api.setInterfaceIp(dev.id, portId, ip.trim(), mask.trim());
+    if (r.ok) showToast('toast.ipApplied', undefined, 'ok');
+    else showToast(r.error, r.params);
+  };
+  const addRoute = async () => {
+    const r = await api.addStaticRoute(dev.id, {
+      prefix: route.prefix.trim(),
+      mask: route.mask.trim(),
+      nextHop: route.nextHop.trim(),
+    });
+    if (!r.ok) showToast(r.error, r.params);
+    else setRoute({ prefix: '', mask: '255.255.255.0', nextHop: '' });
+  };
+
+  return (
+    <>
+      <h4>{t('router.interfaces')}</h4>
+      {dev.ports.map((p) => (
+        <IfaceRow
+          key={`${p.id}-${dev.ifaces?.[p.id]?.ip ?? ''}`}
+          dev={dev}
+          portId={p.id}
+          onApply={setIp}
+        />
+      ))}
+      <h4>{t('router.staticRoutes')}</h4>
+      {dev.staticRoutes && dev.staticRoutes.length > 0 ? (
+        <table className="grid">
+          <tbody>
+            {dev.staticRoutes.map((r, i) => (
+              <tr key={i}>
+                <td className="mono">
+                  {r.prefix} {r.mask}
+                </td>
+                <td className="mono">
+                  {r.nextHop ?? dev.ports.find((p) => p.id === r.outPortId)?.name}
+                </td>
+                <td>
+                  <button
+                    aria-label={t('common.remove')}
+                    onClick={() => void api.removeStaticRoute(dev.id, r)}
+                  >
+                    ✕
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="muted small">{t('panel.empty')}</p>
+      )}
+      <div className="form inline3">
+        <input
+          aria-label={t('router.prefix')}
+          placeholder={t('router.prefix')}
+          value={route.prefix}
+          onChange={(e) => setRoute({ ...route, prefix: e.target.value })}
+        />
+        <input
+          aria-label={t('ip.mask')}
+          value={route.mask}
+          onChange={(e) => setRoute({ ...route, mask: e.target.value })}
+        />
+        <input
+          aria-label={t('router.nextHop')}
+          placeholder={t('router.nextHop')}
+          value={route.nextHop}
+          onChange={(e) => setRoute({ ...route, nextHop: e.target.value })}
+        />
+        <button disabled={!route.prefix || !route.nextHop} onClick={() => void addRoute()}>
+          {t('common.add')}
+        </button>
+      </div>
+      <h4>{t('router.routingTable')}</h4>
+      {dev.routes && dev.routes.length > 0 ? (
+        <table className="grid">
+          <tbody>
+            {dev.routes.map((r, i) => (
+              <tr key={i}>
+                <td>{r.type}</td>
+                <td className="mono">
+                  {r.prefix}/{r.plen}
+                </td>
+                <td className="mono">
+                  {r.type === 'S' ? `[${r.ad}/${r.metric}] ` : ''}
+                  {r.nextHop ?? dev.ports.find((p) => p.id === r.portId)?.name}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="muted small">{t('panel.empty')}</p>
+      )}
+    </>
+  );
+}
+
+function IfaceRow({
+  dev,
+  portId,
+  onApply,
+}: {
+  dev: DeviceView;
+  portId: string;
+  onApply: (portId: string, ip: string, mask: string) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const port = dev.ports.find((p) => p.id === portId);
+  const cur = dev.ifaces?.[portId];
+  const [ip, setIp] = useState(cur?.ip ?? '');
+  const [mask, setMask] = useState(cur?.mask ?? '255.255.255.0');
+  if (!port) return null;
+  return (
+    <div className="iface-row">
+      <div className="iface-head">
+        <span className={port.operUp ? 'dot up' : 'dot down'} aria-hidden />
+        <strong>{port.name}</strong>
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={port.adminUp}
+            aria-label={`${port.name} ${t('port.admin')}`}
+            onChange={(e) => void api.setPortAdmin(dev.id, port.id, e.target.checked)}
+          />
+          {t('router.on')}
+        </label>
+      </div>
+      <div className="form inline3">
+        <input
+          aria-label={`${port.name} ${t('ip.address')}`}
+          value={ip}
+          placeholder="10.0.0.1"
+          onChange={(e) => setIp(e.target.value)}
+        />
+        <input
+          aria-label={`${port.name} ${t('ip.mask')}`}
+          value={mask}
+          onChange={(e) => setMask(e.target.value)}
+        />
+        <span />
+        <button onClick={() => void onApply(portId, ip, mask)}>{t('common.apply')}</button>
+      </div>
+    </div>
   );
 }

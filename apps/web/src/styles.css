@@ -655,3 +655,96 @@ button.link {
 .toast.ok {
   background: var(--ok);
 }
+
+/* Geräte-Dialog + Terminal */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dialog {
+  width: min(900px, 94vw);
+  height: min(620px, 88vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+.dialog-head .tabs {
+  margin-left: auto;
+}
+.dialog-head .tabs button {
+  padding: 4px 14px;
+}
+.dialog-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dialog-body .scroll {
+  overflow: auto;
+  flex: 1;
+}
+.term {
+  flex: 1;
+  min-height: 0;
+  background: #0b0f14;
+  padding: 6px 8px;
+}
+.desktop {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.desktop-apps {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.desktop-apps button.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+.iface-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+}
+.iface-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.inline-check {
+  margin-left: auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+.form.inline3 {
+  grid-template-columns: 1fr 1fr 1fr auto;
+}
+.form.inline3 input {
+  min-width: 0;
+}

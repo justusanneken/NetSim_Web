@@ -1,5 +1,15 @@
 import type { Engine } from './engine';
-import type { CableType, Counters, DeviceType, PingResult, PortKind, PortRef } from './types';
+import type { RibEntry } from './rib';
+import type {
+  CableType,
+  Counters,
+  DeviceType,
+  PingResult,
+  PortKind,
+  PortRef,
+  StaticRoute,
+  TraceSession,
+} from './types';
 
 export interface PortView {
   id: string;
@@ -13,6 +23,7 @@ export interface PortView {
   duplex: 'auto' | 'half' | 'full';
   operSpeed: number;
   operDuplex: 'half' | 'full';
+  mtu: number;
   counters: Counters;
 }
 
@@ -29,6 +40,12 @@ export interface DeviceView {
   mask?: string;
   gateway?: string;
   pings?: PingResult[];
+  traces?: TraceSession[];
+  hostname?: string;
+  /** Router: konfigurierte Schnittstellenadressen. */
+  ifaces?: Record<string, { ip?: string; mask?: string }>;
+  staticRoutes?: StaticRoute[];
+  routes?: RibEntry[];
   macTable?: { mac: string; portId: string; ageSec: number }[];
   arpTable?: { ip: string; mac: string }[];
 }
@@ -83,6 +100,7 @@ export function buildDevices(engine: Engine): DeviceView[] {
         duplex: p.duplex,
         operSpeed: p.operSpeed,
         operDuplex: p.operDuplex,
+        mtu: p.mtu,
         counters: { ...p.counters },
       })),
     };
@@ -92,7 +110,17 @@ export function buildDevices(engine: Engine): DeviceView[] {
       v.gateway = d.config.gateway;
       v.pings = d.config.pings.slice(-20);
       v.arpTable = engine.arpTable(d.id);
+      v.traces = d.config.traces.slice(-3);
+    } else if (d.config.kind === 'router') {
+      v.hostname = d.config.sys.hostname;
+      v.ifaces = structuredClone(d.config.ifaces);
+      v.staticRoutes = structuredClone(d.config.staticRoutes);
+      v.routes = engine.routingTable(d.id);
+      v.pings = d.config.pings.slice(-20);
+      v.traces = d.config.traces.slice(-3);
+      v.arpTable = engine.arpTable(d.id);
     } else if (d.config.kind === 'switch') {
+      v.hostname = d.config.sys.hostname;
       v.macTable = engine.macTable(d.id);
     }
     return v;

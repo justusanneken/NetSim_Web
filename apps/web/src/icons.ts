@@ -15,10 +15,26 @@ export const ICON_PATHS: Partial<Record<DeviceType, string[]>> = {
   ],
 };
 
+ICON_PATHS.laptop = ['M10 10h28v20H10z', 'M14 14h20v12H14z', 'M4 34h40l-4 5H8z'];
+ICON_PATHS.server = [
+  'M12 6h24v12H12z',
+  'M12 20h24v12H12z',
+  'M12 34h24v8H12z',
+  'M16 12h3M16 26h3M16 38h3',
+];
+ICON_PATHS.router = [
+  'M8 24a16 16 0 1 0 32 0a16 16 0 1 0 -32 0',
+  'M24 12v24M12 24h24',
+  'M20 16l4-4 4 4M20 32l4 4 4-4M16 20l-4 4 4 4M32 20l4 4-4 4',
+];
+
 export const ICON_FALLBACK = ['M6 6h36v36H6z', 'M6 6l36 36M42 6L6 42'];
 
 export const DEVICE_COLORS: Partial<Record<DeviceType, string>> = {
   pc: '#2f6fed',
   'switch-l2': '#1a8f6f',
   hub: '#b7791f',
+  router: '#d9480f',
+  laptop: '#2f6fed',
+  server: '#7048e8',
 };

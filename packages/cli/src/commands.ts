@@ -88,6 +88,10 @@ export function runPing(s: CliSession, dst: string, o: PingParams): void {
   }
   const cfg = d.config;
   if (cfg.kind !== 'router') return;
+  if (s.deferred()) {
+    s.out('Simulation mode: packets were queued. Step through the events in the simulation panel.');
+    return;
+  }
   const mine = () => cfg.pings.filter((p) => p.id === r.value);
   waitFor(e, () => mine().length >= o.count && mine().every((p) => p.status !== 'pending'));
   const res = mine();
@@ -118,6 +122,10 @@ function runTrace(s: CliSession, dst: string): void {
   s.out(`Tracing the route to ${dst}`);
   s.out('VRF info: (vrf in name/id, vrf out name/id)');
   if (!r.ok || d.config.kind !== 'router') return;
+  if (s.deferred()) {
+    s.out('Simulation mode: probes were queued. Step through the events in the simulation panel.');
+    return;
+  }
   const cfg = d.config;
   const tr = () => cfg.traces.find((t) => t.id === r.value);
   waitFor(e, () => tr()?.done ?? true);

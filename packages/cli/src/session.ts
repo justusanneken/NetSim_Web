@@ -45,6 +45,8 @@ export class CliSession implements Shell {
   constructor(
     readonly engine: Engine,
     readonly deviceId: string,
+    /** Liefert `true`, wenn nicht bis zum Ende simuliert werden soll (Simulationsmodus). */
+    readonly deferred: () => boolean = () => false,
   ) {}
 
   get device(): Device & { config: RouterConfig | SwitchConfig } {

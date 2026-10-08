@@ -11,8 +11,11 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@netsim/cli": "workspace:*",
     "@netsim/engine": "workspace:*",
     "@netsim/protocols": "workspace:*",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "comlink": "^4.4.2",
     "i18next": "^24.2.0",
     "konva": "^9.3.18",

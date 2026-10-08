@@ -121,6 +121,33 @@ describe('SimController', () => {
     expect(svc.engine.state.devices[a]).toBeUndefined();
   });
 
+  it('Router-Befehle über den Service und Router-View', () => {
+    const svc = new EngineService(1);
+    const r = svc.addDevice('router', { x: 0, y: 0 });
+    const pc = svc.addDevice('pc', { x: 0, y: 0 });
+    svc.connectAuto(pc, r);
+    expect(svc.setInterfaceIp(r, 'p0', '10.0.0.1', '255.255.255.0').ok).toBe(true);
+    svc.setPortAdmin(r, 'p0', true);
+    svc.setHostIp(pc, '10.0.0.2', '255.255.255.0', '10.0.0.1');
+    expect(
+      svc.addStaticRoute(r, { prefix: '10.9.0.0', mask: '255.255.0.0', nextHop: '10.0.0.2' }).ok,
+    ).toBe(true);
+    expect(svc.setPortMtu(r, 'p0', 1400).ok).toBe(true);
+    expect(svc.trace(pc, '10.0.0.1').ok).toBe(true);
+    svc.setSpeed(20);
+    for (let i = 0; i < 400; i++) svc.tick(16);
+    const v = svc.getView().devices.find((d) => d.id === r);
+    expect(v?.routes?.some((x) => x.type === 'S')).toBe(true);
+    expect(v?.ifaces?.p0?.ip).toBe('10.0.0.1');
+    expect(v?.staticRoutes).toHaveLength(1);
+    expect(v?.ports[0]?.mtu).toBe(1400);
+    expect(svc.getView().devices.find((d) => d.id === pc)?.traces?.[0]?.done).toBe(true);
+    expect(
+      svc.removeStaticRoute(r, { prefix: '10.9.0.0', mask: '255.255.0.0', nextHop: '10.0.0.2' }).ok,
+    ).toBe(true);
+    svc.touch();
+  });
+
   it('View enthält MAC-/ARP-Tabellen und Domänen', () => {
     const { svc, a } = setup();
     svc.ping(a, '10.0.0.2');

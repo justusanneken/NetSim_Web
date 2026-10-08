@@ -210,6 +210,7 @@ export function Canvas() {
               textColor={colors.text}
             />
           ))}
+          <Envelopes posOf={posOf} />
           {view?.devices.map((d) => {
             const pos = posOf(d.id);
             const color = DEVICE_COLORS[d.type] ?? '#6e7781';
@@ -239,6 +240,8 @@ export function Canvas() {
                   const t0 = (e.evt as unknown as TouchEvent).changedTouches?.[0];
                   void useStore.getState().deviceClicked(d.id, t0?.clientX ?? 0, t0?.clientY ?? 0);
                 }}
+                onDblClick={() => useStore.getState().openDialog(d.id)}
+                onDblTap={() => useStore.getState().openDialog(d.id)}
                 onMouseEnter={(e) => setHover({ device: d, x: e.evt.clientX, y: e.evt.clientY })}
                 onMouseMove={(e) => setHover({ device: d, x: e.evt.clientX, y: e.evt.clientY })}
                 onMouseLeave={() => setHover(null)}
@@ -407,5 +410,82 @@ function Tooltip({ hover, wrap }: { hover: Hover; wrap: HTMLDivElement | null })
           </div>
         ))}
     </div>
+  );
+}
+
+const ANIM_MS = 700;
+const PROTO_COLOR: Record<string, string> = {
+  ARP: '#8957e5',
+  ICMP: '#1a7f37',
+  CSMA: '#bf3989',
+  ETH: '#2f6fed',
+};
+
+/** Umschläge, die entlang der Links zum Empfänger wandern (Simulationsmodus). */
+function Envelopes({ posOf }: { posOf: (id: string) => { x: number; y: number } }) {
+  const anims = useStore((s) => s.animations);
+  const selectLog = useStore((s) => s.selectLog);
+  const [, setTick] = useState(0);
+  const active = anims.length > 0;
+
+  useEffect(() => {
+    if (!active) return;
+    let raf = 0;
+    const loop = () => {
+      setTick((n) => n + 1);
+      const now = performance.now();
+      const expired = useStore
+        .getState()
+        .animations.filter((a) => now - a.start > ANIM_MS)
+        .map((a) => a.id);
+      if (expired.length) useStore.getState().removeAnimations(expired);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [active]);
+
+  const now = performance.now();
+  return (
+    <>
+      {anims.map((a) => {
+        const p = Math.min(1, Math.max(0, (now - a.start) / ANIM_MS));
+        const from = posOf(a.fromId);
+        const to = posOf(a.toId);
+        const x = from.x + (to.x - from.x) * p;
+        const y = from.y + (to.y - from.y) * p;
+        const color = a.ok ? (PROTO_COLOR[a.proto] ?? '#1f6feb') : '#e5484d';
+        return (
+          <Group
+            key={a.id}
+            x={x}
+            y={y}
+            onClick={(e) => {
+              e.cancelBubble = true;
+              selectLog(a.logId);
+            }}
+            onTap={() => selectLog(a.logId)}
+          >
+            <Rect
+              x={-11}
+              y={-8}
+              width={22}
+              height={16}
+              cornerRadius={2}
+              fill={color}
+              stroke="#fff"
+              strokeWidth={1.5}
+            />
+            <Line
+              points={[-11, -8, 0, 1, 11, -8]}
+              stroke="#fff"
+              strokeWidth={1.5}
+              listening={false}
+            />
+            {!a.ok && <Text x={-5} y={-8} text="✗" fontSize={16} fill="#fff" listening={false} />}
+          </Group>
+        );
+      })}
+    </>
   );
 }

@@ -45,6 +45,19 @@ describe('Host-Eingabeaufforderung (Abnahme Phase 2: ping + tracert)', () => {
     );
   });
 
+  it('Simulationsmodus: Ping/Tracert werden nur eingereiht', () => {
+    const r = rig();
+    r.run(...CONFIG_ROUTER);
+    const sh = new HostShell(r.e, r.pc0, () => true);
+    expect(sh.input('ping 10.0.2.10 -n 1')).toContain('Simulation mode: packets were queued');
+    expect(sh.input('tracert 10.0.2.10')).toContain('Simulation mode: probes were queued');
+    expect(r.e.queueLength).toBeGreaterThan(0);
+    const s2 = new CliSession(r.e, r.r1, () => true);
+    s2.input('enable');
+    expect(s2.input('ping 10.0.2.10')).toContain('Simulation mode');
+    expect(s2.input('traceroute 10.0.2.10')).toContain('Simulation mode');
+  });
+
   it('Hilfe, Fehler, Platzhalter-Befehle, cls', () => {
     const { sh } = hostRig();
     expect(sh.input('')).toBe('');

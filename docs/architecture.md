@@ -6,7 +6,7 @@ apps/web  ──Comlink──▶  Web Worker ── EngineService ── SimCont
    └─ React/Zustand/Konva/i18next                    EngineState (JSON) + Log
 packages/protocols  PDU-Typen, Adress-Helfer, describe/size/clone
 packages/engine     Scheduler, Topologie, Kabel, Geräteverhalten (host/switch/hub)
-packages/cli        (Phase 2)
+packages/cli        Parser, CliSession (IOS), HostShell (Windows), Terminal (Zeileneditor), Renderer
 ```
 
 ## Engine
@@ -35,3 +35,15 @@ packages/cli        (Phase 2)
 - Event-Liste virtualisiert (`react-window`), Filter je Protokoll-Tag.
 - Barrierefreiheit: ARIA-Rollen/-Labels, Tastaturbedienung (Geräteliste als Alternative zur Canvas),
   Farbenblind-Modus (Raute statt Punkt, Status-Symbole ✓ ✗ ⚠ ℹ).
+
+## CLI (`packages/cli`)
+
+- `Registry<C>`: Liste von `CommandDef`; `parse(mode, line, env)`, `help(...)`, `complete(...)`. Der Parser
+  simuliert mehrere Kandidaten-Positionen gleichzeitig (Präfix-Abkürzungen, Eindeutigkeit, Fehlerposition).
+- `CliSession implements Shell`: Modus-Stack, Rückfragen (`ask` für Passwörter/Bestätigungen/Banner),
+  Pipes, `do`, Replay von Konfigurationstext, Port-Statusmeldungen.
+- `Terminal`: nimmt rohe Tastatur-Daten (xterm `onData`) und liefert Terminal-Ausgabe; unabhängig von xterm
+  und damit in Tests treibbar.
+- `renderRunningConfig`: deterministisch aus `Device.config` + Ports (Reihenfolge wie IOS).
+- Befehle laufen synchron; `waitFor` schiebt die Engine vor, bis das Ergebnis vorliegt (siehe
+  `simplifications.md`).

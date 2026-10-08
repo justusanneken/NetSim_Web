@@ -21,6 +21,11 @@ export class EngineService {
     return this.ctl.engine;
   }
 
+  /** `true` im Simulationsmodus: Befehle sollen nicht im Vorlauf bis zum Ende simulieren. */
+  get inSimulationMode(): boolean {
+    return this.ctl.mode === 'simulation';
+  }
+
   tick(wallMs: number): void {
     this.ctl.tick(wallMs);
   }
@@ -75,6 +80,41 @@ export class EngineService {
   }
   setHostIp(id: string, ip: string, mask: string, gateway?: string): Result<true> {
     const r = this.ctl.engine.setHostIp(id, ip, mask, gateway);
+    this.ctl.markDirty();
+    return r;
+  }
+  /** Markiert den Zustand als geändert (z. B. nach CLI-Befehlen im Worker). */
+  touch(): void {
+    this.ctl.markDirty();
+  }
+  setInterfaceIp(id: string, portId: string, ip: string, mask: string): Result<true> {
+    const r = this.ctl.engine.setInterfaceIp(id, portId, ip, mask);
+    this.ctl.markDirty();
+    return r;
+  }
+  addStaticRoute(
+    id: string,
+    r: { prefix: string; mask: string; nextHop?: string; outPortId?: string; ad?: number },
+  ): Result<true> {
+    const res = this.ctl.engine.addStaticRoute(id, r);
+    this.ctl.markDirty();
+    return res;
+  }
+  removeStaticRoute(
+    id: string,
+    r: { prefix: string; mask: string; nextHop?: string; outPortId?: string },
+  ): Result<true> {
+    const res = this.ctl.engine.removeStaticRoute(id, r);
+    this.ctl.markDirty();
+    return res;
+  }
+  setPortMtu(id: string, portId: string, mtu: number): Result<true> {
+    const r = this.ctl.engine.setPortMtu(id, portId, mtu);
+    this.ctl.markDirty();
+    return r;
+  }
+  trace(id: string, dst: string): Result<number> {
+    const r = this.ctl.engine.trace(id, dst);
     this.ctl.markDirty();
     return r;
   }

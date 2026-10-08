@@ -5,8 +5,8 @@ import { DEVICE_COLORS, ICON_PATHS } from '../icons';
 import { useStore, type CableChoice } from '../store';
 
 const CATEGORIES: { id: string; devices: DeviceType[] }[] = [
-  { id: 'end', devices: ['pc'] },
-  { id: 'network', devices: ['switch-l2', 'hub'] },
+  { id: 'end', devices: ['pc', 'laptop', 'server'] },
+  { id: 'network', devices: ['router', 'switch-l2', 'hub'] },
 ];
 const CABLES: CableChoice[] = ['auto', 'straight', 'crossover'];
 

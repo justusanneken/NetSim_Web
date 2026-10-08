@@ -40,3 +40,20 @@ festgelegt. Jede Entscheidung ist umkehrbar und wird bei Bedarf in der jeweilige
 - **Fehlerisolierung:** Exceptions in einem Gerätehandler setzen nur dieses Gerät auf `crashed`; die Simulation
   läuft weiter, die UI zeigt ⚠ und die Meldung.
 - **Sicherheit:** Es gibt keinen `eval`, keine externen Requests zur Laufzeit; die Engine läuft im Worker.
+
+## Phase 2 – zusätzliche Entscheidungen
+
+11. **CLI läuft im Worker.** Terminals (`@netsim/cli` `Terminal` + `CliSession`/`HostShell`) leben im Engine-
+    Worker; xterm.js im Hauptthread schickt Tastatureingaben (`termData`) und schreibt die Antwort. Ein
+    Transkript (max. 60 kB) wird beim erneuten Öffnen des Dialogs wiedergegeben.
+12. **Gemeinsamer IP-Stack** (`engine/src/ip.ts`) für Host und Router; die Gerätehandler liefern nur eine
+    `IpNode`-Sicht (Schnittstellen, Lookup, Forwarding-Flag, TTL, ARP-Lebensdauer).
+13. **Config-Modell:** `SysConfig` (Hostname, Passwörter, Banner, Lines, Beschreibungen, Startup-Text) ist
+    für Router und Switch gemeinsam; der Router hält zusätzlich `ifaces` und `staticRoutes`. Die GUI und die
+    CLI ändern denselben Baum über Engine-Methoden (`setInterfaceIp`, `addStaticRoute`, …) – GUI-Änderungen
+    erscheinen deshalb in der `running-config` und umgekehrt.
+14. **Deklarative Befehle:** `CommandDef { modes, slots, run, negatable, only }` mit Slots `K` (Schlüsselwort),
+    `choice`, `P` (Parameter), `R` (Zeilenrest), `opt`. `no`/`default` werden aus `negatable` abgeleitet
+    (Parameter dann optional). Neue Befehle brauchen keinen Parser-Umbau.
+15. **Golden-Tests für die CLI:** `packages/cli/test/golden/*.txt` (Terminalausgabe ganzer Sitzungen);
+    `UPDATE_GOLDEN=1` erzeugt sie neu.

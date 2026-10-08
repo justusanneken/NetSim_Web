@@ -15,6 +15,8 @@ export class HostShell implements Shell {
   constructor(
     private readonly engine: Engine,
     private readonly deviceId: string,
+    /** Liefert `true`, wenn nicht bis zum Ende simuliert werden soll (Simulationsmodus). */
+    private readonly deferred: () => boolean = () => false,
   ) {}
 
   private get dev(): Device & { config: HostConfig } {
@@ -99,6 +101,12 @@ export class HostShell implements Shell {
       return;
     }
     out.push(`Pinging ${dst} with ${size} bytes of data:`, '');
+    if (this.deferred()) {
+      out.push(
+        'Simulation mode: packets were queued. Step through the events in the simulation panel.',
+      );
+      return;
+    }
     const cfg = this.dev.config;
     const mine = (): PingResult[] => cfg.pings.filter((p) => p.id === r.value);
     waitFor(
@@ -142,6 +150,12 @@ export class HostShell implements Shell {
     const r = this.engine.trace(this.deviceId, dst, maxHops);
     if (!r.ok) return void out.push(`Unable to resolve target system name ${dst}.`);
     out.push('', `Tracing route to ${dst} over a maximum of ${maxHops} hops:`, '');
+    if (this.deferred()) {
+      out.push(
+        'Simulation mode: probes were queued. Step through the events in the simulation panel.',
+      );
+      return;
+    }
     const cfg = this.dev.config;
     const tr = () => cfg.traces.find((t) => t.id === r.value);
     waitFor(this.engine, () => tr()?.done ?? true);

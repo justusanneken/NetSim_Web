@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Canvas } from './components/Canvas';
+import { DeviceDialog } from './components/DeviceDialog';
 import { DeviceList } from './components/DeviceList';
 import { DevicePanel } from './components/DevicePanel';
 import { Inspector } from './components/Inspector';
@@ -64,6 +65,7 @@ export function App() {
       <main className="canvas-area">
         {connected ? <Canvas /> : <p className="pad">{t('common.loading')}</p>}
         <PortPicker />
+        <DeviceDialog />
         {toast && (
           <div className={`toast ${toast.kind}`} role="alert">
             {translateMsg(t, toast)}

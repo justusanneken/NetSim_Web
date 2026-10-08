@@ -17,6 +17,16 @@ export type Theme = 'light' | 'dark';
 export const ALL_PROTOS = ['ETH', 'ARP', 'ICMP', 'LINK', 'CSMA', 'SYS'] as const;
 export type ProtoFilter = (typeof ALL_PROTOS)[number];
 
+export interface Anim {
+  id: number;
+  logId: number;
+  fromId: string;
+  toId: string;
+  ok: boolean;
+  proto: string;
+  start: number;
+}
+
 export interface PortPicker {
   deviceId: string;
   /** Bildschirmposition für das Popup. */
@@ -42,7 +52,12 @@ interface UiState {
   theme: Theme;
   toast: { key: string; params?: Record<string, string | number>; kind: 'ok' | 'error' } | null;
   stageView: { x: number; y: number; scale: number };
+  dialog: { deviceId: string; tab: string } | null;
+  animations: Anim[];
 
+  openDialog(deviceId: string, tab?: string): void;
+  setDialogTab(tab: string): void;
+  closeDialog(): void;
   setTool(t: Tool): void;
   setCable(c: CableChoice): void;
   setPlacing(t: DeviceType | null): void;
@@ -56,6 +71,7 @@ interface UiState {
   setTheme(t: Theme): void;
   setStageView(v: { x: number; y: number; scale: number }): void;
   showToast(key: string, params?: Record<string, string | number>, kind?: 'ok' | 'error'): void;
+  removeAnimations(ids: number[]): void;
   cancel(): void;
 
   addDevice(type: DeviceType, x: number, y: number): Promise<void>;
@@ -106,6 +122,24 @@ export const useStore = create<UiState>((set, get) => ({
   theme: loadPref('netsim.theme', ['light', 'dark'], 'light'),
   toast: null,
   stageView: { x: 0, y: 0, scale: 1 },
+  dialog: null,
+  animations: [],
+
+  openDialog(deviceId, tab) {
+    const dev = get().view?.devices.find((d) => d.id === deviceId);
+    if (!dev || dev.type === 'hub') return;
+    const host = dev.type === 'pc' || dev.type === 'laptop' || dev.type === 'server';
+    set({
+      dialog: { deviceId, tab: tab ?? (host ? 'desktop' : 'config') },
+      selectedDevice: deviceId,
+    });
+  },
+  setDialogTab(tab) {
+    set((s) => (s.dialog ? { dialog: { ...s.dialog, tab } } : {}));
+  },
+  closeDialog() {
+    set({ dialog: null });
+  },
 
   setTool(tool) {
     set({ tool, placing: null, cableStart: null, pduSource: null, portPicker: null });
@@ -153,6 +187,9 @@ export const useStore = create<UiState>((set, get) => ({
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => set({ toast: null }), 4000);
   },
+  removeAnimations(ids) {
+    set((s) => ({ animations: s.animations.filter((a) => !ids.includes(a.id)) }));
+  },
   cancel() {
     set({ placing: null, cableStart: null, pduSource: null, portPicker: null });
   },
@@ -193,7 +230,7 @@ export const useStore = create<UiState>((set, get) => ({
         const a = s.cableStart.deviceId;
         set({ cableStart: null });
         const r = await api.connectAuto(a, id);
-        if (!r.ok) get().showToast(r.error);
+        if (!r.ok) get().showToast(r.error, r.params);
         return;
       }
       set({ portPicker: { deviceId: id, x: clientX, y: clientY } });
@@ -214,7 +251,7 @@ export const useStore = create<UiState>((set, get) => ({
     const a = s.cableStart.port;
     set({ cableStart: null, portPicker: null });
     const r = await api.connect(a, ref, s.cable);
-    if (!r.ok) get().showToast(r.error);
+    if (!r.ok) get().showToast(r.error, r.params);
   },
 
   async deleteSelected() {
@@ -230,7 +267,7 @@ export const useStore = create<UiState>((set, get) => ({
 
   async ping(id, dst, count = 1) {
     const r = await api.ping(id, dst, { count });
-    if (!r.ok) get().showToast(r.error);
+    if (!r.ok) get().showToast(r.error, r.params);
   },
 
   async newTopology() {
@@ -240,6 +277,26 @@ export const useStore = create<UiState>((set, get) => ({
 }));
 
 // ------------------------------------------------------------------ Engine-Anbindung
+
+let animSeq = 0;
+function addAnimations(entries: LogEntry[]): void {
+  const fresh: Anim[] = [];
+  for (const e of entries.slice(-6)) {
+    if (!e.frame || !e.lastDeviceId || e.lastDeviceId === e.atDeviceId) continue;
+    if (e.kind !== 'rx' && e.kind !== 'drop') continue;
+    fresh.push({
+      id: ++animSeq,
+      logId: e.id,
+      fromId: e.lastDeviceId,
+      toId: e.atDeviceId,
+      ok: e.status !== 'drop' && e.status !== 'error',
+      proto: e.proto,
+      start: performance.now(),
+    });
+  }
+  if (fresh.length)
+    useStore.setState((s) => ({ animations: [...s.animations, ...fresh].slice(-30) }));
+}
 
 async function syncLog(): Promise<void> {
   if (syncing) {
@@ -261,7 +318,14 @@ async function syncLog(): Promise<void> {
         const more = await api.getLog(log.length, v.logLength - log.length);
         log = log.concat(more);
       }
+      const prev = useStore.getState().log.length;
       useStore.setState({ log });
+      if (
+        (v.mode === 'simulation' && log.length > prev && prev > 0) ||
+        (v.mode === 'simulation' && prev === 0 && log.length > 0)
+      ) {
+        addAnimations(log.slice(prev));
+      }
     } while (syncAgain);
   } finally {
     syncing = false;
