@@ -1,9 +1,12 @@
 {
   "name": "netsim-web",
   "private": true,
+  "type": "module",
   "version": "0.1.0",
   "packageManager": "pnpm@10.28.0",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "pnpm --filter @netsim/web dev",
     "build": "pnpm -r build",

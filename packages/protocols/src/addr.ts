@@ -45,7 +45,7 @@ export function sameSubnet(a: Ipv4Addr, b: Ipv4Addr, mask: string): boolean {
   const nb = parseIpv4(b);
   const nm = parseIpv4(mask);
   if (na === undefined || nb === undefined || nm === undefined) return false;
-  return ((na & nm) >>> 0) === ((nb & nm) >>> 0);
+  return (na & nm) >>> 0 === (nb & nm) >>> 0;
 }
 
 export function broadcastAddress(ip: Ipv4Addr, mask: string): Ipv4Addr | undefined {

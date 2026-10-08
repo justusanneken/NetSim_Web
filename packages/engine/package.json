@@ -9,5 +9,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --coverage"
   },
-  "dependencies": { "@netsim/protocols": "workspace:*" }
+  "dependencies": {
+    "@netsim/protocols": "workspace:*"
+  }
 }

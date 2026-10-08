@@ -9,5 +9,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --passWithNoTests"
   },
-  "dependencies": { "@netsim/engine": "workspace:*", "@netsim/protocols": "workspace:*" }
+  "dependencies": {
+    "@netsim/engine": "workspace:*",
+    "@netsim/protocols": "workspace:*"
+  }
 }

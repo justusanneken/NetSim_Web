@@ -76,7 +76,10 @@ export function describePdu(pdu: Pdu): HeaderField[] {
       ];
     case 'icmp':
       return [
-        { name: 'Type', value: pdu.type === 'echo-request' ? '8 (echo request)' : '0 (echo reply)' },
+        {
+          name: 'Type',
+          value: pdu.type === 'echo-request' ? '8 (echo request)' : '0 (echo reply)',
+        },
         { name: 'Code', value: String(pdu.code) },
         { name: 'Identifier', value: String(pdu.id) },
         { name: 'Sequence', value: String(pdu.seq) },
