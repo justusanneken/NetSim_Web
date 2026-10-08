@@ -12,8 +12,11 @@ import { l3Node } from '../devices/l3dev';
 import type { Iface } from '../ifaces';
 import { eth, ipSend, ipSendVia, newIpPacket, type IpNode } from '../l3';
 import { buildRib, networkOf, type RibEntry } from '../rib';
+import { buildRib6 } from '../l3v6';
 import type { DynRoute, L3Cfg, Msg } from '../types';
-import type { RedistCfg, RoutingCfg } from './types';
+import { evalRouteMap, type RouteMapSet } from './routemap';
+import { filterPermits } from './routemap';
+import type { DistList, RedistCfg, RoutingCfg } from './types';
 
 /** Arbeitskontext eines Routing-Schritts: Ereignis-Kontext + IP-Sicht des Geräts. */
 export interface Rt {
@@ -184,7 +187,7 @@ export function installRoutes(
   v6 = false,
 ): boolean {
   const key = (r: Omit<DynRoute, 'src'>): string =>
-    `${r.proto}${r.sub ?? ''}|${r.prefix}/${r.plen}|${r.nextHop ?? ''}|${r.ifaceId}|${r.metric}|${r.ad}`;
+    `${r.proto}${r.sub ?? ''}|${r.prefix}/${r.plen}|${r.nextHop ?? ''}|${r.ifaceId}|${r.metric}|${r.ad}|${r.share ?? ''}`;
   const list = v6 ? rt.cfg.dynRoutes6 : rt.cfg.dynRoutes;
   const old = list.filter((r) => r.src === src);
   const same =
@@ -226,6 +229,8 @@ export interface RedistRoute {
   nextHop?: Ipv4Addr;
   ifaceId?: string;
   tag?: number;
+  /** `set`-Aktionen der Route-Map (`redistribute … route-map`). */
+  set?: RouteMapSet;
 }
 
 /** Routen, die laut `redistribute`-Eintrag in ein anderes Protokoll übernommen werden. */
@@ -245,13 +250,79 @@ export function redistSource(rt: Rt, red: RedistCfg, self: string): RedistRoute[
         (red.id === undefined || e.src === `${red.source}:${red.id}` || e.src === red.source);
     }
     if (!ok) continue;
-    // Default-Route nur über default-information originate
+    let set: RouteMapSet | undefined;
+    if (red.routeMap) {
+      const res = evalRouteMap({ routing: rt.r, acls: rt.cfg.acls }, red.routeMap, {
+        prefix: e.prefix,
+        plen: e.plen,
+        metric: e.metric,
+        nextHop: e.nextHop,
+      });
+      if (!res.permit) continue;
+      set = res.set;
+    }
     out.push({
       prefix: e.prefix,
       plen: e.plen,
       metric: e.metric,
       nextHop: e.nextHop,
       ifaceId: e.ifaceId,
+      set,
+    });
+  }
+  return out;
+}
+
+/** `distribute-list`: alle passenden Listen (global bzw. für die Schnittstelle) müssen die Route erlauben. */
+export function distPermits(
+  rt: Rt,
+  lists: DistList[] | undefined,
+  dir: 'in' | 'out',
+  ifaceId: string | undefined,
+  route: { prefix: string; plen: number; v6?: boolean },
+): boolean {
+  for (const l of lists ?? []) {
+    if (l.dir !== dir || (l.ifaceId !== undefined && l.ifaceId !== ifaceId)) continue;
+    if (!filterPermits({ routing: rt.r, acls: rt.cfg.acls }, l.kind, l.name, route)) return false;
+  }
+  return true;
+}
+
+/** IPv6-Variante von `redistSource` (OSPFv3, RIPng, BGP-IPv6): connected, static und andere IPv6-Protokolle. */
+export function redistSource6(rt: Rt, red: RedistCfg, self: string): RedistRoute[] {
+  const rib = rt.node.v6 ? buildRib6(rt.cfg, rt.node.v6.ifaces) : [];
+  const out: RedistRoute[] = [];
+  for (const e of rib) {
+    if (e.type === 'L' || e.src === self) continue;
+    let ok = false;
+    if (red.source === 'connected') ok = e.type === 'C';
+    else if (red.source === 'static') ok = e.type === 'S';
+    else {
+      const t = { rip: 'R', ospf: 'O', eigrp: 'D', bgp: 'B' }[red.source];
+      ok =
+        e.type === t &&
+        (red.id === undefined || e.src === `ospf6:${red.id}` || e.src === red.source);
+    }
+    if (!ok) continue;
+    let set: RouteMapSet | undefined;
+    if (red.routeMap) {
+      const res = evalRouteMap({ routing: rt.r, acls: rt.cfg.acls }, red.routeMap, {
+        prefix: e.prefix,
+        plen: e.plen,
+        metric: e.metric,
+        nextHop: e.nextHop,
+        v6: true,
+      });
+      if (!res.permit) continue;
+      set = res.set;
+    }
+    out.push({
+      prefix: e.prefix,
+      plen: e.plen,
+      metric: e.metric,
+      nextHop: e.nextHop,
+      ifaceId: e.ifaceId,
+      set,
     });
   }
   return out;

@@ -217,6 +217,13 @@ export interface IpCore {
   nextIpId: number;
   traces: TraceSession[];
   nextTraceId: number;
+  /** IPv6 Duplicate Address Detection: Zustand je Adresse (Laufzeit, wird bei Bedarf angelegt). */
+  dad?: Record<Ipv6Addr, DadEntry>;
+}
+
+export interface DadEntry {
+  state: 'tentative' | 'ok' | 'dup';
+  ifaceId: string;
 }
 
 // ---------------------------------------------------------------- ACL / NAT / DHCP
@@ -315,6 +322,22 @@ export interface DhcpBinding {
   offered?: boolean;
 }
 
+/** DHCPv6-Pool (`ipv6 dhcp pool`): optionaler Adresspool (zustandsbehaftet), DNS und Domain. */
+export interface Dhcp6Pool {
+  name: string;
+  /** `address prefix P/L`: Adressen werden daraus vergeben. */
+  prefix?: { prefix: Ipv6Addr; plen: number };
+  dns: Ipv6Addr[];
+  domain?: string;
+  leaseSec: number;
+}
+
+export interface Dhcp6ServerCfg {
+  pools: Dhcp6Pool[];
+  /** Client-DUID (MAC) → Bindung. */
+  bindings: Record<string, { addr: Ipv6Addr; pool: string; expiresAt: number }>;
+}
+
 export interface DhcpServerCfg {
   enabled: boolean;
   pools: DhcpPool[];
@@ -376,6 +399,19 @@ export interface HostV6 {
   autoconfig: boolean;
   /** Laufzeit: SLAAC-Adressen. */
   slaac: V6Addr[];
+  /** DHCPv6-Client aktiv (folgt den RA-Flags M/O). */
+  dhcp6?: boolean;
+  /** Laufzeit: per DHCPv6 zugewiesene Adressen, DNS-Server und Domain. */
+  dhcpAddrs?: V6Addr[];
+  dns6?: Ipv6Addr[];
+  domain6?: string;
+  dh6?: {
+    state: 'wait' | 'soliciting' | 'requesting' | 'info' | 'bound' | 'idle';
+    mode: 'stateful' | 'stateless';
+    xid: number;
+    tries: number;
+    server?: string;
+  };
   /** Statisches Default-Gateway (meist Link-Local des Routers). */
   gateway?: Ipv6Addr;
   /** Per RA gelernter Default-Router. */
@@ -430,6 +466,8 @@ export interface SysConfig {
   startupConfig?: string;
   /** Initial-Konfigurationsdialog beantwortet/übersprungen. */
   setupDone: boolean;
+  /** `clock set`: Uhrzeit (ms seit Epoche) zum Zeitpunkt `atUs` der virtuellen Zeit. */
+  clock?: { baseMs: number; atUs: number };
 }
 
 /** Konfiguration einer L3-Schnittstelle (physisch, Subinterface oder SVI). */
@@ -454,6 +492,10 @@ export interface IfaceCfg {
   delay?: number;
   ospf?: OspfIfCfg;
   hsrp?: Record<number, HsrpCfg>;
+  /** HSRP für IPv6 (`standby G ipv6 …`, nur Version 2). */
+  hsrp6?: Record<number, HsrpCfg>;
+  /** `standby version 2` (gilt für alle Gruppen der Schnittstelle). */
+  hsrpVersion?: 1 | 2;
   tunnel?: TunnelCfg;
   /** RIP: Split Horizon an dieser Schnittstelle (Default an). */
   ripSplitHorizon?: boolean;
@@ -466,6 +508,13 @@ export interface V6IfCfg {
   autoconfig: boolean;
   /** `ipv6 nd ra suppress`. */
   raSuppress?: boolean;
+  /** `ipv6 rip NAME enable`: RIPng-Prozess an dieser Schnittstelle. */
+  ripng?: string;
+  /** `ipv6 dhcp server POOL` (Schnittstelle bedient DHCPv6-Clients). */
+  dhcp6Server?: string;
+  /** `ipv6 nd managed-config-flag` / `ipv6 nd other-config-flag` (RA-Flags M und O). */
+  managed?: boolean;
+  otherConfig?: boolean;
   /** OSPFv3 (`ipv6 ospf PID area A`). */
   ospf?: OspfIfCfg;
   /** Laufzeit: per SLAAC gelernte Adressen. */
@@ -507,6 +556,8 @@ export interface DynRoute {
   ifaceId: string;
   /** Installationszeit (µs virtuelle Zeit). */
   since?: number;
+  /** Ungleiche Lastverteilung (EIGRP-Variance): relatives Gewicht. */
+  share?: number;
 }
 
 /** Gemeinsamer L3-Zustand von Router und L3-fähigen Switches. */
@@ -526,6 +577,8 @@ export interface L3Cfg extends IpCore {
   dhcp: DhcpServerCfg;
   /** `ip routing` (Router: immer an). */
   ipRouting: boolean;
+  /** DHCPv6-Server (Pools, Bindungen); wird bei Bedarf angelegt. */
+  dhcp6?: Dhcp6ServerCfg;
   /** Switch ohne Routing: `ip default-gateway`. */
   defaultGateway?: Ipv4Addr;
 }

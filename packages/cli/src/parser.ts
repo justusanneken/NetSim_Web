@@ -20,7 +20,11 @@ export type ModeId =
   | 'config-ospf'
   | 'config-ospf6'
   | 'config-eigrp'
-  | 'config-bgp';
+  | 'config-bgp'
+  | 'config-route-map'
+  | 'config-bgp-af6'
+  | 'config-dhcp6'
+  | 'config-rip6';
 export type ParamType =
   'word' | 'int' | 'ip' | 'mask' | 'iface' | 'vlans' | 'mac' | 'wildcard' | 'ipv6' | 'prefix6';
 export type Family = 'router' | 'switch' | 'switch-l3';

@@ -6,18 +6,9 @@ import { tokenize, type Args, type Env, type ModeId, type Registry } from './par
 import { isCliDevice } from './render';
 import type { Shell } from './shell';
 import { buildRegistry } from './commands';
+import { debugStamp } from './clock';
 
 export class CliError extends Error {}
-
-/** `*Mar  1 00:00:12.345` aus der virtuellen Zeit (µs). */
-function stamp(us: number): string {
-  const ms = Math.floor(us / 1000);
-  const p = (n: number, w = 2): string => String(n).padStart(w, '0');
-  const h = Math.floor(ms / 3_600_000);
-  const m = Math.floor((ms % 3_600_000) / 60_000);
-  const s = Math.floor((ms % 60_000) / 1000);
-  return `*Mar  1 ${p(h)}:${p(m)}:${p(s)}.${p(ms % 1000, 3)}`;
-}
 
 interface Pending {
   text: string;
@@ -42,6 +33,10 @@ const MODE_SUFFIX: Record<ModeId, string> = {
   'config-ospf6': '(config-rtr)#',
   'config-eigrp': '(config-router)#',
   'config-bgp': '(config-router)#',
+  'config-route-map': '(config-route-map)#',
+  'config-bgp-af6': '(config-router-af)#',
+  'config-dhcp6': '(config-dhcpv6)#',
+  'config-rip6': '(config-rtr)#',
 };
 
 let REGISTRY: Registry<CliSession> | undefined;
@@ -61,6 +56,9 @@ export class CliSession implements Shell {
   aclName = '';
   /** Prozess-ID (OSPF/EIGRP/BGP-AS) im Router-Konfigurationsmodus. */
   procId = 0;
+  /** Route-Map im Route-Map-Modus (Name + Sequenznummer). */
+  rmName = '';
+  rmSeq = 10;
   /** Zeilenziel im Line-Modus. */
   lineTarget: 'con' | 'vty' = 'con';
   silent = false;
@@ -93,7 +91,7 @@ export class CliSession implements Shell {
       for (let i = this.debugCursor; i < log.length; i++) {
         const e = log[i];
         if (!e?.debug || e.atDeviceId !== this.deviceId || !flags.includes(e.debug.tag)) continue;
-        lines.push(`${stamp(e.t)}: ${e.debug.text}`);
+        lines.push(`${debugStamp(this.sys, e.t)}: ${e.debug.text}`);
       }
     }
     this.debugCursor = log.length;

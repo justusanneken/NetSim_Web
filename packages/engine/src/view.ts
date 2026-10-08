@@ -41,18 +41,40 @@ export interface PortView {
 /** Zusammenfassung der dynamischen Routing-Protokolle (nur lesend, für das Panel). */
 export interface RoutingInfo {
   rip: boolean;
+  /** RIPng-Prozessnamen. */
+  ripng?: string[];
   ospf: {
     pid: number;
     v6: boolean;
     rid?: string;
     neighbors: { rid: string; ip: string; iface: string; state: string }[];
+    /** Bereiche mit Typ (normal/stub/nssa), Authentifizierung und Schnittstellenzahl. */
+    areas?: { id: string; type: string; noSummary: boolean; auth?: string; interfaces: number }[];
+    vlinks?: { area: string; rid: string; up: boolean }[];
+    maxPaths?: number;
   }[];
   eigrp: { asn: number; neighbors: { ip: string; iface: string }[] }[];
   bgp?: {
     asn: number;
-    neighbors: { ip: string; asn: number; state: string; prefixes: number }[];
+    neighbors: {
+      ip: string;
+      asn: number;
+      state: string;
+      prefixes: number;
+      rrClient?: boolean;
+      policy?: boolean;
+    }[];
   };
-  hsrp: { iface: string; group: number; state: string; vip?: string; priority: number }[];
+  hsrp: {
+    iface: string;
+    group: number;
+    state: string;
+    vip?: string;
+    priority: number;
+    version?: 1 | 2;
+    v6?: boolean;
+    auth?: boolean;
+  }[];
 }
 
 export interface HostV6View {
@@ -63,6 +85,13 @@ export interface HostV6View {
   gateway?: string;
   raGateway?: string;
   autoconfig: boolean;
+  dhcp6: boolean;
+  dhcpAddrs: { addr: string; plen: number }[];
+  dns6: string[];
+  domain6?: string;
+  /** Adressen in der Duplicate Address Detection bzw. als Duplikat erkannt. */
+  tentative: string[];
+  duplicate: string[];
 }
 
 export interface DeviceView {
@@ -171,7 +200,13 @@ function addRoutingView(engine: Engine, d: Device, cfg: L3Conf, v: DeviceView): 
   v.routes6 = engine.routingTable6(d.id);
   const r = cfg.routing;
   const name = (id: string): string => ifaceName(d, id);
-  const info: RoutingInfo = { rip: !!r.rip, ospf: [], eigrp: [], hsrp: [] };
+  const info: RoutingInfo = {
+    rip: !!r.rip,
+    ripng: Object.keys(r.ripng ?? {}),
+    ospf: [],
+    eigrp: [],
+    hsrp: [],
+  };
   for (const [v6, map] of [
     [false, r.ospf],
     [true, r.ospf6],
@@ -189,6 +224,21 @@ function addRoutingView(engine: Engine, d: Device, cfg: L3Conf, v: DeviceView): 
             state: n.state,
           })),
         ),
+        areas: [...new Set(Object.values(c.ifs).map((i) => i.area))].sort().map((id) => ({
+          id,
+          type: c.areas?.[id]?.type ?? 'normal',
+          noSummary: c.areas?.[id]?.noSummary ?? false,
+          auth: c.areas?.[id]?.auth,
+          interfaces: Object.values(c.ifs).filter((i) => i.area === id).length,
+        })),
+        vlinks: (c.vlinks ?? []).map((l) => ({
+          area: l.area,
+          rid: l.rid,
+          up: Object.values(c.ifs[`vl-${l.rid.replaceAll('.', '_')}`]?.neighbors ?? {}).some(
+            (n) => n.state === 'full',
+          ),
+        })),
+        maxPaths: c.maxPaths,
       });
     }
   }
@@ -205,16 +255,24 @@ function addRoutingView(engine: Engine, d: Device, cfg: L3Conf, v: DeviceView): 
         asn: n.asn,
         state: n.state,
         prefixes: n.prefixesRx,
+        rrClient: n.rrClient || undefined,
+        policy: !!(n.routeMapIn || n.routeMapOut || n.prefixListIn || n.prefixListOut) || undefined,
       })),
     };
   for (const [id, ic] of Object.entries(cfg.ifaces))
-    for (const g of Object.values(ic.hsrp ?? {}))
+    for (const g of [
+      ...Object.values(ic.hsrp ?? {}),
+      ...Object.values(ic.hsrp6 ?? {}).map((x) => ({ ...x, v6: true })),
+    ])
       info.hsrp.push({
         iface: name(id),
         group: g.group,
         state: g.state,
-        vip: g.vip,
+        vip: g.v6 && g.autoconfig ? 'autoconfig' : g.vip,
         priority: g.priority,
+        version: g.v6 ? 2 : (ic.hsrpVersion ?? 1),
+        v6: g.v6 || undefined,
+        auth: g.authKey !== undefined || undefined,
       });
   v.routingInfo = info;
 }
@@ -265,6 +323,16 @@ export function buildDevices(engine: Engine): DeviceView[] {
         gateway: d.config.v6.gateway,
         raGateway: d.config.v6.raGateway?.addr,
         autoconfig: d.config.v6.autoconfig,
+        dhcp6: !!d.config.v6.dhcp6,
+        dhcpAddrs: (d.config.v6.dhcpAddrs ?? []).map((a) => ({ addr: a.addr, plen: a.plen })),
+        dns6: [...(d.config.v6.dns6 ?? [])],
+        domain6: d.config.v6.domain6,
+        tentative: Object.entries(d.config.dad ?? {})
+          .filter(([, x]) => x.state === 'tentative')
+          .map(([a]) => a),
+        duplicate: Object.entries(d.config.dad ?? {})
+          .filter(([, x]) => x.state === 'dup')
+          .map(([a]) => a),
       };
     } else if (d.config.kind === 'router') {
       v.hostname = d.config.sys.hostname;

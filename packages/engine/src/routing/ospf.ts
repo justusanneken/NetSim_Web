@@ -1,5 +1,6 @@
 import type {
   Ipv4Addr,
+  OspfAuth,
   OspfLsa,
   OspfLsaBody,
   OspfLsaHeader,
@@ -13,14 +14,17 @@ import {
   SEC,
   cancelBg,
   dbg,
+  distPermits,
   ifaceBwKbps,
   inNet,
   installRoutes,
   plenOfMask,
   redistSource,
+  redistSource6,
   rlog,
   sendMcast,
   sendNbr,
+  sendRouted,
   setBg,
   wildcardMatch,
   type Rt,
@@ -30,12 +34,16 @@ import { sendMcast6, sendNbr6, type Iface6 } from '../l3v6';
 import { spfRun } from './ospfspf';
 import {
   isPassive,
+  maxPathsOf,
+  type OspfAreaCfg,
   type OspfCfg,
   type OspfExternal,
   type OspfIfState,
   type OspfNbr,
   type OspfNbrState,
+  type OspfVlink,
 } from './types';
+import type { IfaceCfg } from '../types';
 
 export const OSPF_ALL = '224.0.0.5';
 export const OSPF_DR = '224.0.0.6';
@@ -44,6 +52,9 @@ export const INIT_SEQ = 0x80000001;
 const LS_REFRESH = 1800;
 const RXMT = 5 * SEC;
 const NO_ID = '0.0.0.0';
+
+/** Zuletzt erkannter Zustand der virtuellen Links je Prozess (nur Laufzeit-Cache, nicht im Snapshot nötig). */
+const vlSigs = new WeakMap<OspfCfg, string>();
 
 function markDirty(rt: Rt, c: OspfCfg): void {
   c.dirty = true;
@@ -73,6 +84,46 @@ export const newOspf = (pid: number, v6 = false): OspfCfg => ({
 // ------------------------------------------------------------------ Hilfen
 
 const ipNum = (ip: string): number => parseIpv4(ip) ?? 0;
+
+export const areaCfg = (c: OspfCfg, area: string): OspfAreaCfg =>
+  c.areas?.[area] ?? { id: area, type: 'normal', noSummary: false };
+export const areaTypeOf = (c: OspfCfg, area: string): 'normal' | 'stub' | 'nssa' =>
+  areaCfg(c, area).type;
+
+/** Vereinfachter MD5-„Digest“ (kein echter Hash): nur zum Vergleich gemeinsamer Schlüssel. */
+export const authDigest = (key: string): string => {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(16).padStart(8, '0');
+};
+
+/** Wirksame Authentifizierung einer Schnittstelle: Interface-Einstellung vor Area-Einstellung. */
+export function authMode(c: OspfCfg, iface: Iface, area: string): 'simple' | 'md5' | undefined {
+  const ic = ifCfg(iface, c);
+  const m = ic?.auth ?? areaCfg(c, area).auth;
+  return m === 'null' ? undefined : m;
+}
+
+function authFor(c: OspfCfg, iface: Iface, area: string): OspfAuth | undefined {
+  const mode = authMode(c, iface, area);
+  const ic = ifCfg(iface, c);
+  if (mode === 'simple') return { type: 'simple', key: ic?.authKey ?? '' };
+  if (mode === 'md5') {
+    const id = Math.min(...Object.keys(ic?.md5Keys ?? { 0: '' }).map(Number));
+    return { type: 'md5', keyId: id, digest: authDigest(ic?.md5Keys?.[id] ?? '') };
+  }
+  return undefined;
+}
+
+function authAccepts(c: OspfCfg, iface: Iface, area: string, got: OspfAuth | undefined): boolean {
+  const mode = authMode(c, iface, area);
+  const ic = ifCfg(iface, c);
+  if (!mode) return got === undefined;
+  if (!got || got.type !== mode) return false;
+  if (got.type === 'simple') return got.key === (ic?.authKey ?? '');
+  const key = ic?.md5Keys?.[got.keyId];
+  return key !== undefined && authDigest(key) === got.digest;
+}
 export const cmpId = (a: string, b: string): number => ipNum(a) - ipNum(b);
 export const lsaKey = (h: { type: number; id: string; advRouter: string }): string =>
   `${h.type}|${h.id}|${h.advRouter}`;
@@ -121,11 +172,56 @@ export const pseudoIface = (i: Iface6): Iface => ({
   v6Prefixes: i.addrs.map((a) => ({ prefix: ipv6Network(a.addr, a.plen), plen: a.plen })),
 });
 
-export const ifaceOf = (rt: Rt, c: OspfCfg, id: string): Iface | undefined =>
-  ospfIfaces(rt, c).find((i) => i.id === id);
+// ------------------------------------------------------------------ Virtual Links
+
+export const vlId = (rid: string): string => `vl-${rid.replaceAll('.', '_')}`;
+export const isVl = (id: string): boolean => id.startsWith('vl-');
+export const vlinkOf = (c: OspfCfg, id: string): OspfVlink | undefined =>
+  c.vlinks?.find((v) => vlId(v.rid) === id);
+
+/** Adressen des virtuellen Links: eigene Adresse im Transitbereich und Adresse des Peers (aus dessen Router-LSA). */
+export function vlEndpoints(
+  rt: Rt,
+  c: OspfCfg,
+  v: OspfVlink,
+): { local: string; remote: string } | undefined {
+  if (c.v6 || v.area === '0') return undefined;
+  const mine = physicalParts(rt, c).find((p) => p.area === v.area);
+  const lsa = Object.values(c.lsdb[v.area] ?? {}).find(
+    (l) => l.body.type === 1 && l.advRouter === v.rid && l.age < MAXAGE,
+  );
+  const remote =
+    lsa?.body.type === 1 ? lsa.body.links.find((l) => l.addr !== undefined)?.addr : undefined;
+  if (!mine || !remote || !rt.node.lookup(remote)) return undefined;
+  return { local: mine.iface.ip, remote };
+}
+
+function vlIface(rt: Rt, c: OspfCfg, v: OspfVlink): Iface | undefined {
+  const ep = vlEndpoints(rt, c, v);
+  if (!ep) return undefined;
+  return {
+    id: vlId(v.rid),
+    kind: 'tunnel',
+    portId: '',
+    mac: '',
+    ip: ep.local,
+    mask: '255.255.255.255',
+    mtu: 1500,
+    cfg: { kind: 'tunnel' } as IfaceCfg,
+  };
+}
+
+export const ifaceOf = (rt: Rt, c: OspfCfg, id: string): Iface | undefined => {
+  if (isVl(id)) {
+    const v = vlinkOf(c, id);
+    return v ? vlIface(rt, c, v) : undefined;
+  }
+  return ospfIfaces(rt, c).find((i) => i.id === id);
+};
 
 /** Angeschlossene Präfixe (IPv4: ein Netz aus Adresse/Maske, IPv6: alle globalen Präfixe). */
 export function prefixesOf(c: OspfCfg, iface: Iface): Pfx[] {
+  if (isVl(iface.id)) return [];
   if (c.v6) return iface.v6Prefixes ?? [];
   if (iface.kind === 'loop') return [{ prefix: iface.ip, plen: 32 }];
   const plen = plenOfMask(iface.mask);
@@ -134,7 +230,7 @@ export function prefixesOf(c: OspfCfg, iface: Iface): Pfx[] {
 
 export function ifCfg(iface: Iface, c: OspfCfg): NonNullable<Iface['cfg']['ospf']> | undefined {
   const o = c.v6 ? iface.cfg.v6?.ospf : iface.cfg.ospf;
-  return o?.pid === c.pid ? o : undefined;
+  return o && (o.pid === undefined || o.pid === c.pid) ? o : undefined;
 }
 export const ifNetwork = (iface: Iface, c: OspfCfg): 'broadcast' | 'point-to-point' =>
   ifCfg(iface, c)?.network ?? (iface.kind === 'tunnel' ? 'point-to-point' : 'broadcast');
@@ -144,6 +240,7 @@ export const ifDead = (iface: Iface, c: OspfCfg): number =>
 export const ifPriority = (iface: Iface, c: OspfCfg): number => ifCfg(iface, c)?.priority ?? 1;
 
 export function ifCost(rt: Rt, iface: Iface, c: OspfCfg): number {
+  if (isVl(iface.id)) return vlinkOf(c, iface.id)?.cost ?? 1;
   const set = ifCfg(iface, c)?.cost;
   if (set !== undefined) return set;
   if (iface.kind === 'loop') return 1;
@@ -169,11 +266,20 @@ interface Part {
 }
 
 export function participants(rt: Rt, c: OspfCfg): Part[] {
+  const out = physicalParts(rt, c);
+  for (const v of c.vlinks ?? []) {
+    const iface = vlIface(rt, c, v);
+    if (iface) out.push({ iface, area: '0' });
+  }
+  return out;
+}
+
+function physicalParts(rt: Rt, c: OspfCfg): Part[] {
   const out: Part[] = [];
   if (c.v6 && effectiveRid(rt, c) === NO_ID) return out;
   for (const iface of ospfIfaces(rt, c)) {
     const ic = c.v6 ? iface.cfg.v6?.ospf : iface.cfg.ospf;
-    if (ic && ic.pid !== c.pid) continue;
+    if (ic && ic.pid !== undefined && ic.pid !== c.pid) continue;
     let area = ic?.area;
     if (area === undefined && !c.v6)
       area = c.networks.find((n) => wildcardMatch(iface.ip, n.prefix, n.wildcard))?.area;
@@ -208,13 +314,22 @@ const newer = (a: { seq: number; age: number }, b: { seq: number; age: number })
 
 // ------------------------------------------------------------------ Senden
 
-function send(rt: Rt, c: OspfCfg, iface: Iface, dst: Ipv4Addr, msg: OspfMsg): void {
+function send(rt: Rt, c: OspfCfg, iface: Iface, dst: Ipv4Addr, msg0: OspfMsg): void {
+  const auth = authFor(c, iface, msg0.areaId);
+  const msg: OspfMsg = auth ? ({ ...msg0, auth } as OspfMsg) : msg0;
   const payload = {
     kind: 'routing' as const,
     proto: 'ospf' as const,
     v: (c.v6 ? 3 : 2) as 2 | 3,
     msg,
   };
+  if (isVl(iface.id)) {
+    const v = vlinkOf(c, iface.id);
+    const ep = v && vlEndpoints(rt, c, v);
+    if (ep)
+      sendRouted(rt, ep.local, dst === OSPF_ALL || dst === OSPF_DR ? ep.remote : dst, payload, 255);
+    return;
+  }
   if (c.v6) {
     const n6 = rt.node.v6;
     const i6 = n6?.ifaces.find((i) => i.id === iface.id);
@@ -244,6 +359,7 @@ function sendHello(rt: Rt, c: OspfCfg, iface: Iface, ifs: OspfIfState): void {
       .filter((n) => stateRank[n.state] >= 1)
       .map((n) => n.rid),
     plen: c.v6 ? undefined : plenOfMask(iface.mask),
+    areaType: areaTypeOf(c, ifs.area),
   };
   send(rt, c, iface, OSPF_ALL, msg);
   dbg(
@@ -533,7 +649,7 @@ function startAdj(rt: Rt, c: OspfCfg, iface: Iface, ifs: OspfIfState, n: OspfNbr
 
 function lsdbHeaders(rt: Rt, c: OspfCfg, area: string): OspfLsaHeader[] {
   const out: OspfLsaHeader[] = [];
-  for (const a of [area, 'as']) {
+  for (const a of areaTypeOf(c, area) === 'normal' ? [area, 'as'] : [area]) {
     for (const l of Object.values(c.lsdb[a] ?? {})) out.push(hdrOf(c, a, l, rt.ctx.now));
   }
   return out;
@@ -563,7 +679,7 @@ function sendDbd(
 
 export function ospfRx(
   rt: Rt,
-  iface: Iface,
+  iface0: Iface,
   _base: Base,
   ip: { src: string },
   msg: OspfMsg,
@@ -572,9 +688,19 @@ export function ospfRx(
   void _base;
   for (const c of procsOf(rt)) {
     if (c.v6 !== v6) continue;
-    const ifs = c.ifs[iface.id];
+    let iface = iface0;
+    let ifs = c.ifs[iface.id];
+    if (msg.areaId === '0' && (!ifs || ifs.area !== '0')) {
+      // Paket eines virtuellen Link-Peers (Backbone-Area, aber über eine Nicht-Backbone-Schnittstelle)
+      const vifs = c.ifs[vlId(msg.routerId)];
+      const viface = vifs && ifaceOf(rt, c, vlId(msg.routerId));
+      if (vifs && viface) {
+        ifs = vifs;
+        iface = viface;
+      }
+    }
     if (!ifs || ifs.state === 'loopback') continue;
-    if (ip.src === iface.ip) return;
+    if (ip.src === iface0.ip) return;
     if (msg.areaId !== ifs.area) {
       if (msg.type === 'hello')
         rlog(
@@ -584,6 +710,26 @@ export function ospfRx(
           { kind: 'drop', status: 'drop' },
         );
       continue;
+    }
+    if (!authAccepts(c, iface, ifs.area, msg.auth)) {
+      rlog(
+        rt,
+        'OSPF',
+        {
+          key: 'ospf.authFail',
+          params: { src: ip.src, rid: msg.routerId, iface: nameOf(rt, iface) },
+        },
+        {
+          kind: 'drop',
+          status: 'drop',
+          debug: {
+            tag: 'ospf.adj',
+            text: () =>
+              `OSPF-${c.pid} ADJ   ${nameOf(rt, iface)}: Rx pkt from ${ip.src}: authentication failed (type ${msg.auth?.type ?? 'none'})`,
+          },
+        },
+      );
+      return;
     }
     rlog(
       rt,
@@ -631,6 +777,15 @@ function rxHello(
   const myRid = effectiveRid(rt, c);
   if (m.routerId === myRid) return;
   const net = ifNetwork(iface, c);
+  if ((m.areaType ?? 'normal') !== areaTypeOf(c, ifs.area)) {
+    rlog(
+      rt,
+      'OSPF',
+      { key: 'ospf.mismatch', params: { rid: m.routerId, what: 'area-type' } },
+      { kind: 'drop', status: 'drop' },
+    );
+    return;
+  }
   if (
     m.helloSec !== ifHello(iface, c) ||
     m.deadSec !== ifDead(iface, c) ||
@@ -818,6 +973,8 @@ function rxLsu(
     const k = lsaKey(l);
     const a = areaOfType(l.type, ifs.area);
     const have = c.lsdb[a]?.[k];
+    const at = areaTypeOf(c, ifs.area);
+    if ((l.type === 5 && at !== 'normal') || (l.type === 7 && at !== 'nssa')) continue;
     acks.push({ type: l.type, id: l.id, advRouter: l.advRouter, seq: l.seq, age: l.age });
     n.reqList = n.reqList.filter((x) => x !== k);
     if (l.advRouter === myRid) {
@@ -881,21 +1038,30 @@ function install(rt: Rt, c: OspfCfg, area: string, l: OspfLsa): void {
 
 /** Eine LSA an alle vollständig/fast vollständig benachbarten Router im Flooding-Bereich senden. */
 function floodLsas(rt: Rt, c: OspfCfg, area: string, lsas: OspfLsa[], exceptRid?: string): void {
-  const external = lsas.every((l) => l.type === 5);
-  for (const [id, ifs] of Object.entries(c.ifs)) {
-    if (!external && ifs.area !== area) continue;
-    const iface = ifaceOf(rt, c, id);
-    if (!iface) continue;
-    for (const n of Object.values(ifs.neighbors)) {
-      if (stateRank[n.state] < 4 || n.rid === exceptRid) continue;
-      const out = lsas.map((l) => {
-        const a = areaOfType(l.type, area);
-        const k = lsaKey(l);
-        n.retrans[k] = l.seq;
-        return { ...l, age: lsaAge(c, a, k, rt.ctx.now) || l.age };
-      });
-      sendLsu(rt, c, iface, n, out);
-      maybeRxmt(rt, c, iface, n);
+  // Typ 5 gilt AS-weit (alle normalen Bereiche), alle anderen LSAs nur im Bereich
+  const ext = lsas.filter((l) => l.type === 5);
+  const local = lsas.filter((l) => l.type !== 5);
+  for (const [group, external] of [
+    [ext, true],
+    [local, false],
+  ] as const) {
+    if (group.length === 0) continue;
+    for (const [id, ifs] of Object.entries(c.ifs)) {
+      if (!external && ifs.area !== area) continue;
+      if (external && areaTypeOf(c, ifs.area) !== 'normal') continue;
+      const iface = ifaceOf(rt, c, id);
+      if (!iface) continue;
+      for (const n of Object.values(ifs.neighbors)) {
+        if (stateRank[n.state] < 4 || n.rid === exceptRid) continue;
+        const out = group.map((l) => {
+          const a = areaOfType(l.type, area);
+          const k = lsaKey(l);
+          n.retrans[k] = l.seq;
+          return { ...l, age: lsaAge(c, a, k, rt.ctx.now) || l.age };
+        });
+        sendLsu(rt, c, iface, n, out);
+        maybeRxmt(rt, c, iface, n);
+      }
     }
   }
 }
@@ -1040,7 +1206,8 @@ export function originateAll(rt: Rt, c: OspfCfg): void {
   const areas = areasOf(parts);
   const rid = effectiveRid(rt, c);
   const isAbr = areas.length > 1;
-  const isAsbr = c.redistribute.length > 0 || !!c.defaultOriginate;
+  const isAsbr =
+    c.redistribute.length > 0 || !!c.defaultOriginate || translatorAreas(rt, c).length > 0;
   for (const area of areas) {
     const links = routerLinks(rt, c, area, parts);
     originate(rt, c, area, 1, rid, { type: 1, abr: isAbr, asbr: isAsbr, links });
@@ -1092,28 +1259,49 @@ export function ospfRecompute(rt: Rt): boolean {
       () => `OSPF-${c.pid} SPF   Running SPF, ${res.routes.length} route(s)`,
     );
     rlog(rt, 'OSPF', { key: 'ospf.spf', params: { pid: c.pid, routes: res.routes.length } });
+    const max = maxPathsOf(c);
     const out = res.routes
-      .map((r) => ({
-        proto: 'O' as const,
-        sub:
-          r.type === 'intra'
-            ? undefined
-            : r.type === 'inter'
-              ? 'IA'
-              : r.type === 'e1'
-                ? 'E1'
-                : 'E2',
-        prefix: r.prefix,
-        plen: r.plen,
-        ad: 110,
-        metric: r.cost,
-        nextHop: r.nh?.addr,
-        ifaceId: r.nh?.ifaceId ?? '',
-      }))
+      .filter((r) => distPermits(rt, c.distributeLists, 'in', undefined, { ...r, v6: c.v6 }))
+      .flatMap((r) =>
+        r.nhs
+          .filter((n) => n.addr !== undefined)
+          .slice(0, max)
+          .map((nh) => ({
+            proto: 'O' as const,
+            sub:
+              r.type === 'intra'
+                ? undefined
+                : r.type === 'inter'
+                  ? 'IA'
+                  : r.type === 'e1'
+                    ? r.nssa
+                      ? 'N1'
+                      : 'E1'
+                    : r.nssa
+                      ? 'N2'
+                      : 'E2',
+            prefix: r.prefix,
+            plen: r.plen,
+            ad: 110,
+            metric: r.cost,
+            nextHop: nh.addr,
+            ifaceId: nh.ifaceId,
+          })),
+      )
       .filter((r) => r.ifaceId !== '');
     if (installRoutes(rt, srcOf(c), out, c.v6)) changed = true;
     if (originateSummaries(rt, c, res)) {
       // neue Summary-LSAs ändern unsere eigene Sicht nicht
+    }
+    if (res.vlChanged) originateAll(rt, c);
+    if (c.vlinks?.length) {
+      const sig = JSON.stringify(
+        c.vlinks.map((v) => [v.rid, vlEndpoints(rt, c, v)?.remote ?? null]),
+      );
+      if (sig !== vlSigs.get(c)) {
+        vlSigs.set(c, sig);
+        syncProcess(rt, c);
+      }
     }
   }
   return changed;
@@ -1123,20 +1311,38 @@ function externalKey(prefix: string, plen: number): string {
   return `${prefix}/${plen}`;
 }
 
-/** Redistribution → externe Routen und Typ-5-LSAs. Liefert `true`, wenn LSAs entstanden/verschwanden. */
+/** NSSA-Bereiche, für die dieser ABR die Typ-7→Typ-5-Übersetzung übernimmt (höchste Router-ID aller ABRs). */
+export function translatorAreas(rt: Rt, c: OspfCfg): string[] {
+  const parts = participants(rt, c);
+  const areas = areasOf(parts);
+  if (areas.length < 2) return [];
+  const me = effectiveRid(rt, c);
+  const out: string[] = [];
+  for (const a of areas) {
+    if (areaTypeOf(c, a) !== 'nssa') continue;
+    let best = me;
+    for (const l of Object.values(c.lsdb[a] ?? {})) {
+      if (l.body.type === 1 && l.body.abr && l.age < MAXAGE && cmpId(l.advRouter, best) > 0)
+        best = l.advRouter;
+    }
+    if (best === me) out.push(a);
+  }
+  return out;
+}
+
+/** Redistribution → externe Routen, Typ-5-/Typ-7-LSAs und NSSA-Übersetzung. Liefert `true`, wenn sich etwas änderte. */
 function syncExternals(rt: Rt, c: OspfCfg): boolean {
-  const want = new Map<string, OspfExternal>();
-  // Redistribution anderer Protokolle gibt es nur für OSPFv2 (OSPFv3: nur default-information originate)
-  for (const red of c.v6 ? [] : c.redistribute) {
-    for (const s of redistSource(rt, red, srcOf(c))) {
+  const own = new Map<string, OspfExternal>();
+  for (const red of c.redistribute) {
+    for (const s of c.v6 ? redistSource6(rt, red, srcOf(c)) : redistSource(rt, red, srcOf(c))) {
       if (s.plen === 0) continue;
-      if (!red.subnets && s.plen > classfulPlenOf(s.prefix)) continue;
-      want.set(externalKey(s.prefix, s.plen), {
+      if (!c.v6 && !red.subnets && s.plen > classfulPlenOf(s.prefix)) continue;
+      own.set(externalKey(s.prefix, s.plen), {
         prefix: s.prefix,
         plen: s.plen,
-        metric: red.metric ?? 20,
-        eType: red.metricType ?? 2,
-        tag: red.tag ?? 0,
+        metric: s.set?.metric ?? red.metric ?? 20,
+        eType: s.set?.metricType ?? red.metricType ?? 2,
+        tag: s.set?.tag ?? red.tag ?? 0,
       });
     }
   }
@@ -1148,7 +1354,7 @@ function syncExternals(rt: Rt, c: OspfCfg): boolean {
         : rt.cfg.staticRoutes.some((r) => r.prefix === '0.0.0.0' && r.mask === '0.0.0.0') ||
           rt.cfg.dynRoutes.some((r) => r.plen === 0 && r.src !== srcOf(c)));
     if (hasDefault)
-      want.set(c.v6 ? '::/0' : '0.0.0.0/0', {
+      own.set(c.v6 ? '::/0' : '0.0.0.0/0', {
         prefix: c.v6 ? '::' : '0.0.0.0',
         plen: 0,
         metric: c.defaultOriginate.metric,
@@ -1156,9 +1362,28 @@ function syncExternals(rt: Rt, c: OspfCfg): boolean {
         tag: 0,
       });
   }
-  let changed = false;
   const rid = effectiveRid(rt, c);
-  // neue/geänderte
+  const parts = participants(rt, c);
+  const areas = areasOf(parts);
+  const nssa = areas.filter((a) => areaTypeOf(c, a) === 'nssa');
+  const hasNormal = areas.length === 0 || areas.some((a) => areaTypeOf(c, a) === 'normal');
+  // Typ 7 → Typ 5 (ABR mit der höchsten Router-ID im NSSA-Bereich)
+  const want = new Map<string, OspfExternal>(hasNormal ? own : []);
+  for (const a of translatorAreas(rt, c)) {
+    for (const l of Object.values(c.lsdb[a] ?? {})) {
+      if (l.body.type !== 7 || !l.body.p || l.advRouter === rid || l.age >= MAXAGE) continue;
+      const k = externalKey(l.body.prefix, l.body.plen);
+      if (!want.has(k))
+        want.set(k, {
+          prefix: l.body.prefix,
+          plen: l.body.plen,
+          metric: l.body.metric,
+          eType: l.body.eType,
+          tag: l.body.tag,
+        });
+    }
+  }
+  let changed = false;
   for (const [k, e] of want) {
     if (!same(c.externals[k], e)) {
       c.externals[k] = e;
@@ -1173,7 +1398,6 @@ function syncExternals(rt: Rt, c: OspfCfg): boolean {
       tag: e.tag,
     });
   }
-  // entfernte
   for (const k of Object.keys(c.externals)) {
     if (want.has(k)) continue;
     const e = c.externals[k] as OspfExternal;
@@ -1181,6 +1405,45 @@ function syncExternals(rt: Rt, c: OspfCfg): boolean {
     changed = true;
     const l = c.lsdb['as']?.[lsaKey({ type: 5, id: e.prefix, advRouter: rid })];
     if (l) flushLsa(rt, c, 'as', l);
+  }
+  // Typ 7 für eigene Redistribution in NSSA-Bereichen
+  const dflt = (a: string): boolean => !!areaCfg(c, a).nssaDefaultOriginate && areas.length > 1;
+  for (const a of nssa) {
+    const want7 = new Map(own);
+    if (dflt(a))
+      want7.set('0.0.0.0/0', { prefix: '0.0.0.0', plen: 0, metric: 1, eType: 2, tag: 0 });
+    for (const [k, e] of want7) {
+      if (
+        originate(rt, c, a, 7, e.prefix, {
+          type: 7,
+          prefix: e.prefix,
+          plen: e.plen,
+          metric: e.metric,
+          eType: e.eType,
+          tag: e.tag,
+          p: true,
+        })
+      )
+        changed = true;
+      void k;
+    }
+    for (const l of Object.values(c.lsdb[a] ?? {})) {
+      if (l.advRouter !== rid || l.body.type !== 7) continue;
+      if (!want7.has(externalKey(l.body.prefix, l.body.plen))) {
+        flushLsa(rt, c, a, l);
+        changed = true;
+      }
+    }
+  }
+  // Typ-7-LSAs in Bereichen, die nicht (mehr) NSSA sind
+  for (const a of Object.keys(c.lsdb)) {
+    if (a === 'as' || nssa.includes(a)) continue;
+    for (const l of Object.values(c.lsdb[a] ?? {})) {
+      if (l.advRouter === rid && l.type === 7) {
+        flushLsa(rt, c, a, l);
+        changed = true;
+      }
+    }
   }
   if (changed) originateAll(rt, c);
   return changed;
@@ -1221,7 +1484,14 @@ function originateSummaries(rt: Rt, c: OspfCfg, res: ReturnType<typeof spfRun>):
       metric = range ? Math.max(cur?.metric ?? 0, metric) : metric;
       if (!cur || (range ? true : metric < cur.metric)) want3.set(k, { prefix, plen, metric });
     }
+    const tcfg = areaCfg(c, target);
+    // Stub/NSSA: keine ASBR-Summaries; Totally Stubby/NSSA no-summary: nur Default
+    if (tcfg.type !== 'normal') want4.clear();
+    if (tcfg.type !== 'normal' && tcfg.noSummary) want3.clear();
+    if (tcfg.type === 'stub' || (tcfg.type === 'nssa' && tcfg.noSummary))
+      want3.set('0.0.0.0/0', { prefix: '0.0.0.0', plen: 0, metric: tcfg.defaultCost ?? 1 });
     for (const a of res.asbrs) {
+      if (tcfg.type !== 'normal') break;
       if (a.area === target) continue;
       if (a.viaInter && a.area !== '0') continue;
       if (target === '0' && a.viaInter) continue;

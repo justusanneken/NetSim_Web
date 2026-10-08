@@ -1,4 +1,5 @@
 import type { BgpAttrs, EigrpRoute, HsrpState, OspfLsa } from '@netsim/protocols';
+import type { CommunityList, PrefixList, RouteMap } from './routemap';
 
 /** Konfiguration und Laufzeitzustand der dynamischen Routing-Protokolle (alles JSON-serialisierbar). */
 
@@ -17,6 +18,16 @@ export interface RedistCfg {
   /** EIGRP: Seed-Metrik (Bandbreite kbit/s, Delay in 10 µs). */
   bw?: number;
   delay?: number;
+  /** `redistribute … route-map NAME`. */
+  routeMap?: string;
+}
+
+/** `distribute-list ACL|prefix-list NAME in|out [Schnittstelle]`. */
+export interface DistList {
+  kind: 'acl' | 'prefix-list';
+  name: string;
+  dir: 'in' | 'out';
+  ifaceId?: string;
 }
 
 // ---------------------------------------------------------------- RIP
@@ -35,9 +46,14 @@ export interface RipRoute {
   changed: boolean;
   origin: 'rip' | 'network' | 'redistributed' | 'default';
   tag: number;
+  /** Gleichwertige Zusatzpfade (ECMP) mit derselben Metrik. */
+  alts?: { nextHop: string; ifaceId: string; updatedAt: number }[];
 }
 
 export interface RipCfg {
+  distributeLists?: DistList[];
+  /** `maximum-paths` (ECMP). */
+  maxPaths?: number;
   networks: string[];
   passive: string[];
   /** `no passive-interface X` bei `passive-interface default`. */
@@ -46,14 +62,34 @@ export interface RipCfg {
   autoSummary: boolean;
   defaultOriginate: boolean;
   redistribute: RedistCfg[];
-  defaultMetric: number;
+  /** `default-metric`; ohne Wert ist die Metrik redistribuierter Routen unendlich (IOS). */
+  defaultMetric?: number;
   timers: { update: number; invalid: number; holddown: number; flush: number };
   /** Split Horizon mit Poison Reverse an? (Default: Split Horizon ohne Poison). */
   poison: boolean;
   /** Laufzeit. */
   routes: Record<string, RipRoute>;
   timersArmed?: boolean;
+  /** Laufzeit: Holddown je Präfix (Ende, Metrik vor dem Ausfall). */
+  held?: Record<string, { until: number; metric: number; via?: string }>;
   version: 2;
+}
+
+/** RIPng-Prozess (`ipv6 router rip NAME`). */
+export interface RipngCfg {
+  name: string;
+  redistribute: RedistCfg[];
+  defaultOriginate: boolean;
+  defaultMetric?: number;
+  timers: { update: number; invalid: number; holddown: number; flush: number };
+  poison: boolean;
+  passive?: string[];
+  distributeLists?: DistList[];
+  maxPaths?: number;
+  /** Laufzeit. */
+  routes: Record<string, RipRoute>;
+  held?: Record<string, { until: number; metric: number; via?: string }>;
+  timersArmed?: boolean;
 }
 
 // ---------------------------------------------------------------- OSPF
@@ -101,13 +137,42 @@ export interface OspfIfState {
 }
 
 export interface OspfIfCfg {
-  pid: number;
-  area: string;
+  /** `ip ospf PID area A`; ohne Angabe gilt die Zuordnung über `network`-Anweisungen. */
+  pid?: number;
+  area?: string;
   cost?: number;
   priority?: number;
   helloSec?: number;
   deadSec?: number;
   network?: 'broadcast' | 'point-to-point';
+  /** `ip ospf authentication [message-digest|null]` (überschreibt die Area-Einstellung). */
+  auth?: 'simple' | 'md5' | 'null';
+  /** `ip ospf authentication-key` (Klartext). */
+  authKey?: string;
+  /** `ip ospf message-digest-key ID md5 KEY`. */
+  md5Keys?: Record<number, string>;
+}
+
+export interface OspfAreaCfg {
+  id: string;
+  type: 'normal' | 'stub' | 'nssa';
+  /** Totally stubby / NSSA no-summary: keine Typ-3-Summaries (nur Default). */
+  noSummary: boolean;
+  /** Kosten der vom ABR eingespeisten Default-Route. */
+  defaultCost?: number;
+  /** `area N authentication [message-digest]`. */
+  auth?: 'simple' | 'md5';
+  /** NSSA: ABR erzeugt Typ-7-Default (`area N nssa default-information-originate`). */
+  nssaDefaultOriginate?: boolean;
+}
+
+export interface OspfVlink {
+  /** Transit-Area. */
+  area: string;
+  rid: string;
+  // ---- Laufzeit
+  /** Kosten des Pfads zum Peer durch die Transit-Area (aus der letzten SPF). */
+  cost?: number;
 }
 
 export interface OspfAreaRange {
@@ -126,6 +191,9 @@ export interface OspfExternal {
 }
 
 export interface OspfCfg {
+  distributeLists?: DistList[];
+  /** `maximum-paths` (ECMP). */
+  maxPaths?: number;
   pid: number;
   routerId?: string;
   networks: OspfNetworkStmt[];
@@ -137,6 +205,9 @@ export interface OspfCfg {
   defaultOriginate?: { always: boolean; metric: number; metricType: 1 | 2 };
   redistribute: RedistCfg[];
   ranges: OspfAreaRange[];
+  /** Bereichstypen (stub/nssa), Authentifizierung je Area. */
+  areas?: Record<string, OspfAreaCfg>;
+  vlinks?: OspfVlink[];
   /** Ob dies ein OSPFv3-Prozess ist (IPv6-Adressen). */
   v6: boolean;
   // ---- Laufzeit
@@ -206,6 +277,8 @@ export interface EigrpTopo {
   /** Gewählter Successor (`via`). */
   succ?: string;
   active: boolean;
+  /** Zeitpunkt (µs), seit dem das Ziel aktiv ist (Stuck-in-Active). */
+  activeSince?: number;
   /** Aktiv: Nachbarn, von denen noch eine Reply aussteht. */
   waiting: string[];
   /** Nachbar, dem nach Abschluss der aktiven Phase geantwortet werden muss. */
@@ -215,6 +288,9 @@ export interface EigrpTopo {
 }
 
 export interface EigrpCfg {
+  distributeLists?: DistList[];
+  /** `maximum-paths` (ECMP). */
+  maxPaths?: number;
   asn: number;
   routerId?: string;
   networks: { prefix: string; wildcard: string }[];
@@ -230,6 +306,8 @@ export interface EigrpCfg {
   topology: Record<string, EigrpTopo>;
   /** Zu verbreitende Präfixe (gebündelte Updates). */
   advQueue: string[];
+  /** Laufzeit: Signatur der `distribute-list`-Konfiguration (Änderung ⇒ Neuankündigung). */
+  distSig?: string;
   /** Schnittstellen, auf denen der Hello-Timer läuft. */
   helloIfs: string[];
 }
@@ -262,6 +340,17 @@ export interface BgpNbrCfg {
   shutdown: boolean;
   description?: string;
   weight?: number;
+  /** `neighbor X prefix-list NAME in|out`, `neighbor X route-map NAME in|out`. */
+  prefixListIn?: string;
+  prefixListOut?: string;
+  routeMapIn?: string;
+  routeMapOut?: string;
+  /** `neighbor X send-community`. */
+  sendCommunity?: boolean;
+  /** `neighbor X route-reflector-client`. */
+  rrClient?: boolean;
+  /** `address-family ipv6` → `neighbor X activate`. */
+  activate6?: boolean;
   // ---- Laufzeit
   state: BgpState;
   routerId?: string;
@@ -275,16 +364,26 @@ export interface BgpNbrCfg {
   advertised: Record<string, string>;
   /** Adj-RIB-In: Präfix → Pfad. */
   ribIn: Record<string, BgpPath>;
+  /** IPv6-Adressfamilie (MP-BGP, vereinfacht im selben Update). */
+  advertised6?: Record<string, string>;
+  ribIn6?: Record<string, BgpPath>;
 }
 
 export interface BgpCfg {
+  /** `maximum-paths` (ECMP). */
+  maxPaths?: number;
   asn: number;
   routerId?: string;
   neighbors: Record<string, BgpNbrCfg>;
   networks: { prefix: string; plen: number }[];
+  /** IPv6-Adressfamilie: `network X::/L`. */
+  networks6?: { prefix: string; plen: number }[];
   redistribute: RedistCfg[];
+  /** Route-Reflector-Cluster-ID (`bgp cluster-id`); Default: Router-ID. */
+  clusterId?: string;
   /** Laufzeit: Loc-RIB (Präfix-Schlüssel → bester Pfad). */
   locRib: Record<string, BgpPath>;
+  locRib6?: Record<string, BgpPath>;
   rid?: string;
   defaultLocalPref: number;
   timersArmed?: boolean;
@@ -301,6 +400,12 @@ export interface HsrpCfg {
   holdSec: number;
   track: { ifaceId: string; decrement: number }[];
   name?: string;
+  /** `standby G authentication KEY` (Klartext, Default `cisco`). */
+  authKey?: string;
+  /** IPv6-Gruppe (`standby G ipv6 …`): `vip` ist die IPv6-Adresse. */
+  v6?: boolean;
+  /** `standby G ipv6 autoconfig`: virtuelle Link-Local aus der virtuellen MAC. */
+  autoconfig?: boolean;
   // ---- Laufzeit
   state: HsrpState;
   activeIp?: string;
@@ -325,6 +430,8 @@ export interface TunnelCfg {
 
 export interface RoutingCfg {
   rip?: RipCfg;
+  /** RIPng-Prozesse nach Name. */
+  ripng?: Record<string, RipngCfg>;
   ospf: Record<number, OspfCfg>;
   /** OSPFv3 (IPv6). */
   ospf6: Record<number, OspfCfg>;
@@ -332,9 +439,25 @@ export interface RoutingCfg {
   bgp?: BgpCfg;
   /** Aktive `debug`-Schalter (z. B. `ospf.adj`). */
   debug: string[];
+  prefixLists: Record<string, PrefixList>;
+  prefixLists6: Record<string, PrefixList>;
+  routeMaps: Record<string, RouteMap>;
+  communityLists: Record<string, CommunityList>;
 }
 
-export const newRouting = (): RoutingCfg => ({ ospf: {}, ospf6: {}, eigrp: {}, debug: [] });
+export const newRouting = (): RoutingCfg => ({
+  ospf: {},
+  ospf6: {},
+  eigrp: {},
+  debug: [],
+  prefixLists: {},
+  prefixLists6: {},
+  routeMaps: {},
+  communityLists: {},
+});
+
+/** `maximum-paths`: IGPs Default 4, BGP Default 1. */
+export const maxPathsOf = (c: { maxPaths?: number }, def = 4): number => c.maxPaths ?? def;
 
 export const isPassive = (
   c: { passive: string[]; unpassive: string[]; passiveDefault: boolean },

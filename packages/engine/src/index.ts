@@ -7,19 +7,34 @@ export { EngineService } from './service';
 export type { PingOptions } from './devices/host';
 export type { DeviceCtx, LogInput } from './ctx';
 export * from './view';
-export { buildRib, lookupRib, networkOf, prefixMask, type RibEntry } from './rib';
+export {
+  buildRib,
+  lookupRib,
+  lookupRibPaths,
+  pickPath,
+  networkOf,
+  prefixMask,
+  type RibEntry,
+} from './rib';
 export { listIfaces, ifaceName, ifaceUp, vlanActive, subId, sviId, type Iface } from './ifaces';
 export { aclEval } from './acl';
 export { newSys, newSwitchPort } from './defaults';
 export { bridgeId } from './devices/stp';
 export * from './routing/types';
+export * from './routing/routemap';
+export { newDhcp6Pool } from './svc/dhcp6';
 export {
   newRouting,
   newRip,
+  newRipng,
   newOspf,
   newEigrp,
   newHsrp,
   vmacOf,
+  vmac6Of,
+  virtualLl6,
+  hsrpVersion,
+  vipOf,
   newBgp,
   newBgpNbr,
 } from './routing';

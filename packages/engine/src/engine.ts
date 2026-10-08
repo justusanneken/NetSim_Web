@@ -31,7 +31,7 @@ import { routingResetRuntime, routingSync } from './routing';
 import { buildRib6, listIfaces6 } from './l3v6';
 import { hostV6 } from './devices/host';
 import { ifaceName, listIfaces, sviId, subId } from './ifaces';
-import { buildRib, networkOf, type RibEntry } from './rib';
+import { buildRib, installedRoutes, networkOf, type RibEntry } from './rib';
 import { hubRx } from './devices/hub';
 import {
   activeMacTable,
@@ -387,6 +387,10 @@ export class Engine {
         routingResetRuntime(dev.config);
       if (dev.config.kind === 'host') {
         dev.config.v6.slaac = [];
+        dev.config.v6.dhcpAddrs = [];
+        dev.config.v6.dh6 = undefined;
+        dev.config.v6.dns6 = undefined;
+        dev.config.v6.domain6 = undefined;
         dev.config.v6.raGateway = undefined;
         dev.config.tcp = {};
         dev.config.dnsPending = {};
@@ -471,7 +475,7 @@ export class Engine {
     if (!dev || dev.config.kind === 'hub' || dev.config.kind === 'none')
       return { ok: false, error: 'ip.notAHost' };
     if (!dev.powered || dev.crashed) return { ok: false, error: 'dev.off' };
-    if (!isValidIpv4(dst)) return { ok: false, error: 'ip.invalidIp' };
+    if (!isValidIpv4(dst) && !isValidIpv6(dst)) return { ok: false, error: 'ip.invalidIp' };
     const cfg = dev.config;
     return this.withCtx(dev, (ctx) =>
       cfg.kind === 'host'
@@ -752,11 +756,22 @@ export class Engine {
       plen?: number;
       gateway?: string;
       autoconfig?: boolean;
+      /** DHCPv6-Client (folgt den RA-Flags M/O). */
+      dhcp6?: boolean;
     },
   ): Result<true> {
     const dev = this.state.devices[deviceId];
     if (!dev || dev.config.kind !== 'host') return { ok: false, error: 'ip.notAHost' };
     const h = dev.config;
+    if (patch.dhcp6 !== undefined) {
+      h.v6.dhcp6 = patch.dhcp6 || undefined;
+      if (!patch.dhcp6) {
+        h.v6.dhcpAddrs = [];
+        h.v6.dh6 = undefined;
+        h.v6.dns6 = undefined;
+        h.v6.domain6 = undefined;
+      }
+    }
     if (patch.enabled !== undefined) h.v6.enabled = patch.enabled;
     if (patch.addr !== undefined) {
       if (patch.addr === '') h.v6.addrs = [];
@@ -794,7 +809,9 @@ export class Engine {
   routingTable6(deviceId: string): RibEntry[] {
     const dev = this.l3(deviceId);
     if (!dev) return [];
-    return buildRib6(dev.config, listIfaces6(dev, dev.config)).filter((e) => e.type !== 'L');
+    return installedRoutes(buildRib6(dev.config, listIfaces6(dev, dev.config))).filter(
+      (e) => e.type !== 'L',
+    );
   }
 
   /** IPv6-Nachbar-Cache. */
@@ -822,7 +839,7 @@ export class Engine {
   /** Routing-Tabelle eines Routers bzw. L3-Switches. */
   routingTable(deviceId: string): RibEntry[] {
     const dev = this.l3(deviceId);
-    return dev ? buildRib(dev.config, listIfaces(dev, dev.config)) : [];
+    return dev ? installedRoutes(buildRib(dev.config, listIfaces(dev, dev.config))) : [];
   }
 
   // ------------------------------------------------------------ Switch-Konfiguration

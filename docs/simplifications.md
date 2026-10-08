@@ -99,7 +99,7 @@
 - **VTP:** nur v1/v2-Verhalten (Revision, Domäne, Server/Client/Transparent), ohne Pruning und Passwort.
 - **Port-Security:** Verstöße zählen pro Frame; Sticky-Adressen erscheinen in der `running-config`.
 - **Nicht umgesetzt:** SPAN, Storm-Control, DHCP-Snooping, DAI, UDLD, Private VLANs.
-- **DHCP:** keine Option 82, kein BOOTP/DHCPv6; Lease-Verlängerung bei T1 (50 %), Konflikterkennung per ARP-Probe.
+- **DHCP:** keine Option 82, kein BOOTP (DHCPv6 siehe Phase 4); Lease-Verlängerung bei T1 (50 %), Konflikterkennung per ARP-Probe.
 - **TCP/HTTP:** vereinfachtes TCP (SYN/SYN-ACK, ein Request, Antwort + FIN, RST); keine Retransmission-Fenster, kein TLS
   (HTTPS ist nur ein Port-/Schemaflag). Seiten sind kurze Texte.
 - **NAT:** Timeouts per `ip nat translation timeout` für UDP/TCP/IP gemeinsam (ICMP fest 60 s); ALG/FTP fehlt.
@@ -110,10 +110,33 @@
 - **Routing-Protokolle nutzen eigene PDU-Typen** (`RoutingPdu`); IP-Protokollnummern 89 (OSPF) und 88 (EIGRP) sind echt,
   **BGP läuft ohne TCP** direkt in IP-Paketen (Protokoll 6/Port 179 nur zur Anzeige) mit Keepalive/Hold-Timer und Retry alle 5 s.
 - **Hintergrund-Timer:** Hello/Update/Keepalive laufen als `bg:`-Timer. Ohne Zeitfortschritt konvergiert nichts; die CLI wartet nur auf Vordergrundereignisse.
-- **RIP:** nur v2, Metrik der Redistribution Default 1 (IOS: unendlich), Hold-down wird nicht erzwungen (nur Invalid/Flush).
-- **OSPF:** DBD in einem Paket je Richtung; DR/BDR werden über Router-IDs statt Schnittstellenadressen angezeigt; Network-LSA-ID = DR-Schnittstellenadresse; LSA-Alterung mit 30-min-Refresh; kein ECMP, keine Stub/NSSA-Areas, keine Authentifizierung. SPF-Verzögerung ≈ 1 ms.
-- **EIGRP:** Successor-Wahl mit Feasibility Condition; Reliable Transport mit einem unbestätigten Paket je Nachbar (RTO 2 s, 16 Versuche); `variance` wird gespeichert, aber nicht ausgewertet.
-- **HSRP:** vereinfachte Zustandsmaschine (Listen → Speak → Standby/Active), Hello 3 s/Hold 10 s, keine Coup/Resign-Pakete.
-- **BGP:** Bestpath ohne Weight-/Community-Politik, keine Route-Maps/Filter, iBGP nur Full Mesh; eBGP ohne Multihop nur direkt verbunden (Fast-External-Fallover).
-- **IPv6:** keine Duplicate Address Detection, kein DHCPv6, keine Fragmentierung (zu große Pakete werden verworfen), kein Traceroute; Redistribution und EIGRP/RIPng/BGP für IPv6 fehlen. OSPFv3 nutzt dieselbe LSDB-Struktur wie v2 (Präfixe in Router-LSAs).
-- **Debug-Ausgabe:** Zeitstempel aus virtueller Zeit (`*Mar  1 …`); Meldungstexte sind englisch, nicht übersetzt.
+- **ECMP:** Lastverteilung je Fluss über einen deterministischen Hash (Quelle/Ziel); keine Per-Packet-Verteilung. `maximum-paths` gilt je Protokoll
+  (IGPs 4, BGP 1), statische Routen mit gleicher AD bilden unbegrenzt ECMP. Ungleiche Lastverteilung (EIGRP-`variance`) verteilt gewichtet nach inverser Metrik.
+  Die Routing-Tabelle (`show ip route`, GUI) zeigt nur die installierten Routen (niedrigste AD je Präfix); Floating Statics erscheinen erst bei Ausfall der besseren Route.
+- **RIP:** nur v2. Redistribution ohne `metric`/`default-metric` ergibt wie bei IOS Metrik „unendlich“ (nichts wird angekündigt). Hold-down wird erzwungen
+  (Updates mit gleicher/schlechterer Metrik anderer Nachbarn werden ignoriert); Ausnahme: derselbe Nachbar darf das Ziel mit unveränderter Metrik wieder anbieten.
+  Ein weggefallenes lokales Ziel (z. B. LAN-Port down) wird mit Metrik 16 vergiftet angekündigt.
+- **OSPF:** DBD in einem Paket je Richtung; DR/BDR werden über Router-IDs statt Schnittstellenadressen angezeigt; Network-LSA-ID = DR-Schnittstellenadresse;
+  LSA-Alterung mit 30-min-Refresh; SPF-Verzögerung ≈ 1 ms. **Stub/Totally Stubby/NSSA** (Typ 7 mit P-Bit, Übersetzung durch den ABR mit der höchsten Router-ID,
+  `no-summary`, `default-cost`, `default-information-originate`) sind umgesetzt; Forwarding-Adressen und Typ-7-Aggregation am ABR fehlen.
+  **Virtual Links** laufen über Unicast-Pakete durch die Transit-Area (Kosten = SPF-Kosten zum Peer, feste Timer 10/40 s, keine eigenen Timer/Authentifizierung).
+  **Authentifizierung** (`simple`/`md5`) ist ein Schlüsselvergleich: bei MD5 wird kein echter Hash berechnet, sondern ein Digest über den gemeinsamen Schlüssel
+  verglichen; Nachrichten mit falschem/fehlendem Schlüssel werden mit `ospf.authFail` verworfen. Nur ein MD5-Schlüssel je Schnittstelle wird gesendet (der mit der kleinsten ID).
+- **EIGRP:** Successor-Wahl mit Feasibility Condition; `variance` (Feasible Successors mit RD < FD und Distanz ≤ variance·FD) und ECMP; Stuck-in-Active nach 3 min
+  (säumige Nachbarn werden zurückgesetzt, keine SIA-Query/-Reply-Phase). Reliable Transport mit einem unbestätigten Paket je Nachbar (RTO 2 s, 16 Versuche).
+  EIGRP für IPv6 fehlt.
+- **HSRP:** vereinfachte Zustandsmaschine (Listen → Speak → Standby/Active), Hello 3 s/Hold 10 s, keine Coup/Resign-Pakete. Version 2 (Gruppen 0–4095, `0000.0c9f.fXXX`,
+  224.0.0.102), Klartext-Authentifizierung (Default `cisco`, kein MD5) und HSRP für IPv6 (vMAC `0005.73a0.0XXX`, `ff02::66`, ND-Antworten der virtuellen Adresse) sind vorhanden.
+  IPv4- und IPv6-Gruppen gleicher Nummer teilen Priorität/Preempt/Timer/Tracking in der CLI, haben aber getrennte Zustände.
+- **BGP:** Prefix-Lists, Route-Maps (`match` Prefix-List/ACL/Community/Tag/Metrik, `set` local-preference/metric/weight/as-path prepend/community/next-hop), Communities (inkl. `no-export`,
+  `no-advertise`), Route Reflector (Originator-ID, Cluster-List, Cluster-ID) und IPv6-Adressfamilie (MP-BGP vereinfacht im selben Update über IPv4-Sitzungen) sind vorhanden.
+  Nicht umgesetzt: AS-Path-Regex-Listen (`ip as-path access-list`), Peer-Groups, Confederations, Aggregation, Dampening; Eingangs-Policy wird bei jeder Neuberechnung auf die unveränderte Adj-RIB-In angewandt
+  (wirkt sofort, wie mit `soft-reconfiguration inbound`). Unbekannte Route-Map-/Prefix-List-Namen erlauben alles. eBGP ohne Multihop nur direkt verbunden (Fast-External-Fallover).
+- **Route-Maps/Filter:** `redistribute … route-map` (alle Protokolle), `distribute-list` (ACL/Prefix-List, in/out für RIP, EIGRP, RIPng, in für OSPF); keine `match interface`/`match ip route-source`,
+  kein `set ip next-hop` bei Redistribution.
+- **IPv6:** Duplicate Address Detection (eine Probe, 1 s) mit Zustand `tentative/ok/dup` je Adresse; tentative Adressen sind nicht nutzbar. DHCPv6 (Solicit/Advertise/Request/Reply,
+  Information-Request, IA_NA mit Sequenzvergabe aus `address prefix`; DUID = MAC; keine Renew/Rebind-Timer, keine Präfixdelegation, kein Relay). DNS-Server aus DHCPv6 werden gespeichert
+  und angezeigt, die Namensauflösung nutzt weiterhin IPv4-DNS. Traceroute (Router `traceroute ipv6`, Host `tracert`). RIPng (ohne ECMP-Zusatzpfade) und OSPFv3-Redistribution
+  (connected/static/andere IPv6-Protokolle). Keine Fragmentierung (zu große Pakete werden verworfen); EIGRP für IPv6 fehlt. OSPFv3 nutzt dieselbe LSDB-Struktur wie v2 (Präfixe in Router-LSAs).
+- **Uhr:** `clock set` setzt die Gerätezeit; `show clock` und `debug`-Zeitstempel folgen ihr (ohne gesetzte Uhr `*Mar  1 1993` wie bei IOS). Zeitangaben in `show ip dhcp binding` nutzen weiterhin eine feste Basis.
+- **Debug-Ausgabe:** Zeitstempel aus virtueller Zeit; Meldungstexte sind englisch, nicht übersetzt.

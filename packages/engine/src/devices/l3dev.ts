@@ -4,7 +4,7 @@ import type { DeviceCtx } from '../ctx';
 import { diagTimer, startPing, startTrace, type PingOptions } from '../diag';
 import { listIfaces } from '../ifaces';
 import { ifaceFrameRx, ipTimer, type IpNode, type XmitIface } from '../l3';
-import { buildRib, lookupRib } from '../rib';
+import { buildRib, lookupRib, lookupRibPaths, pickPath } from '../rib';
 import { greXmit } from '../routing/gre';
 import { hsrpVips } from '../routing/hsrp';
 import { routingTimer } from '../routing';
@@ -48,8 +48,9 @@ export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
     ifaces,
     vips,
     silentMacs: silent,
-    lookup(dst) {
-      const e = lookupRib(rib, dst);
+    lookup(dst, src) {
+      const paths = lookupRibPaths(rib, dst);
+      const e = paths.length ? pickPath(paths, src, dst) : undefined;
       const iface = e?.ifaceId ? ifaces.find((i) => i.id === e.ifaceId) : undefined;
       if (e && iface && (forwarding || e.type === 'C')) {
         return { nextHop: e.type === 'C' || !e.nextHop ? dst : e.nextHop, iface };
