@@ -697,6 +697,20 @@ export function addPhase4(r: Registry<CliSession>): void {
       touch(s);
     },
   });
+  // IOS: `no neighbor A.B.C.D` entfernt den Nachbarn samt aller Einstellungen
+  r.add({
+    modes: BGP,
+    only: 'l3',
+    slots: [
+      K('no', 'Negate a command or set its defaults'),
+      K('neighbor', 'Specify a neighbor router'),
+      P('ip', 'ip', 'A.B.C.D', 'Neighbor address'),
+    ],
+    run: (s, a) => {
+      delete bgpCfg(s).neighbors[a.ip as string];
+      touch(s);
+    },
+  });
   r.add({
     modes: BGP,
     only: 'l3',
