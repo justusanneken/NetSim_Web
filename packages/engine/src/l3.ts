@@ -24,7 +24,7 @@ import { onEchoReply, onIcmpError } from './diag';
 import { dhcpRx } from './svc/dhcp';
 import { dnsRx } from './svc/dns';
 import type { Iface } from './ifaces';
-import { natInside2Outside, natOutside2Inside } from './nat';
+import { natHasInbound, natInside2Outside, natOutside2Inside } from './nat';
 import { tcpRx } from './svc/tcp';
 import type { Device, HostConfig, IpCore, L3Cfg, Port } from './types';
 
@@ -346,6 +346,11 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
 
 function ipRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, ip: Ipv4Pdu, frame: Frame): void {
   const bcast = ip.dst === '255.255.255.255' || ip.dst === broadcastAddress(iface.ip, iface.mask);
+  // Antworten an die übersetzte Adresse (auch die Router-Schnittstellenadresse) zuerst zurückübersetzen
+  if (node.l3 && node.forwarding && iface.cfg.natSide === 'outside' && node.l3.nat.rules.length > 0 && natHasInbound(node.l3, ip, ctx.now)) {
+    forward(ctx, node, iface, base, ip);
+    return;
+  }
   if (isLocalIp(node, ip.dst) || bcast) {
     deliverLocal(ctx, node, iface, base, ip, frame, bcast && !isLocalIp(node, ip.dst));
     return;
@@ -422,6 +427,17 @@ function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn:
   // 3) NAT inside → outside (nach dem Routing)
   if (l3 && ifaceIn.cfg.natSide === 'inside' && hop.iface.cfg.natSide === 'outside') {
     const r = natInside2Outside(l3, out, hop.iface, ctx.now);
+    if (r.blocked) {
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        proto: 'NAT',
+        status: 'drop',
+        msg: { key: 'nat.exhausted', params: { src: ip.src } },
+      });
+      sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.host, ip, ifaceIn.ip);
+      return;
+    }
     if (r.entry) {
       ctx.log({
         ...base,

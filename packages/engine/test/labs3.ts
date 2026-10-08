@@ -51,3 +51,27 @@ export function blockedPorts(e: Engine, vlan = 1): { dev: string; port: string; 
 }
 
 export { converge };
+
+import type { AclEntry, AddrMatch, PortMatch } from '../src';
+
+export const ANY: AddrMatch = { any: true };
+export const hostMatch = (ip: string): AddrMatch => ({ ip, wildcard: '0.0.0.0' });
+export const net = (ip: string, wildcard: string): AddrMatch => ({ ip, wildcard });
+export const eq = (a: number): PortMatch => ({ op: 'eq', a });
+
+let aclSeq = 10;
+export function aclEntry(e: Partial<AclEntry> & Pick<AclEntry, 'action'>): AclEntry {
+  return { seq: aclSeq++, proto: 'ip', src: ANY, matches: 0, ...e };
+}
+
+/** Router-Schnittstelle konfigurieren und aktivieren. */
+export function ifaceUp(e: Engine, r: string, id: string, ip: string, mask = '255.255.255.0'): void {
+  ok(e.ensureIface(r, id));
+  ok(e.setInterfaceIp(r, id, ip, mask));
+  const portId = id.split('.')[0] as string;
+  if (!id.startsWith('vlan')) e.setPortAdmin(r, portId, true);
+}
+
+export function router(e: Engine, name = 'R1'): string {
+  return e.addDevice('router', { name });
+}

@@ -44,7 +44,7 @@ function createDynamic(
   ip: Ipv4Pdu,
   out: Iface,
   now: number,
-): NatEntry | undefined {
+): NatEntry | 'blocked' | undefined {
   const nat = l3.nat;
   const k = l4Of(ip);
   if (aclEval(l3.acls[rule.acl], ip).action !== 'permit') return undefined;
@@ -57,7 +57,7 @@ function createDynamic(
     if (overload) gip = addrs[0];
     else gip = addrs.find((a) => !nat.table.some((e) => e.insideGlobal.ip === a));
   }
-  if (!gip) return undefined;
+  if (!gip) return 'blocked';
   let gport = k.sport;
   if (overload || used(nat, k.proto, gip, gport)) {
     do gport = nat.nextPort++;
@@ -75,7 +75,12 @@ function createDynamic(
 }
 
 /** Inside → Outside: Quelladresse (und Port) übersetzen. Liefert das (ggf. veränderte) Paket. */
-export function natInside2Outside(l3: L3Cfg, ip: Ipv4Pdu, out: Iface, now: number): { pkt: Ipv4Pdu; entry?: NatEntry } {
+export function natInside2Outside(
+  l3: L3Cfg,
+  ip: Ipv4Pdu,
+  out: Iface,
+  now: number,
+): { pkt: Ipv4Pdu; entry?: NatEntry; blocked?: boolean } {
   const nat = l3.nat;
   natPurge(nat, now);
   if (ip.fragOffset > 0) return { pkt: ip };
@@ -86,7 +91,7 @@ export function natInside2Outside(l3: L3Cfg, ip: Ipv4Pdu, out: Iface, now: numbe
       x.insideLocal.ip === ip.src &&
       x.insideLocal.port === k.sport &&
       x.outside.ip === ip.dst &&
-      x.outside.port === k.dport,
+      (x.proto === 'icmp' || x.outside.port === k.dport),
   );
   if (!e) {
     for (const r of nat.rules) {
@@ -101,7 +106,14 @@ export function natInside2Outside(l3: L3Cfg, ip: Ipv4Pdu, out: Iface, now: numbe
           kind: 'static',
           expiresAt: FOREVER,
         };
-      } else e = createDynamic(l3, r, ip, out, now);
+      } else {
+        const c = createDynamic(l3, r, ip, out, now);
+        if (c === 'blocked') {
+          nat.misses++;
+          return { pkt: ip, blocked: true };
+        }
+        e = c;
+      }
       if (e) break;
     }
     if (!e) {
@@ -127,7 +139,7 @@ export function natOutside2Inside(l3: L3Cfg, ip: Ipv4Pdu, now: number): { pkt: I
       x.insideGlobal.ip === ip.dst &&
       x.insideGlobal.port === k.dport &&
       x.outside.ip === ip.src &&
-      x.outside.port === k.sport,
+      (x.proto === 'icmp' || x.outside.port === k.sport),
   );
   if (!e) {
     for (const r of nat.rules) {
@@ -149,4 +161,16 @@ export function natOutside2Inside(l3: L3Cfg, ip: Ipv4Pdu, now: number): { pkt: I
   nat.hits++;
   const pkt = setPorts({ ...structuredClone(ip), dst: e.insideLocal.ip }, undefined, e.insideLocal.port);
   return { pkt, entry: e };
+}
+
+/** Gibt es eine Rückübersetzung (Tabelle oder Static-Regel) für ein Paket an `ip.dst`? */
+export function natHasInbound(l3: L3Cfg, ip: Ipv4Pdu, now: number): boolean {
+  if (ip.fragOffset > 0) return false;
+  natPurge(l3.nat, now);
+  const k = l4Of(ip);
+  return (
+    l3.nat.table.some(
+      (x) => x.proto === k.proto && x.insideGlobal.ip === ip.dst && x.insideGlobal.port === k.dport && x.outside.ip === ip.src,
+    ) || l3.nat.rules.some((r) => r.kind === 'static' && r.global === ip.dst && (!r.proto || (r.proto === k.proto && (r.gport === undefined || r.gport === k.dport))))
+  );
 }
