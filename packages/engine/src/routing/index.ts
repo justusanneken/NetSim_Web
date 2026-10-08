@@ -5,6 +5,10 @@ import type { Iface } from '../ifaces';
 import type { Base, IpNode } from '../l3';
 import type { L3Cfg } from '../types';
 import { rtOf, setBg, type Rt } from './core';
+import { bgpRecompute, bgpReset, bgpRx, bgpStop, bgpSync, bgpTimer } from './bgp';
+import { eigrpRecompute, eigrpReset, eigrpRx, eigrpStop, eigrpSync, eigrpTimer } from './eigrp';
+import { greRx } from './gre';
+import { hsrpRx, hsrpStop, hsrpSync, hsrpTimer } from './hsrp';
 import { ospfRecompute, ospfRx, ospfStop, ospfSync, ospfTimer } from './ospf';
 import { ripRecompute, ripRx, ripStop, ripSync, ripTimer } from './rip';
 import { newRouting } from './types';
@@ -12,6 +16,9 @@ import { newRouting } from './types';
 export { newRouting } from './types';
 export { newRip } from './rip';
 export { newOspf } from './ospf';
+export { newEigrp } from './eigrp';
+export { newBgp, newBgpNbr } from './bgp';
+export { newHsrp, vmacOf, hsrpVips } from './hsrp';
 
 const RECOMPUTE = 'rt:recompute';
 
@@ -31,6 +38,8 @@ export function recompute(rt: Rt): void {
     let changed = false;
     changed = ripRecompute(rt) || changed;
     changed = ospfRecompute(rt) || changed;
+    changed = eigrpRecompute(rt) || changed;
+    changed = bgpRecompute(rt) || changed;
     if (!changed) break;
   }
   rt.ctx.requestRefresh();
@@ -41,6 +50,9 @@ export function routingSync(ctx: DeviceCtx, dev: L3Dev): void {
   const rt = rtOf(ctx, dev);
   ripSync(rt);
   ospfSync(rt);
+  eigrpSync(rt);
+  hsrpSync(rt);
+  bgpSync(rt);
   requestRecompute(rt);
 }
 
@@ -48,6 +60,9 @@ export function routingStop(ctx: DeviceCtx, dev: L3Dev): void {
   const rt = rtOf(ctx, dev);
   ripStop(rt);
   ospfStop(rt);
+  eigrpStop(rt);
+  hsrpStop(rt);
+  bgpStop(rt);
 }
 
 export function routingTimer(ctx: DeviceCtx, dev: L3Dev, name: string): void {
@@ -58,6 +73,9 @@ export function routingTimer(ctx: DeviceCtx, dev: L3Dev, name: string): void {
   }
   if (ripTimer(rt, name)) return;
   if (ospfTimer(rt, name)) return;
+  if (eigrpTimer(rt, name)) return;
+  if (hsrpTimer(rt, name)) return;
+  if (bgpTimer(rt, name)) return;
 }
 
 export function routingRx(
@@ -70,10 +88,26 @@ export function routingRx(
   const rt = rtFromNode(ctx, node);
   const l4 = ip.payload;
   if (l4.kind === 'udp' && l4.app?.kind === 'rip') ripRx(rt, iface, base, ip, l4.app);
+  else if (l4.kind === 'udp' && l4.app?.kind === 'hsrp') hsrpRx(rt, iface, ip, l4.app);
+  else if (l4.kind === 'gre') greRx(rt, base, ip, l4);
   else if (l4.kind === 'routing' && l4.proto === 'ospf') ospfRx(rt, iface, base, ip, l4.msg);
+  else if (l4.kind === 'routing' && l4.proto === 'eigrp') eigrpRx(rt, iface, base, ip, l4.msg);
+  else if (l4.kind === 'routing' && l4.proto === 'bgp') bgpRx(rt, iface, ip, l4.msg);
 }
 
 /** Setzt den flüchtigen Zustand zurück (Ausschalten/Reload) – Konfiguration bleibt erhalten. */
+function hsrpResetCfg(cfg: L3Cfg): void {
+  for (const ic of Object.values(cfg.ifaces)) {
+    for (const g of Object.values(ic.hsrp ?? {})) {
+      g.state = 'init';
+      g.activeIp = undefined;
+      g.standbyIp = undefined;
+      g.lastActiveHello = 0;
+      g.lastStandbyHello = 0;
+    }
+  }
+}
+
 export function routingResetRuntime(cfg: L3Cfg): void {
   cfg.dynRoutes = [];
   const r = cfg.routing;
@@ -81,6 +115,9 @@ export function routingResetRuntime(cfg: L3Cfg): void {
     r.rip.routes = {};
     r.rip.timersArmed = false;
   }
+  hsrpResetCfg(cfg);
+  if (r.bgp) bgpReset(r.bgp);
+  for (const c of Object.values(r.eigrp)) eigrpReset(c);
   for (const c of Object.values(r.ospf)) {
     c.ifs = {};
     c.lsdb = {};

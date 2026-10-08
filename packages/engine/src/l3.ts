@@ -53,6 +53,8 @@ export interface IpNode {
   ifaces: Iface[];
   /** Aktive HSRP-Adressen (Active-Router): virtuelle IP + virtuelle MAC je Schnittstelle. */
   vips?: { ip: Ipv4Addr; mac: string; ifaceId: string }[];
+  /** Alle konfigurierten virtuellen MACs (HSRP): Frames daran werden als Nicht-Active still verworfen. */
+  silentMacs?: { mac: string; ifaceId: string }[];
   lookup(dst: Ipv4Addr): NextHop | undefined;
   /** Sendet einen fertigen Frame aus der Schnittstelle (Tag/SVI-Besonderheiten inklusive). */
   xmit(ctx: DeviceCtx, iface: Iface, frame: Frame): void;
@@ -293,6 +295,8 @@ export function ifaceFrameRx(
   const { proto, info } = summarizeFrame(frame);
   const base: Base = { from: fromId, port, frame, summary: info, proto };
   const vipMac = node.vips?.some((v) => v.ifaceId === iface.id && v.mac === frame.dst) ?? false;
+  if (!vipMac && node.silentMacs?.some((v) => v.ifaceId === iface.id && v.mac === frame.dst))
+    return;
   if (
     frame.dst !== iface.mac &&
     !vipMac &&

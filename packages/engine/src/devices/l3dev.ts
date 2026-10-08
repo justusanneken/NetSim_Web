@@ -5,6 +5,8 @@ import { diagTimer, startPing, startTrace, type PingOptions } from '../diag';
 import { listIfaces, type Iface } from '../ifaces';
 import { ifaceFrameRx, ipTimer, type IpNode } from '../l3';
 import { buildRib, lookupRib } from '../rib';
+import { greXmit } from '../routing/gre';
+import { hsrpVips } from '../routing/hsrp';
 import { routingTimer } from '../routing';
 import type { Device, Result, RouterConfig, SwitchConfig } from '../types';
 import { switchOriginate, type SwitchDev } from './switch';
@@ -17,10 +19,22 @@ export const ROUTER_TTL = 255;
 /** IP-Sicht auf Router bzw. Switch mit SVIs/Routed Ports. */
 export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
   const cfg = dev.config;
-  const ifaces = listIfaces(dev, cfg);
+  let ifaces = listIfaces(dev, cfg);
+  if (ifaces.some((i) => i.kind === 'tunnel')) {
+    // Tunnel nur „up“, wenn das Ziel über eine andere Schnittstelle erreichbar ist
+    const rib0 = buildRib(
+      cfg,
+      ifaces.filter((i) => i.kind !== 'tunnel'),
+    );
+    ifaces = ifaces.filter((i) => {
+      const dst = i.cfg.tunnel?.destination;
+      return i.kind !== 'tunnel' || (!!dst && lookupRib(rib0, dst) !== undefined);
+    });
+  }
   const rib = buildRib(cfg, ifaces);
+  const { vips, silent } = hsrpVips(ifaces);
   const forwarding = cfg.kind === 'router' || cfg.ipRouting;
-  return {
+  const node: IpNode = {
     dev,
     cfg,
     l3: cfg,
@@ -28,6 +42,8 @@ export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
     arpTtlUs: ROUTER_ARP_TTL_US,
     defaultTtl: ROUTER_TTL,
     ifaces,
+    vips,
+    silentMacs: silent,
     lookup(dst) {
       const e = lookupRib(rib, dst);
       const iface = e?.ifaceId ? ifaces.find((i) => i.id === e.ifaceId) : undefined;
@@ -41,6 +57,11 @@ export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
       return undefined;
     },
     xmit(c: DeviceCtx, iface: Iface, frame: Frame) {
+      if (iface.kind === 'loop') return;
+      if (iface.kind === 'tunnel') {
+        greXmit(c, node, iface, frame);
+        return;
+      }
       if (iface.kind === 'svi') {
         switchOriginate(c, dev as SwitchDev, iface.vlan ?? 1, frame);
       } else if (iface.kind === 'sub') {
@@ -48,6 +69,7 @@ export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
       } else c.send(iface.portId, frame, c.processingUs);
     },
   };
+  return node;
 }
 
 /** Frame an einem Router-Port: Schnittstelle (physisch/Subinterface) bestimmen. */

@@ -72,13 +72,13 @@ export function ifaceBwKbps(rt: Rt, i: Iface): number {
   return (p?.operSpeed ?? 100) * 1000;
 }
 
-/** EIGRP-Delay in Einheiten von 10 µs. */
+/** EIGRP-Delay in Einheiten von 10 µs (FastEthernet 100 µs = 10, GigabitEthernet 10 µs = 1). */
 export function ifaceDelay(rt: Rt, i: Iface): number {
   if (i.cfg.delay !== undefined) return i.cfg.delay;
-  if (i.kind === 'loop') return 5000;
-  if (i.kind === 'tunnel') return 50000;
+  if (i.kind === 'loop') return 500;
+  if (i.kind === 'tunnel') return 5000;
   const bw = ifaceBwKbps(rt, i);
-  return bw <= 10_000 ? 1000 : bw <= 100_000 ? 100 : 10;
+  return bw <= 10_000 ? 100 : bw <= 100_000 ? 10 : 1;
 }
 
 export const ifaceById = (rt: Rt, id: string): Iface | undefined =>
@@ -89,10 +89,16 @@ export const isBroadcastIface = (i: Iface): boolean => i.kind !== 'loop' && i.ki
 
 // ------------------------------------------------------------------ Senden
 
-export function sendMcast(rt: Rt, iface: Iface, group: Ipv4Addr, payload: IpPayload): void {
+export function sendMcast(
+  rt: Rt,
+  iface: Iface,
+  group: Ipv4Addr,
+  payload: IpPayload,
+  srcMac?: string,
+): void {
   if (iface.kind === 'loop') return;
   const pkt = newIpPacket(rt.node, iface.ip, group, payload, { ttl: 1 });
-  rt.node.xmit(rt.ctx, iface, eth(iface.mac, multicastMacV4(group), pkt));
+  rt.node.xmit(rt.ctx, iface, eth(srcMac ?? iface.mac, multicastMacV4(group), pkt));
 }
 
 /** Unicast an einen direkt angeschlossenen Nachbarn (ARP, TTL 1). */
@@ -159,7 +165,7 @@ export function dbg(rt: Rt, proto: ProtoTag, tag: string, text: () => string): v
 
 // ------------------------------------------------------------------ Routen
 
-export const AD: Record<string, number> = {
+export const AD = {
   connected: 0,
   static: 1,
   ebgp: 20,
@@ -168,7 +174,7 @@ export const AD: Record<string, number> = {
   ospf: 110,
   rip: 120,
   ibgp: 200,
-};
+} as const;
 
 /** Ersetzt alle Routen einer Quelle; liefert `true` bei Änderung. */
 export function installRoutes(rt: Rt, src: string, routes: Omit<DynRoute, 'src'>[]): boolean {

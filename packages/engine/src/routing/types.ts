@@ -160,21 +160,26 @@ export interface OspfCfg {
 
 // ---------------------------------------------------------------- EIGRP
 
+export interface EigrpQueued {
+  op: 'update' | 'query' | 'reply';
+  seq: number;
+  routes: EigrpRoute[];
+  init?: boolean;
+  tries: number;
+}
+
 export interface EigrpNbr {
   ip: string;
   ifaceId: string;
   routerId: string;
   holdSec: number;
   lastHeard: number;
-  /** Nächste zu sendende / zuletzt bestätigte Sequenznummer. */
+  /** Zuletzt vergebene Sequenznummer (ausgehend). */
   seqOut: number;
-  ackedUp: number;
   /** Zuletzt empfangene Sequenznummer des Nachbarn. */
   seqIn: number;
-  /** Unbestätigtes Paket zur Neuübertragung. */
-  pending?: { op: 'update' | 'query' | 'reply'; seq: number; routes: EigrpRoute[]; tries: number };
-  /** Update-Tabelle wurde schon gesendet. */
-  synced: boolean;
+  /** Zuverlässige Übertragung: Kopf der Warteschlange ist unbestätigt unterwegs. */
+  queue: EigrpQueued[];
   uptime: number;
 }
 
@@ -182,10 +187,10 @@ export interface EigrpPath {
   /** Nachbar-IP oder `local` (direkt angeschlossen/redistribuiert). */
   via: string;
   ifaceId: string;
-  /** Reported Distance des Nachbarn, Feasible Distance (RD + Link). */
+  /** Reported Distance des Nachbarn und eigene Distanz über ihn. */
   rd: number;
   dist: number;
-  /** Komponenten für Weitergabe. */
+  /** Komponenten (Delay in 10 µs, Bandbreite kbit/s) bis zum Ziel inkl. eigener Schnittstelle. */
   delay: number;
   bandwidth: number;
   hops: number;
@@ -196,11 +201,15 @@ export interface EigrpTopo {
   prefix: string;
   plen: number;
   paths: EigrpPath[];
-  /** Feasible Distance des Successors (Referenz für die Feasibility Condition). */
+  /** Feasible Distance (Distanz des gewählten Successors). */
   fd: number;
+  /** Gewählter Successor (`via`). */
+  succ?: string;
   active: boolean;
   /** Aktiv: Nachbarn, von denen noch eine Reply aussteht. */
   waiting: string[];
+  /** Nachbar, dem nach Abschluss der aktiven Phase geantwortet werden muss. */
+  origin?: string;
   /** Zuletzt an Nachbarn angekündigter Zustand. */
   advertised?: { delay: number; bandwidth: number; hops: number; unreachable: boolean };
 }
@@ -219,6 +228,10 @@ export interface EigrpCfg {
   rid?: string;
   neighbors: Record<string, EigrpNbr>;
   topology: Record<string, EigrpTopo>;
+  /** Zu verbreitende Präfixe (gebündelte Updates). */
+  advQueue: string[];
+  /** Schnittstellen, auf denen der Hello-Timer läuft. */
+  helloIfs: string[];
 }
 
 // ---------------------------------------------------------------- BGP
@@ -258,8 +271,8 @@ export interface BgpNbrCfg {
   established?: number;
   /** Anzahl empfangener Präfixe. */
   prefixesRx: number;
-  /** Zuletzt an den Nachbarn gesendete Präfixe (zum Berechnen von Withdraws). */
-  advertised: Record<string, boolean>;
+  /** Zuletzt an den Nachbarn gesendete Präfixe (Präfix → Attribut-Schlüssel) für Withdraws/Änderungen. */
+  advertised: Record<string, string>;
   /** Adj-RIB-In: Präfix → Pfad. */
   ribIn: Record<string, BgpPath>;
 }
@@ -273,7 +286,8 @@ export interface BgpCfg {
   /** Laufzeit: Loc-RIB (Präfix-Schlüssel → bester Pfad). */
   locRib: Record<string, BgpPath>;
   rid?: string;
-  synchronization: false;
+  defaultLocalPref: number;
+  timersArmed?: boolean;
 }
 
 // ---------------------------------------------------------------- HSRP

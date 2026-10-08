@@ -13,4 +13,13 @@ export { aclEval } from './acl';
 export { newSys, newSwitchPort } from './defaults';
 export { bridgeId } from './devices/stp';
 export * from './routing/types';
-export { newRouting, newRip, newOspf } from './routing';
+export {
+  newRouting,
+  newRip,
+  newOspf,
+  newEigrp,
+  newHsrp,
+  vmacOf,
+  newBgp,
+  newBgpNbr,
+} from './routing';
