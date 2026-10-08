@@ -319,6 +319,7 @@
   "eigrp.nbr.up": "EIGRP {{asn}}: Nachbar {{ip}} ({{iface}}) ist aktiv.",
   "eigrp.nbr.down": "EIGRP: Nachbar {{ip}} ({{iface}}) verloren – {{reason}}.",
   "eigrp.active": "EIGRP DUAL: {{prefix}} wird aktiv (kein Feasible Successor) – Query gesendet.",
+  "eigrp.sia": "EIGRP DUAL: {{prefix}} ist 3 Minuten aktiv (Stuck-in-Active) – Nachbarn {{nbrs}} werden zurückgesetzt.",
   "eigrp.rx": "EIGRP {{op}} von {{src}} (AS {{asn}}).",
   "gre.noRoute": "GRE: keine Route zum Tunnelziel {{dst}}.",
   "gre.noTunnel": "GRE-Paket von {{src}} ohne passende Tunnelschnittstelle verworfen.",

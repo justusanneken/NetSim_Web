@@ -118,6 +118,7 @@ export function routingResetRuntime(cfg: L3Cfg): void {
   const r = cfg.routing;
   if (r.rip) {
     r.rip.routes = {};
+    r.rip.held = {};
     r.rip.timersArmed = false;
   }
   hsrpResetCfg(cfg);

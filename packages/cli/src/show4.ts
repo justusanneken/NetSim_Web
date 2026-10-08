@@ -62,7 +62,7 @@ export function showIpProtocols(e: Engine, d: D): string[] {
     out.push(
       `  Automatic network summarization is ${c.autoSummary ? 'in effect' : 'not in effect'}`,
     );
-    out.push('  Maximum path: 4', '  Routing for Networks:');
+    out.push(`  Maximum path: ${c.maxPaths ?? 4}`, '  Routing for Networks:');
     for (const n of c.networks) out.push(`    ${n}`);
     out.push('  Routing Information Sources:', '    Gateway         Distance      Last Update');
     const gws = new Map<string, number>();
@@ -87,7 +87,7 @@ export function showIpProtocols(e: Engine, d: D): string[] {
     );
     for (const n of Object.values(c.neighbors)) out.push(`    ${n.ip}`);
     out.push(
-      '  Maximum path: 1',
+      `  Maximum path: ${c.maxPaths ?? 1}`,
       '  Routing Information Sources:',
       '    Gateway         Distance      Last Update',
     );
@@ -107,11 +107,12 @@ function ospfProto(e: Engine, d: D, c: OspfCfg, now: number): string[] {
   out.push('  Incoming update filter list for all interfaces is not set');
   out.push(`  Router ID ${c.rid ?? c.routerId ?? '0.0.0.0'}`);
   const areas = [...new Set(Object.values(c.ifs).map((i) => i.area))];
+  const kinds = areas.map((a) => c.areas?.[a]?.type ?? 'normal');
   out.push(
-    `  Number of areas in this router is ${areas.length}. ${areas.length} normal 0 stub 0 nssa`,
+    `  Number of areas in this router is ${areas.length}. ${kinds.filter((k) => k === 'normal').length} normal ${kinds.filter((k) => k === 'stub').length} stub ${kinds.filter((k) => k === 'nssa').length} nssa`,
   );
   if (c.redistribute.length) out.push(`  It is an autonomous system boundary router`);
-  out.push('  Maximum path: 4', '  Routing for Networks:');
+  out.push(`  Maximum path: ${c.maxPaths ?? 4}`, '  Routing for Networks:');
   for (const n of c.networks) out.push(`    ${n.prefix} ${n.wildcard} area ${n.area}`);
   out.push('  Routing Information Sources:', '    Gateway         Distance      Last Update');
   const seen = new Set<string>();
@@ -142,7 +143,11 @@ function eigrpProto(e: Engine, d: D, c: EigrpCfg, now: number): string[] {
   out.push(
     `    Automatic network summarization is ${c.autoSummary ? 'in effect' : 'not in effect'}`,
   );
-  out.push('    Maximum path: 4', '    Routing for Networks:');
+  out.push(
+    `    Maximum path: ${c.maxPaths ?? 4}`,
+    `    Maximum metric variance ${c.variance}`,
+    '    Routing for Networks:',
+  );
   for (const n of c.networks)
     out.push(`      ${n.prefix}${isClassfulWc(n.prefix, n.wildcard) ? '' : ' ' + n.wildcard}`);
   out.push('    Routing Information Sources:', '      Gateway         Distance      Last Update');

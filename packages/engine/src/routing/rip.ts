@@ -160,8 +160,17 @@ export function ripRecompute(rt: Rt): boolean {
   for (const [k, r] of Object.entries(c.routes)) {
     if (r.origin === 'rip') continue;
     if (!want.has(k)) {
-      delete c.routes[k];
-      changed = true;
+      if (r.metric < INF) {
+        // lokales Ziel ist weggefallen: als unerreichbar (Poison) ankündigen, danach löschen
+        r.metric = INF;
+        r.changed = true;
+        r.flushAt = rt.ctx.now + (c.timers.flush - c.timers.invalid) * SEC;
+        scheduleTrigger(rt);
+        changed = true;
+      } else if (r.flushAt !== undefined && rt.ctx.now >= r.flushAt) {
+        delete c.routes[k];
+        changed = true;
+      }
     }
   }
   for (const [k, r] of want) {
@@ -175,6 +184,16 @@ export function ripRecompute(rt: Rt): boolean {
   const inst = installRip(rt);
   if (changed) scheduleTrigger(rt);
   return changed || inst;
+}
+
+/** Holddown: Updates mit gleicher oder schlechterer Metrik werden bis zum Ablauf ignoriert. */
+function startHolddown(rt: Rt, c: RipCfg, key: string, oldMetric: number, via?: string): void {
+  if (c.timers.holddown <= 0) return;
+  (c.held ??= {})[key] = {
+    until: rt.ctx.now + c.timers.holddown * SEC,
+    metric: oldMetric,
+    via,
+  };
 }
 
 const networkOfIp = (ip: string, plen: number): string => {
@@ -286,7 +305,13 @@ function ripAge(rt: Rt, c: RipCfg): void {
   const now = rt.ctx.now;
   let changed = false;
   for (const [k, r] of Object.entries(c.routes)) {
-    if (r.origin !== 'rip') continue;
+    if (r.origin !== 'rip') {
+      if (r.metric >= INF && r.flushAt !== undefined && now >= r.flushAt) {
+        delete c.routes[k];
+        changed = true;
+      }
+      continue;
+    }
     if (r.alts?.some((a) => now - a.updatedAt > c.timers.invalid * SEC)) {
       r.alts = r.alts.filter((a) => now - a.updatedAt <= c.timers.invalid * SEC);
       changed = true;
@@ -308,6 +333,7 @@ function ripAge(rt: Rt, c: RipCfg): void {
       r.updatedAt !== undefined &&
       now - r.updatedAt > c.timers.invalid * SEC
     ) {
+      startHolddown(rt, c, k, r.metric, r.nextHop);
       r.metric = INF;
       r.changed = true;
       r.flushAt = now + (c.timers.flush - c.timers.invalid) * SEC;
@@ -395,6 +421,13 @@ export function ripRx(rt: Rt, iface: Iface, base: Base, ip: Ipv4Pdu, pdu: RipPdu
     const nh = e.nextHop === '0.0.0.0' ? ip.src : e.nextHop;
     const cur = c.routes[key];
     if (cur && cur.origin !== 'rip') continue; // lokale Route hat Vorrang
+    const hold = c.held?.[key];
+    if (hold) {
+      // Ausnahme: der ursprüngliche Nachbar meldet das Ziel mit unveränderter Metrik wieder
+      const recovered = nh === hold.via && metric <= hold.metric;
+      if (now >= hold.until || metric < hold.metric || recovered) delete c.held?.[key];
+      else continue; // Holddown: keine Änderung zulassen
+    }
     if (!cur) {
       if (metric >= INF) continue;
       c.routes[key] = {
@@ -413,6 +446,7 @@ export function ripRx(rt: Rt, iface: Iface, base: Base, ip: Ipv4Pdu, pdu: RipPdu
     }
     if (cur.nextHop === nh && cur.ifaceId === iface.id) {
       if (metric !== cur.metric) {
+        if (metric >= INF && cur.metric < INF) startHolddown(rt, c, key, cur.metric, cur.nextHop);
         cur.metric = metric;
         cur.alts = undefined;
         cur.changed = true;

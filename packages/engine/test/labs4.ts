@@ -1,4 +1,4 @@
-import { type Engine, type DynRoute } from '../src';
+import { Engine, type DynRoute } from '../src';
 
 export const must = (r: { ok: boolean; error?: string }): void => {
   if (!r.ok) throw new Error(r.error);
@@ -56,3 +56,28 @@ export const fmtRoute = (r: DynRoute): string =>
 export const sec = (e: Engine, s: number): void => {
   e.runUntil(e.state.now + s * 1_000_000);
 };
+
+/** R1 – (R2 | R3) – R4: zwei gleichwertige Pfade; LANs 10.1.0.0/24 (R1) und 10.4.0.0/24 (R4). */
+export function diamond() {
+  const e = new Engine({ seed: 1 });
+  const [r1, r2, r3, r4] = ['R1', 'R2', 'R3', 'R4'].map((n) =>
+    e.addDevice('router', { name: n }),
+  ) as [string, string, string, string];
+  rlink(e, r1, 'p0', r2, 'p0');
+  rlink(e, r1, 'p1', r3, 'p0');
+  rlink(e, r2, 'p1', r4, 'p0');
+  rlink(e, r3, 'p1', r4, 'p1');
+  rip4(e, r1, 'p0', '10.0.12.1');
+  rip4(e, r2, 'p0', '10.0.12.2');
+  rip4(e, r1, 'p1', '10.0.13.1');
+  rip4(e, r3, 'p0', '10.0.13.3');
+  rip4(e, r2, 'p1', '10.0.24.2');
+  rip4(e, r4, 'p0', '10.0.24.4');
+  rip4(e, r3, 'p1', '10.0.34.3');
+  rip4(e, r4, 'p1', '10.0.34.4');
+  rip4(e, r1, 'p2', '10.1.0.1');
+  rip4(e, r4, 'p2', '10.4.0.1');
+  const pc1 = pcOn(e, r1, 'p2', '10.1.0.10', '10.1.0.1', 'PC1');
+  const pc4 = pcOn(e, r4, 'p2', '10.4.0.10', '10.4.0.1', 'PC4');
+  return { e, r: [r1, r2, r3, r4] as const, pc1, pc4 };
+}

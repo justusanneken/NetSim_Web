@@ -70,6 +70,8 @@ export interface RipCfg {
   /** Laufzeit. */
   routes: Record<string, RipRoute>;
   timersArmed?: boolean;
+  /** Laufzeit: Holddown je Präfix (Ende, Metrik vor dem Ausfall). */
+  held?: Record<string, { until: number; metric: number; via?: string }>;
   version: 2;
 }
 
@@ -258,6 +260,8 @@ export interface EigrpTopo {
   /** Gewählter Successor (`via`). */
   succ?: string;
   active: boolean;
+  /** Zeitpunkt (µs), seit dem das Ziel aktiv ist (Stuck-in-Active). */
+  activeSince?: number;
   /** Aktiv: Nachbarn, von denen noch eine Reply aussteht. */
   waiting: string[];
   /** Nachbar, dem nach Abschluss der aktiven Phase geantwortet werden muss. */

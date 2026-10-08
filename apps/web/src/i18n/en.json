@@ -319,6 +319,7 @@
   "eigrp.nbr.up": "EIGRP {{asn}}: neighbor {{ip}} ({{iface}}) is up.",
   "eigrp.nbr.down": "EIGRP: neighbor {{ip}} ({{iface}}) is down – {{reason}}.",
   "eigrp.active": "EIGRP DUAL: {{prefix}} goes active (no feasible successor) – query sent.",
+  "eigrp.sia": "EIGRP DUAL: {{prefix}} stuck in active for 3 minutes – resetting neighbors {{nbrs}}.",
   "eigrp.rx": "EIGRP {{op}} from {{src}} (AS {{asn}}).",
   "gre.noRoute": "GRE: no route to tunnel destination {{dst}}.",
   "gre.noTunnel": "GRE packet from {{src}} dropped (no matching tunnel interface).",

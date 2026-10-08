@@ -35,6 +35,8 @@ const HELLO = 5;
 const HOLD = 15;
 const RTO = 2 * SEC;
 const MAX_TRIES = 16;
+/** Stuck-in-Active-Timer (3 Minuten). */
+export const SIA_SEC = 180;
 
 export const newEigrp = (asn: number): EigrpCfg => ({
   asn,
@@ -334,6 +336,8 @@ function goActive(rt: Rt, c: EigrpCfg, k: string, t: EigrpTopo): void {
   }
   t.active = true;
   t.waiting = targets;
+  t.activeSince = rt.ctx.now;
+  setBg(rt, `rt:eigrp:sia:${c.asn}:${k}`, SIA_SEC * SEC);
   const q: EigrpRoute = {
     prefix: t.prefix,
     plen: t.plen,
@@ -349,7 +353,9 @@ function goActive(rt: Rt, c: EigrpCfg, k: string, t: EigrpTopo): void {
 }
 
 function finishActive(rt: Rt, c: EigrpCfg, k: string, t: EigrpTopo): void {
+  cancelBg(rt, `rt:eigrp:sia:${c.asn}:${k}`);
   t.active = false;
+  t.activeSince = undefined;
   t.waiting = [];
   const origin = t.origin;
   t.origin = undefined;
@@ -719,6 +725,24 @@ export function eigrpTimer(rt: Rt, name: string): boolean {
         proto: 'eigrp',
         msg: msgBase(rt, c, 'hello'),
       });
+    return true;
+  }
+  if (kind === 'sia') {
+    // rest = Präfix (`a.b.c.d/len`)
+    const t = c.topology[rest as string];
+    if (t?.active) {
+      rlog(rt, 'EIGRP', {
+        key: 'eigrp.sia',
+        params: { prefix: rest as string, nbrs: t.waiting.join(', ') },
+      });
+      // Nachbarn, die nicht geantwortet haben, werden zurückgesetzt (IOS: „stuck in active“)
+      for (const ip of [...t.waiting]) {
+        const n = c.neighbors[ip];
+        if (n) killNbr(rt, c, n, 'stuck in active');
+      }
+      const again = c.topology[rest as string];
+      if (again?.active) finishActive(rt, c, rest as string, again);
+    }
     return true;
   }
   if (kind === 'hold') {
