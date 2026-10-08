@@ -299,6 +299,11 @@ export function buildRegistry(): Registry<CliSession> {
     run: (s) => {
       const { enableSecret, enablePassword } = s.sys;
       if (!enableSecret && enablePassword === undefined) {
+        // IOS: ohne Enable-Passwort ist der privilegierte Modus nur an der Console erreichbar
+        if (s.remote) {
+          s.out('% No password set');
+          return;
+        }
         s.mode = 'priv';
         return;
       }
@@ -404,6 +409,18 @@ export function buildRegistry(): Registry<CliSession> {
       s.monitor = !s.negated;
     },
     negatable: true,
+  });
+  // IOS-Schreibweise der Negation: `terminal no monitor`
+  r.add({
+    modes: U,
+    slots: [
+      K('terminal', 'Set terminal line parameters'),
+      K('no', 'Negate a command or set its defaults'),
+      K('monitor', 'Copy debug output to the current terminal line'),
+    ],
+    run: (s) => {
+      s.monitor = false;
+    },
   });
 
   // --- show
