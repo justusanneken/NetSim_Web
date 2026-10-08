@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { DeviceView } from '@netsim/engine';
 import { api } from '../engine/client';
 import { useStore } from '../store';
+import { groupRoutes } from './routeGroups';
 
 /** Dynamisches Routing (lesend), Loopbacks und IPv6 für Router und L3-Switches. */
 export function RoutingPanel({ dev }: { dev: DeviceView }) {
@@ -11,6 +12,7 @@ export function RoutingPanel({ dev }: { dev: DeviceView }) {
   const none =
     !info ||
     (!info.rip &&
+      (info.ripng?.length ?? 0) === 0 &&
       info.ospf.length === 0 &&
       info.eigrp.length === 0 &&
       !info.bgp &&
@@ -23,10 +25,27 @@ export function RoutingPanel({ dev }: { dev: DeviceView }) {
       ) : (
         <ul className="routing-list" aria-label={t('panel.routing')}>
           {info?.rip && <li>RIPv2</li>}
+          {info?.ripng?.map((n) => (
+            <li key={`rng${n}`}>RIPng {n}</li>
+          ))}
           {info?.ospf.map((o) => (
             <li key={`o${o.v6}${o.pid}`}>
               {o.v6 ? 'OSPFv3' : 'OSPF'} {o.pid}
               {o.rid ? ` (${o.rid})` : ''} – {t('routing.neighbors')}: {o.neighbors.length}
+              {o.maxPaths !== undefined ? ` – ${t('routing.maxPaths')}: ${o.maxPaths}` : ''}
+              {o.areas?.map((a) => (
+                <div key={`a${a.id}`} className="small" data-testid="ospf-area">
+                  {t('routing.area')} {a.id}: {t(`routing.areaType.${a.type}`)}
+                  {a.noSummary ? ` (${t('routing.noSummary')})` : ''}
+                  {a.auth ? ` – ${t('routing.auth')} ${a.auth}` : ''} ({a.interfaces})
+                </div>
+              ))}
+              {o.vlinks?.map((l) => (
+                <div key={`v${l.area}${l.rid}`} className="mono small">
+                  {t('routing.vlink')} {l.rid} ({t('routing.area')} {l.area}):{' '}
+                  {l.up ? t('routing.up') : t('routing.down')}
+                </div>
+              ))}
               {o.neighbors.map((n) => (
                 <div key={`${n.rid}${n.iface}`} className="mono small">
                   {n.rid} {n.iface} {n.state}
@@ -50,13 +69,18 @@ export function RoutingPanel({ dev }: { dev: DeviceView }) {
               {info.bgp.neighbors.map((n) => (
                 <div key={n.ip} className="mono small">
                   {n.ip} AS{n.asn} {n.state} ({n.prefixes})
+                  {n.rrClient ? ` ${t('routing.rrClient')}` : ''}
+                  {n.policy ? ` ${t('routing.policy')}` : ''}
                 </div>
               ))}
             </li>
           )}
           {info?.hsrp.map((h) => (
             <li key={`h${h.iface}${h.group}`}>
-              {t('routing.hsrp')} {h.iface} #{h.group}: {h.state} {h.vip ?? ''} (prio {h.priority})
+              {t('routing.hsrp')} {h.iface} #{h.group}: {h.state} {h.vip ?? ''} (prio {h.priority},
+              v{h.version ?? 1}
+              {h.v6 ? ', IPv6' : ''}
+              {h.auth ? `, ${t('routing.auth')}` : ''})
             </li>
           ))}
         </ul>
@@ -182,14 +206,18 @@ function Ipv6Router({ dev }: { dev: DeviceView }) {
       {dev.routes6 && dev.routes6.length > 0 ? (
         <table className="grid">
           <tbody>
-            {dev.routes6.map((r, i) => (
+            {groupRoutes(dev.routes6).map((g, i) => (
               <tr key={i}>
-                <td>{r.type}</td>
+                <td>{g[0]?.type}</td>
                 <td className="mono">
-                  {r.prefix}/{r.plen}
+                  {g[0]?.prefix}/{g[0]?.plen}
                 </td>
                 <td className="mono">
-                  {r.nextHop ?? dev.ifaceList?.find((x) => x.id === r.ifaceId)?.name}
+                  {g.map((r, j) => (
+                    <div key={j}>
+                      {r.nextHop ?? dev.ifaceList?.find((x) => x.id === r.ifaceId)?.name}
+                    </div>
+                  ))}
                 </td>
               </tr>
             ))}
@@ -295,6 +323,35 @@ export function HostIpv6({ dev }: { dev: DeviceView }) {
       {v.slaac.map((a) => (
         <p key={a.addr} className="mono small">
           SLAAC: {a.addr}/{a.plen}
+        </p>
+      ))}
+      <label className="inline-check">
+        <input
+          type="checkbox"
+          checked={v.dhcp6}
+          onChange={(e) => void api.setHostIpv6(dev.id, { dhcp6: e.target.checked })}
+        />
+        {t('ipv6.dhcp6')}
+      </label>
+      {v.dhcpAddrs.map((a) => (
+        <p key={a.addr} className="mono small">
+          DHCPv6: {a.addr}/{a.plen}
+        </p>
+      ))}
+      {v.dns6.length > 0 && (
+        <p className="mono small">
+          DNS (IPv6): {v.dns6.join(', ')}
+          {v.domain6 ? ` – ${v.domain6}` : ''}
+        </p>
+      )}
+      {v.tentative.map((a) => (
+        <p key={`t${a}`} className="mono small">
+          {a}: {t('ipv6.tentative')}
+        </p>
+      ))}
+      {v.duplicate.map((a) => (
+        <p key={`d${a}`} className="mono small error" role="alert">
+          {a}: {t('ipv6.duplicate')}
         </p>
       ))}
       {v.raGateway && <p className="mono small">RA: {v.raGateway}</p>}

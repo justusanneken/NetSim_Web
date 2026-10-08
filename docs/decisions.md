@@ -69,3 +69,15 @@ festgelegt. Jede Entscheidung ist umkehrbar und wird bei Bedarf in der jeweilige
 22. **Zentrale Neuberechnung** (`rt:recompute`, 1 ms): SPF, Redistribution, BGP-Bestpath laufen gebündelt bis zum Fixpunkt (max. 5 Durchläufe).
 23. **`debug`-Meldungen** sind Log-Einträge mit `debug`-Feld, nur bei aktivem Schalter erzeugt; die CLI-Sitzung holt sie per `poll()`, der Worker pusht sie per Polling an xterm. Periodische Routing-Protokolle sind im Ereignisfilter standardmäßig aus.
 24. **IPv6 als paralleler Stack** (`l3v6.ts`) neben IPv4; Router/Host-Knoten tragen optional `v6`. Protokolle (OSPFv3) nutzen Pseudo-Schnittstellen mit Link-Local-Adresse.
+25. **ECMP:** `DynRoute`/`RibEntry` dürfen je Präfix mehrere gleichwertige Einträge haben; `lookupRibPaths` liefert alle Pfade mit gleichem Präfix/AD und gleicher Metrik (oder gesetztem `share`),
+    `pickPath` wählt je Fluss per FNV-Hash über Quelle/Ziel (deterministisch, gewichtet bei `share`). `IpNode.lookup(dst, src?)` bekommt dafür die Quelladresse.
+    `Engine.routingTable` liefert nur installierte Routen (`installedRoutes`: niedrigste AD je Präfix).
+26. **Policies zentral:** Prefix-Lists, Community-Listen und Route-Maps liegen im `RoutingCfg` (`routing/routemap.ts`); BGP wendet Eingangs-Policy erst beim Neuberechnen auf die unveränderte Adj-RIB-In an,
+    Redistribution ruft `evalRouteMap` in `redistSource(6)` auf. `distribute-list` filtert beim Installieren/Ankündigen und stößt bei Konfigurationsänderung eine Neuberechnung an.
+27. **OSPF-Bereichstypen:** Hello-Pakete tragen den Bereichstyp (Stub/NSSA-Mismatch verwirft Hellos); Typ-5-LSAs werden nicht in Stub/NSSA geflutet, Typ 7 nur im Bereich; die Übersetzung (7→5)
+    macht der ABR mit der höchsten Router-ID im NSSA-Bereich und setzt dafür das ASBR-Bit. Ein Fehler im Flooding (Typ 5 wurde in gemischten LSUs nicht in andere Bereiche weitergegeben) wurde dabei behoben.
+28. **Virtual Links** sind Pseudo-Schnittstellen `vl-<RID>` (Area 0, Point-to-Point) mit Unicast-Verkehr durch die Transit-Area; Next Hops zum Peer stammen aus dem SPF der Transit-Area (Backbone wird zuletzt berechnet).
+29. **HSRP-Modell:** Gruppen sind `Slot`s (Schnittstelle + Gruppe + Familie); IPv6-Gruppen liegen in `IfaceCfg.hsrp6`, die Version in `IfaceCfg.hsrpVersion`. Die virtuelle IPv6-Adresse wird über `Node6.vips`
+    lokal zugestellt und per NA mit der virtuellen MAC beantwortet.
+30. **DAD:** Adressen sind `tentative` (nicht in `Iface6.addrs`), bis der 1-s-Timer ohne Konflikt abläuft; der Zustand liegt in `IpCore.dad`. Router stoßen DAD in `routingSync`, Hosts in `hostV6` und bei RA an.
+31. **Uhr:** `SysConfig.clock` speichert Basiszeit + virtuellen Zeitpunkt des Setzens; Anzeige und `debug`-Stempel rechnen daraus (`packages/cli/src/clock.ts`).

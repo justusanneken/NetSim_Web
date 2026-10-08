@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { groupRoutes } from './routeGroups';
 import { useTranslation } from 'react-i18next';
 import type { DeviceView } from '@netsim/engine';
 import { api } from '../engine/client';
@@ -338,18 +339,22 @@ function RouterConfig({ dev }: { dev: DeviceView }) {
       {dev.routes && dev.routes.length > 0 ? (
         <table className="grid">
           <tbody>
-            {dev.routes.map((r, i) => (
+            {groupRoutes(dev.routes).map((g, i) => (
               <tr key={i}>
                 <td>
-                  {r.type}
-                  {r.sub ? ` ${r.sub}` : ''}
+                  {g[0]?.type}
+                  {g[0]?.sub ? ` ${g[0].sub}` : ''}
                 </td>
                 <td className="mono">
-                  {r.prefix}/{r.plen}
+                  {g[0]?.prefix}/{g[0]?.plen}
                 </td>
                 <td className="mono">
-                  {r.type === 'S' ? `[${r.ad}/${r.metric}] ` : ''}
-                  {r.nextHop ?? dev.ifaceList?.find((i) => i.id === r.ifaceId)?.name}
+                  {g.map((r, j) => (
+                    <div key={j} data-testid="route-path">
+                      {r.type === 'S' ? `[${r.ad}/${r.metric}] ` : ''}
+                      {r.nextHop ?? dev.ifaceList?.find((x) => x.id === r.ifaceId)?.name}
+                    </div>
+                  ))}
                 </td>
               </tr>
             ))}
