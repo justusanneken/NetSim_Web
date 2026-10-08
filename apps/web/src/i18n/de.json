@@ -326,6 +326,7 @@
   "gre.rx": "GRE-Paket von {{src}} ausgepackt (Tunnel {{tunnel}}).",
   "hsrp.state": "HSRP {{iface}} Gruppe {{group}}: {{from}} → {{to}}.",
   "hsrp.rx": "HSRP-Hello von {{src}} (Gruppe {{group}}, {{state}}, Priorität {{prio}}).",
+  "hsrp.authFail": "HSRP-Hello von {{src}} (Gruppe {{group}}, {{iface}}) verworfen: Authentifizierung fehlgeschlagen.",
   "ospf.if.up": "OSPF: Schnittstelle {{iface}} in Area {{area}} aktiv (Router-ID {{rid}}).",
   "ospf.nbr": "OSPF: Nachbar {{rid}} ({{ip}}) an {{iface}}: {{from}} → {{to}}.",
   "ospf.nbr.down": "OSPF: Nachbar {{rid}} an {{iface}} verloren – {{reason}}.",

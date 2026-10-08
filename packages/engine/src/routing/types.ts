@@ -364,6 +364,12 @@ export interface HsrpCfg {
   holdSec: number;
   track: { ifaceId: string; decrement: number }[];
   name?: string;
+  /** `standby G authentication KEY` (Klartext, Default `cisco`). */
+  authKey?: string;
+  /** IPv6-Gruppe (`standby G ipv6 …`): `vip` ist die IPv6-Adresse. */
+  v6?: boolean;
+  /** `standby G ipv6 autoconfig`: virtuelle Link-Local aus der virtuellen MAC. */
+  autoconfig?: boolean;
   // ---- Laufzeit
   state: HsrpState;
   activeIp?: string;

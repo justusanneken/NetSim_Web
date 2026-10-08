@@ -108,15 +108,27 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
     if (o.deadSec !== undefined) out.push(` ip ospf dead-interval ${o.deadSec}`);
     if (o.network) out.push(` ip ospf network ${o.network}`);
   }
-  for (const g of Object.values(c.hsrp ?? {})) {
-    if (g.vip) out.push(` standby ${g.group} ip ${g.vip}`);
-    if (g.priority !== 100) out.push(` standby ${g.group} priority ${g.priority}`);
-    if (g.preempt) out.push(` standby ${g.group} preempt`);
+  if (c.hsrpVersion === 2) out.push(' standby version 2');
+  const hsrpIds = [
+    ...new Set([...Object.keys(c.hsrp ?? {}), ...Object.keys(c.hsrp6 ?? {})].map(Number)),
+  ].sort((a, b) => a - b);
+  for (const id of hsrpIds) {
+    const g4 = c.hsrp?.[id];
+    const g6 = c.hsrp6?.[id];
+    const g = (g4 ?? g6) as NonNullable<typeof g4>;
+    if (g4?.vip) out.push(` standby ${id} ip ${g4.vip}`);
+    if (g6)
+      out.push(
+        ` standby ${id} ipv6 ${g6.autoconfig ? 'autoconfig' : (g6.vip ?? '').toUpperCase()}`,
+      );
+    if (g.authKey !== undefined) out.push(` standby ${id} authentication ${g.authKey}`);
+    if (g.priority !== 100) out.push(` standby ${id} priority ${g.priority}`);
+    if (g.preempt) out.push(` standby ${id} preempt`);
     if (g.helloSec !== 3 || g.holdSec !== 10)
-      out.push(` standby ${g.group} timers ${g.helloSec} ${g.holdSec}`);
+      out.push(` standby ${id} timers ${g.helloSec} ${g.holdSec}`);
     for (const t of g.track)
-      out.push(` standby ${g.group} track ${trackName(t.ifaceId)} ${t.decrement}`);
-    if (g.name) out.push(` standby ${g.group} name ${g.name}`);
+      out.push(` standby ${id} track ${trackName(t.ifaceId)} ${t.decrement}`);
+    if (g.name) out.push(` standby ${id} name ${g.name}`);
   }
   const v6 = c.v6;
   if (v6) {

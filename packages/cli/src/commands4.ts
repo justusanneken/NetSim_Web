@@ -1085,6 +1085,14 @@ export function addPhase4(r: Registry<CliSession>): void {
       s.engine.ensureIface(s.deviceId, id);
       const ic = l3(s).ifaces[id];
       if (!ic) continue;
+      if (group > 255 && (ic.hsrpVersion ?? 1) !== 2)
+        throw new CliError(
+          '% Group number out of range for HSRP version 1 (use standby version 2)',
+        );
+      // Einstellungen gelten für die IPv4- und die IPv6-Gruppe gleicher Nummer
+      const v6g = ic.hsrp6?.[group];
+      if (v6g) f(v6g);
+      if (v6g && !ic.hsrp?.[group]) continue;
       ic.hsrp ??= {};
       const g = (ic.hsrp[group] ??= newHsrp(group));
       f(g);
@@ -1093,7 +1101,7 @@ export function addPhase4(r: Registry<CliSession>): void {
   };
   const STBY = [
     K('standby', 'HSRP interface configuration commands'),
-    P('g', 'int', '<0-255>', 'group number', [0, 255]),
+    P('g', 'int', '<0-4095>', 'group number', [0, 4095]),
   ];
   r.add({
     modes: IF,

@@ -27,6 +27,7 @@ import { ifaceUp, isVirtualIface } from './ifaces';
 import type { Base } from './l3';
 import { lookupRibAll, pickPath, type RibEntry } from './rib';
 import { routingRx6 } from './routing';
+import { hsrpVips6 } from './routing/hsrp';
 import type {
   Device,
   HostConfig,
@@ -68,6 +69,10 @@ export interface Node6 {
   hopLimit: number;
   rib: RibEntry[];
   lookup(dst: Ipv6Addr, src?: Ipv6Addr): NextHop6 | undefined;
+  /** Aktive HSRP-IPv6-Adressen (ND beantworten, lokal zustellen) mit virtueller MAC. */
+  vips?: { ip: Ipv6Addr; mac: Mac; ifaceId: string }[];
+  /** Alle konfigurierten HSRP-IPv6-MACs: Frames daran werden als Nicht-Active still verworfen. */
+  silentMacs?: { mac: Mac; ifaceId: string }[];
 }
 
 export type SendResult6 = { ok: true } | { ok: false; reason: 'noRoute' | 'tooBig' };
@@ -211,11 +216,14 @@ export const lookupRibPaths6 = (rib: RibEntry[], dst: Ipv6Addr): RibEntry[] =>
 export function routerNode6(ifaces: Iface6[], cfg: L3Cfg): Node6 {
   const rib = buildRib6(cfg, ifaces);
   const forwarding = cfg.ipv6Routing;
+  const { vips, silent } = hsrpVips6(ifaces);
   return {
     ifaces,
     forwarding,
     hopLimit: 255,
     rib,
+    vips,
+    silentMacs: silent,
     lookup(dst, src) {
       if (isLinkLocalIpv6(dst) || isMulticastIpv6(dst)) {
         const i = ifaces[0];
@@ -300,7 +308,10 @@ const eqAddr = (a: Ipv6Addr, b: Ipv6Addr): boolean =>
   (normalizeIpv6(a) ?? a) === (normalizeIpv6(b) ?? b);
 
 export function isLocal6(node: Node6, ip: Ipv6Addr): boolean {
-  return node.ifaces.some((i) => eqAddr(i.ll, ip) || i.addrs.some((a) => eqAddr(a.addr, ip)));
+  return (
+    node.ifaces.some((i) => eqAddr(i.ll, ip) || i.addrs.some((a) => eqAddr(a.addr, ip))) ||
+    (node.vips?.some((v) => eqAddr(v.ip, ip)) ?? false)
+  );
 }
 
 /** Absenderadresse passend zum Ziel: Link-Local für Link-Local-/Multicast-Ziele, sonst erste globale Adresse. */
@@ -414,7 +425,10 @@ export function ip6FrameRx(
   if (pkt.kind !== 'ipv6') return;
   const { proto, info } = summarizeFrame(frame);
   const base: Base = { from: fromId, port, frame, summary: info, proto };
-  if (frame.dst !== iface.mac && !isMulticastMacAddr(frame.dst)) {
+  const vipMac = n.v6.vips?.some((v) => v.ifaceId === iface.id && v.mac === frame.dst) ?? false;
+  if (!vipMac && n.v6.silentMacs?.some((v) => v.ifaceId === iface.id && v.mac === frame.dst))
+    return; // Standby-Router: Frames an die virtuelle MAC still verwerfen
+  if (frame.dst !== iface.mac && !vipMac && !isMulticastMacAddr(frame.dst)) {
     ctx.log({
       ...base,
       kind: 'drop',
@@ -448,8 +462,13 @@ function isLocalMulticast6(n: Ip6Host, iface: Iface6, dst: Ipv6Addr): boolean {
   if (d === ALL_NODES_V6) return true;
   if (d === ALL_ROUTERS_V6) return n.v6.forwarding;
   if (d === 'ff02::5' || d === 'ff02::6') return n.v6.forwarding;
+  if (d === 'ff02::66') return Object.keys(iface.cfg.hsrp6 ?? {}).length > 0;
   const sn = (a: Ipv6Addr): boolean => (normalizeIpv6(solicitedNode(a)) ?? '') === d;
-  return sn(iface.ll) || iface.addrs.some((a) => sn(a.addr));
+  return (
+    sn(iface.ll) ||
+    iface.addrs.some((a) => sn(a.addr)) ||
+    (n.v6.vips?.some((v) => v.ifaceId === iface.id && sn(v.ip)) ?? false)
+  );
 }
 
 function learn6(ctx: DeviceCtx, n: Ip6Host, ip: Ipv6Addr, mac: Mac): void {
@@ -476,7 +495,7 @@ function deliverLocal6(
   frame: Frame,
 ): void {
   const p = pkt.payload;
-  if (p.kind === 'routing' || p.kind === 'gre') {
+  if (p.kind === 'routing' || p.kind === 'gre' || (p.kind === 'udp' && p.app?.kind === 'hsrp')) {
     routingRx6(ctx, n, iface, base, pkt);
     return;
   }
@@ -546,7 +565,8 @@ function rxNs(
 ): void {
   const target = p.target;
   if (!target || pkt.hopLimit !== 255) return;
-  const mine = eqAddr(iface.ll, target) || iface.addrs.some((a) => eqAddr(a.addr, target));
+  const vip = n.v6.vips?.find((v) => v.ifaceId === iface.id && eqAddr(v.ip, target));
+  const mine = eqAddr(iface.ll, target) || iface.addrs.some((a) => eqAddr(a.addr, target)) || !!vip;
   if (!mine) {
     ctx.log({
       ...base,
@@ -571,12 +591,12 @@ function rxNs(
     pkt.src,
     icmp6('na', {
       target,
-      lladdr: iface.mac,
+      lladdr: vip?.mac ?? iface.mac,
       naFlags: { router: n.v6.forwarding, solicited: true, override: true },
     }),
     255,
   );
-  n.xmit(ctx, iface, eth6(iface.mac, p.lladdr ?? frame.src, na));
+  n.xmit(ctx, iface, eth6(vip?.mac ?? iface.mac, p.lladdr ?? frame.src, na));
 }
 
 function rxNa(
@@ -672,6 +692,28 @@ export function sendRa(ctx: DeviceCtx, n: Ip6Host, iface: Iface6): void {
     255,
   );
   n.xmit(ctx, iface, eth6(iface.mac, multicastMacV6(ALL_NODES_V6), pkt));
+}
+
+/** Unaufgeforderte Neighbor Advertisement (z. B. HSRP-IPv6: neue virtuelle MAC im Segment bekanntmachen). */
+export function sendUnsolicitedNa(
+  ctx: DeviceCtx,
+  n: Ip6Host,
+  iface: Iface6,
+  target: Ipv6Addr,
+  mac: Mac,
+): void {
+  const pkt = newIp6(
+    n.v6,
+    iface.ll,
+    ALL_NODES_V6,
+    icmp6('na', {
+      target,
+      lladdr: mac,
+      naFlags: { router: n.v6.forwarding, solicited: false, override: true },
+    }),
+    255,
+  );
+  n.xmit(ctx, iface, eth6(mac, multicastMacV6(ALL_NODES_V6), pkt));
 }
 
 export function sendRs(ctx: DeviceCtx, n: Ip6Host, iface: Iface6): void {

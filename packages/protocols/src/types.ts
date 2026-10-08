@@ -238,7 +238,11 @@ export interface HsrpPdu {
   helloSec: number;
   holdSec: number;
   priority: number;
-  vip: Ipv4Addr;
+  vip: string;
+  /** 1 (Default) oder 2 (`standby version 2`, Multicast 224.0.0.102 bzw. ff02::66). */
+  version?: 1 | 2;
+  /** Klartext-Authentifizierung (Default `cisco`). */
+  auth?: string;
 }
 
 export interface OspfLsaHeader {

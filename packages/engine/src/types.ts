@@ -454,6 +454,10 @@ export interface IfaceCfg {
   delay?: number;
   ospf?: OspfIfCfg;
   hsrp?: Record<number, HsrpCfg>;
+  /** HSRP für IPv6 (`standby G ipv6 …`, nur Version 2). */
+  hsrp6?: Record<number, HsrpCfg>;
+  /** `standby version 2` (gilt für alle Gruppen der Schnittstelle). */
+  hsrpVersion?: 1 | 2;
   tunnel?: TunnelCfg;
   /** RIP: Split Horizon an dieser Schnittstelle (Default an). */
   ripSplitHorizon?: boolean;

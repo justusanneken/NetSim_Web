@@ -29,6 +29,10 @@ export {
   newEigrp,
   newHsrp,
   vmacOf,
+  vmac6Of,
+  virtualLl6,
+  hsrpVersion,
+  vipOf,
   newBgp,
   newBgpNbr,
 } from './routing';

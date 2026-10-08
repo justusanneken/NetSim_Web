@@ -10,7 +10,7 @@ import { bgpRecompute, bgpReset, bgpRx, bgpStop, bgpSync, bgpTimer } from './bgp
 import { eigrpRecompute, eigrpReset, eigrpRx, eigrpStop, eigrpSync, eigrpTimer } from './eigrp';
 import { syncRa } from '../l3v6';
 import { greRx } from './gre';
-import { hsrpRx, hsrpStop, hsrpSync, hsrpTimer } from './hsrp';
+import { hsrpRx, hsrpRx6, hsrpStop, hsrpSync, hsrpTimer } from './hsrp';
 import { pseudoIface, ospfRecompute, ospfRx, ospfStop, ospfSync, ospfTimer } from './ospf';
 import { ripRecompute, ripRx, ripStop, ripSync, ripTimer } from './rip';
 
@@ -19,7 +19,16 @@ export { newRip } from './rip';
 export { newOspf } from './ospf';
 export { newEigrp } from './eigrp';
 export { newBgp, newBgpNbr } from './bgp';
-export { newHsrp, vmacOf, hsrpVips } from './hsrp';
+export {
+  newHsrp,
+  vmacOf,
+  vmac6Of,
+  virtualLl6,
+  hsrpVips,
+  hsrpVips6,
+  hsrpVersion,
+  vipOf,
+} from './hsrp';
 
 const RECOMPUTE = 'rt:recompute';
 
@@ -100,7 +109,7 @@ export function routingRx(
 /** Setzt den flüchtigen Zustand zurück (Ausschalten/Reload) – Konfiguration bleibt erhalten. */
 function hsrpResetCfg(cfg: L3Cfg): void {
   for (const ic of Object.values(cfg.ifaces)) {
-    for (const g of Object.values(ic.hsrp ?? {})) {
+    for (const g of [...Object.values(ic.hsrp ?? {}), ...Object.values(ic.hsrp6 ?? {})]) {
       g.state = 'init';
       g.activeIp = undefined;
       g.standbyIp = undefined;
@@ -149,4 +158,5 @@ export function routingRx6(
   const l4 = pkt.payload;
   if (l4.kind === 'routing' && l4.proto === 'ospf' && l4.v === 3)
     ospfRx(rt, pseudoIface(iface), base, { src: pkt.src }, l4.msg, true);
+  else if (l4.kind === 'udp' && l4.app?.kind === 'hsrp') hsrpRx6(rt, iface, pkt, l4.app);
 }

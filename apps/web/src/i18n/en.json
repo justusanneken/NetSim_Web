@@ -326,6 +326,7 @@
   "gre.rx": "GRE packet from {{src}} decapsulated (tunnel {{tunnel}}).",
   "hsrp.state": "HSRP {{iface}} group {{group}}: {{from}} → {{to}}.",
   "hsrp.rx": "HSRP hello from {{src}} (group {{group}}, {{state}}, priority {{prio}}).",
+  "hsrp.authFail": "HSRP hello from {{src}} (group {{group}}, {{iface}}) dropped: authentication failed.",
   "ospf.if.up": "OSPF: interface {{iface}} up in area {{area}} (router ID {{rid}}).",
   "ospf.nbr": "OSPF: neighbor {{rid}} ({{ip}}) on {{iface}}: {{from}} → {{to}}.",
   "ospf.nbr.down": "OSPF: neighbor {{rid}} on {{iface}} down – {{reason}}.",

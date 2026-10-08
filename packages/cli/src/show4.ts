@@ -10,7 +10,7 @@ import type {
   OspfIfState,
   OspfNbr,
 } from '@netsim/engine';
-import { listIfaces6, newHsrp, vmacOf } from '@netsim/engine';
+import { listIfaces6, newHsrp, virtualLl6, vmac6Of, vmacOf } from '@netsim/engine';
 import { ciscoMac } from './format';
 import { ifDisplay, ifShort } from './ifnames';
 
@@ -453,24 +453,34 @@ export function showStandby(e: Engine, d: D, brief: boolean): string[] {
     out.push('Interface   Grp  Pri P State   Active          Standby         Virtual IP');
   }
   for (const [id, ic] of Object.entries(cfg.ifaces)) {
-    for (const g of Object.values(ic.hsrp ?? {})) {
+    const ver = ic.hsrpVersion ?? 1;
+    for (const g of [
+      ...Object.values(ic.hsrp ?? {}),
+      ...Object.values(ic.hsrp6 ?? {}).map((x) => ({ ...x, v6: true })),
+    ]) {
       const pri = effective(cfg, g);
+      const vip = g.v6 && g.autoconfig ? virtualLl6(g.group) : g.vip;
+      const mac = ciscoMac(g.v6 ? vmac6Of(g.group) : vmacOf(g.group, ver));
       const active = g.state === 'active' ? 'local' : (g.activeIp ?? 'unknown');
       const standby = g.state === 'standby' ? 'local' : (g.standbyIp ?? 'unknown');
       if (brief) {
         out.push(
-          `${ifShort(d, id).padEnd(12)}${String(g.group).padEnd(5)}${String(pri).padEnd(4)}${g.preempt ? 'P' : ' '} ${cap(g.state).padEnd(8)}${active.padEnd(16)}${standby.padEnd(16)}${g.vip ?? 'unknown'}`,
+          `${ifShort(d, id).padEnd(12)}${String(g.group).padEnd(5)}${String(pri).padEnd(4)}${g.preempt ? 'P' : ' '} ${cap(g.state).padEnd(8)}${active.padEnd(16)}${standby.padEnd(16)}${vip ?? 'unknown'}`,
         );
         continue;
       }
-      out.push(`${ifDisplay(d, id)} - Group ${g.group}`);
+      out.push(`${ifDisplay(d, id)} - Group ${g.group}${g.v6 ? ' (IPv6)' : ''}`);
+      if (ver === 2 || g.v6) out.push('  (HSRP version 2)');
       out.push(
         `  State is ${cap(g.state)}`,
         `    last state change ${clock(e.state.now - g.stateSince)}`,
       );
-      out.push(`  Virtual IP address is ${g.vip ?? 'unknown'}`);
-      out.push(`  Active virtual MAC address is ${ciscoMac(vmacOf(g.group))}`);
-      out.push(`    Local virtual MAC address is ${ciscoMac(vmacOf(g.group))} (v1 default)`);
+      out.push(`  Virtual ${g.v6 ? 'IPv6' : 'IP'} address is ${vip ?? 'unknown'}`);
+      out.push(`  Active virtual MAC address is ${mac}`);
+      out.push(
+        `    Local virtual MAC address is ${mac} (${g.v6 ? 'v2 IPv6 default' : ver === 2 ? 'v2 default' : 'v1 default'})`,
+      );
+      if (g.authKey !== undefined) out.push(`  Authentication text "${g.authKey}"`);
       out.push(`  Hello time ${g.helloSec} sec, hold time ${g.holdSec} sec`);
       out.push(`  Preemption ${g.preempt ? 'enabled' : 'disabled'}`);
       out.push(
