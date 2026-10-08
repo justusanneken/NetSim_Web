@@ -500,10 +500,16 @@ function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn:
     return;
   }
   // 2b) Firewall (Phase 5): Zustandsverfolgung, Security-Levels, ACL der Eingangsschnittstelle
-  if (l3 && (l3 as RouterConfig).fw && !fwPermit(ctx, node, ifaceIn, hop.iface, ip, base)) return;
+  let fwReturn = false;
+  if (l3 && (l3 as RouterConfig).fw) {
+    const v = fwPermit(ctx, node, ifaceIn, hop.iface, ip, base);
+    if (!v) return;
+    // Rückverkehr einer von außen aufgebauten Verbindung wird (außer bei Static NAT) nicht dynamisch übersetzt
+    fwReturn = v === 'ret' && !l3.nat.rules.some((r) => r.kind === 'static' && r.local === ip.src);
+  }
   let out: Ipv4Pdu = { ...structuredClone(ip), ttl: ip.ttl - 1 };
   // 3) NAT inside → outside (nach dem Routing)
-  if (l3 && ifaceIn.cfg.natSide === 'inside' && hop.iface.cfg.natSide === 'outside') {
+  if (l3 && !fwReturn && ifaceIn.cfg.natSide === 'inside' && hop.iface.cfg.natSide === 'outside') {
     const r = natInside2Outside(l3, out, hop.iface, ctx.now);
     if (r.blocked) {
       ctx.log({

@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import de from '../src/i18n/de.json';
-import en from '../src/i18n/en.json';
+import de0 from '../src/i18n/de.json';
+import en0 from '../src/i18n/en.json';
+import de5 from '../src/i18n/de.phase5.json';
+import en5 from '../src/i18n/en.phase5.json';
+
+const de: Record<string, string> = { ...de0, ...de5 };
+const en: Record<string, string> = { ...en0, ...en5 };
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const f of readdirSync(dir)) {

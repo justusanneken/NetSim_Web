@@ -46,7 +46,8 @@ const nameOf = (cfg: RouterConfig, id: string): string => cfg.fw?.ifaces[id]?.na
 /**
  * Zustandsbehaftete Prüfung einer weitergeleiteten IPv4-Verbindung (ASA-Modell, vereinfacht):
  * bestehende Verbindungen (Hin- und Rückrichtung) → erlaubt; neue → ACL der Eingangsschnittstelle
- * (`access-group`), sonst Security-Level (hoch → niedrig erlaubt). Liefert `true` bei Erlaubnis.
+ * (`access-group`), sonst Security-Level (hoch → niedrig erlaubt). Liefert `false` (verworfen), `'ok'` oder
+ * `'ret'` (Rückverkehr einer bestehenden Verbindung).
  */
 export function fwPermit(
   ctx: DeviceCtx,
@@ -55,10 +56,10 @@ export function fwPermit(
   outIface: Iface,
   ip: Ipv4Pdu,
   base: Base,
-): boolean {
+): false | 'ok' | 'ret' {
   const cfg = node.l3 as unknown as RouterConfig;
   const fw = cfg.fw;
-  if (!fw) return true;
+  if (!fw) return 'ok';
   const k = l4Of(ip);
   fw.conns = purge(fw.conns, ctx.now);
   const inCfg = fw.ifaces[inIface.id];
@@ -93,7 +94,7 @@ export function fwPermit(
     const rel = fw.conns.find(
       (c) => (c.src === o.src && c.dst === o.dst) || (c.src === o.dst && c.dst === o.src),
     );
-    return rel ? true : deny('fw.noConn');
+    return rel ? 'ok' : deny('fw.noConn');
   }
 
   const existing = fw.conns.find((c) => sameFlow(c, k, ip) !== undefined);
@@ -110,7 +111,7 @@ export function fwPermit(
         else if (p.flags.fin)
           existing.flags = existing.flags.includes('f') ? existing.flags : existing.flags + 'f';
       }
-      return true;
+      return dir === 'rev' ? 'ret' : 'ok';
     }
   }
 
@@ -154,7 +155,7 @@ export function fwPermit(
       },
     },
   });
-  return true;
+  return 'ok';
 }
 
 // ---------------------------------------------------------------- Objekt-NAT → Router-NAT

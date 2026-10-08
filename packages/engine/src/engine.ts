@@ -46,6 +46,7 @@ import { vtpSend } from './devices/vtp';
 import { heapPop, heapPush, heapRemove } from './heap';
 import { mulberry32 } from './rng';
 import { bridgeRx } from './p5/bridge';
+import { mgmtOf } from './p5defaults';
 import { Phase5 } from './p5/api';
 import type {
   HostConfig,
@@ -1024,9 +1025,12 @@ export class Engine {
     if (!dev || !spec) return;
     if (dev.config.kind !== 'router' && dev.config.kind !== 'switch') return;
     const startup = dev.config.sys.startupConfig;
+    const keyBits = dev.config.sys.mgmt?.ssh.keyBits; // RSA-Schlüssel überstehen `reload` (NVRAM)
     dev.config = spec.makeConfig(dev.name, dev.ports);
-    if (dev.config.kind === 'router' || dev.config.kind === 'switch')
+    if (dev.config.kind === 'router' || dev.config.kind === 'switch') {
       dev.config.sys.startupConfig = startup;
+      if (keyBits !== undefined) mgmtOf(dev.config.sys).ssh.keyBits = keyBits;
+    }
     for (const p of dev.ports) {
       p.adminUp = !spec.portsDefaultDown;
       p.speed = 'auto';

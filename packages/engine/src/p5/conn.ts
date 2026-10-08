@@ -288,14 +288,6 @@ export function tcpRxSvc(
       }
       return true;
     }
-    if (t.flags.rst || t.flags.fin) {
-      c.state = 'failed';
-      c.err = 'conn.closed';
-      c.waiting = false;
-      ctx.cancelTimer(`svc:areq:${key}`);
-      hook?.(ctx, node, c, 'fail');
-      return true;
-    }
     if (c.state === 'open' && app) {
       c.reply = app;
       c.replySeq++;
@@ -304,7 +296,15 @@ export function tcpRxSvc(
       ctx.cancelTimer(`svc:areq:${key}`);
       log('svc.reply', 'ok', { proto: app.proto.toUpperCase(), op: app.op });
       hook?.(ctx, node, c, 'reply');
+      if (t.flags.fin) c.state = 'closed';
       return true;
+    }
+    if (t.flags.rst || t.flags.fin) {
+      c.state = t.flags.rst ? 'failed' : 'closed';
+      c.err = 'conn.closed';
+      c.waiting = false;
+      ctx.cancelTimer(`svc:areq:${key}`);
+      hook?.(ctx, node, c, 'fail');
     }
     return true;
   }

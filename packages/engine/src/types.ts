@@ -443,6 +443,8 @@ export interface HostConfig extends IpCore {
   mail?: HostMailCfg;
   /** Windows-Firewall: blockiert eingehendes Ping. */
   firewallOn?: boolean;
+  /** Phase 5: lokale Dateien des Hosts (FTP-/TFTP-Client, Texteditor). */
+  files?: Record<string, string>;
 }
 
 export interface LineConfig {

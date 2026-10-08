@@ -211,7 +211,7 @@ describe('Telnet / SSH / AAA', () => {
       e.p5.send(pc, key, 'login', { user: '', pass: 'bad' });
       run(e, 2);
     }
-    expect(e.p5.connState(pc, key)?.state).toBe('failed');
+    expect(e.p5.connState(pc, key)?.state).toBe('closed');
   });
 
   it('ohne Passwort/Login: "Password required, but none set"; Transport-Filter', () => {

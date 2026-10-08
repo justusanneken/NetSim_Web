@@ -18,7 +18,16 @@ export interface Shell {
   start(): string;
   /** Asynchrone Ausgabe seit dem letzten Aufruf (z. B. `debug`-Meldungen); leer, wenn nichts anfiel. */
   poll?(): string;
+  /** Sitzung beendet (z. B. `exit` in einer Telnet-/SSH-Sitzung): die Terminal-Schicht fällt auf die darunterliegende Shell zurück. */
+  closed?: boolean;
+  /** Fortsetzung: ersetzt diese Shell (z. B. Anmeldung → Remote-CLI). */
+  next?: Shell;
   readonly history: readonly string[];
   /** Zeilen je Seite für `--More--` (0 = aus). */
   readonly terminalLength: number;
+}
+
+/** Erlaubt Shells, eine untergeordnete Shell zu öffnen (Telnet/SSH/FTP-Sitzung). */
+export interface ShellNest {
+  push(shell: Shell, onClose?: () => string): void;
 }

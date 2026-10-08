@@ -4,8 +4,9 @@ import { ifDisplay, resolveIface } from './ifnames';
 import { ifaceUp } from '@netsim/engine';
 import { tokenize, type Args, type Env, type ModeId, type Registry } from './parser';
 import { isCliDevice } from './render';
-import type { Shell } from './shell';
+import type { Shell, ShellNest } from './shell';
 import { buildRegistry } from './commands';
+import { mgmtOf } from '@netsim/engine';
 
 export class CliError extends Error {}
 
@@ -42,6 +43,7 @@ const MODE_SUFFIX: Record<ModeId, string> = {
   'config-ospf6': '(config-rtr)#',
   'config-eigrp': '(config-router)#',
   'config-bgp': '(config-router)#',
+  'config-obj-net': '(config-network-object)#',
 };
 
 let REGISTRY: Registry<CliSession> | undefined;
@@ -67,6 +69,14 @@ export class CliSession implements Shell {
   /** Konfigurations-Replay: ein Interface-Block ohne `shutdown` bedeutet „aktiv“. */
   replay = false;
   readonly history: string[] = [];
+  /** Phase 5: `terminal monitor` – Debug-Ausgabe auch auf vty-Sitzungen. */
+  monitor = false;
+  /** Phase 5: Telnet-/SSH-Sitzung (vty) statt Console. */
+  remote?: { vty: number; user: string; from: string; proto: 'telnet' | 'ssh' };
+  /** Phase 5: Sitzung beendet (`exit` in einer vty-Sitzung). */
+  closed = false;
+  /** Phase 5: Zugriff auf die Terminal-Schicht für `telnet`/`ssh`. */
+  nest?: ShellNest;
   private pending: Pending | undefined;
   private buf: string[] = [];
   private started = false;
@@ -89,7 +99,8 @@ export class CliSession implements Shell {
     const cfg = this.device.config;
     const flags = cfg.routing.debug;
     const lines: string[] = [];
-    if (flags.length > 0) {
+    // Debug-Ausgabe: Console immer, vty nur mit `terminal monitor`
+    if (flags.length > 0 && (!this.remote || this.monitor)) {
       for (let i = this.debugCursor; i < log.length; i++) {
         const e = log[i];
         if (!e?.debug || e.atDeviceId !== this.deviceId || !flags.includes(e.debug.tag)) continue;
@@ -142,6 +153,14 @@ export class CliSession implements Shell {
     if (this.started) return '';
     this.begin();
     return this.flush();
+  }
+
+  /** Phase 5: Sitzung nach erfolgreicher Anmeldung über Telnet/SSH starten (kein Setup-Dialog, kein Login). */
+  beginRemote(info: NonNullable<CliSession['remote']>): void {
+    this.remote = info;
+    this.started = true;
+    const priv = mgmtOf(this.sys).users[info.user]?.privilege ?? 1;
+    this.mode = priv >= 15 ? 'priv' : 'user';
   }
 
   /** (Neu-)Start der Sitzung: Setup-Dialog bzw. Banner und Login. */
@@ -212,7 +231,13 @@ export class CliSession implements Shell {
     const d = this.device;
     return {
       family:
-        d.config.kind === 'router' ? 'router' : d.type === 'switch-l3' ? 'switch-l3' : 'switch',
+        d.type === 'firewall'
+          ? 'firewall'
+          : d.config.kind === 'router'
+            ? 'router'
+            : d.type === 'switch-l3'
+              ? 'switch-l3'
+              : 'switch',
       iface: (t) => resolveIface(d, t) !== undefined,
     };
   }
@@ -279,9 +304,17 @@ export class CliSession implements Shell {
     const r = registry().parse(mode, line, this.env());
     if (r.ok) {
       this.negated = r.negated;
+      const wasConfig = this.inConfig();
       try {
         r.def.run(this, r.args);
         if (this.inConfig()) this.engine.routingChanged(this.deviceId);
+        if (wasConfig && !this.inConfig())
+          this.engine.p5.syslog(
+            this.deviceId,
+            5,
+            'SYS-5-CONFIG_I',
+            `Configured from ${this.remote ? `vty${this.remote.vty} by ${this.remote.user || 'unknown'}` : 'console by console'}`,
+          );
       } catch (e) {
         if (e instanceof CliError) this.out(e.message);
         else throw e;

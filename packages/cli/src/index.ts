@@ -8,3 +8,7 @@ export { ciscoMac, winMac, shortName, resolvePort } from './format';
 export { HostShell } from './hostshell';
 export { Terminal } from './terminal';
 export { waitFor } from './util';
+export { ShellStack } from './shellstack';
+export type { ShellNest } from './shell';
+export { RemoteLoginShell, deviceByIp } from './remote';
+export { FtpShell } from './ftpshell';
