@@ -23,7 +23,7 @@ export function pduSize(pdu: Pdu): number {
     case 'icmp':
       return ICMP_HEADER + pdu.dataSize;
     case 'ipv4':
-      return IPV4_HEADER + pduSize(pdu.payload);
+      return IPV4_HEADER + (pdu.dataLen ?? pduSize(pdu.payload));
     case 'ethernet':
       return Math.max(ETH_MIN_FRAME, ETH_HEADER + pduSize(pdu.payload) + ETH_FCS);
   }
@@ -44,6 +44,13 @@ export function layersOf(pdu: Pdu): Pdu[] {
       return [pdu];
   }
 }
+
+const ICMP_TYPE_TEXT = {
+  'echo-request': '8 (echo request)',
+  'echo-reply': '0 (echo reply)',
+  'dest-unreachable': '3 (destination unreachable)',
+  'time-exceeded': '11 (time exceeded)',
+} as const;
 
 const hex = (n: number, w = 4): string => '0x' + n.toString(16).padStart(w, '0');
 
@@ -69,6 +76,8 @@ export function describePdu(pdu: Pdu): HeaderField[] {
         { name: 'Total Length', value: String(pduSize(pdu)) },
         { name: 'Identification', value: String(pdu.id) },
         { name: 'DF', value: pdu.df ? '1' : '0' },
+        { name: 'MF', value: pdu.mf ? '1' : '0' },
+        { name: 'Fragment Offset', value: String(pdu.fragOffset) },
         { name: 'TTL', value: String(pdu.ttl) },
         { name: 'Protocol', value: String(pdu.protocol) },
         { name: 'Source', value: pdu.src },
@@ -76,13 +85,17 @@ export function describePdu(pdu: Pdu): HeaderField[] {
       ];
     case 'icmp':
       return [
-        {
-          name: 'Type',
-          value: pdu.type === 'echo-request' ? '8 (echo request)' : '0 (echo reply)',
-        },
+        { name: 'Type', value: ICMP_TYPE_TEXT[pdu.type] },
         { name: 'Code', value: String(pdu.code) },
-        { name: 'Identifier', value: String(pdu.id) },
-        { name: 'Sequence', value: String(pdu.seq) },
+        ...(pdu.orig
+          ? [{ name: 'Original', value: `${pdu.orig.src} → ${pdu.orig.dst}` }]
+          : [
+              { name: 'Identifier', value: String(pdu.id) },
+              { name: 'Sequence', value: String(pdu.seq) },
+            ]),
+        ...(pdu.nextHopMtu !== undefined
+          ? [{ name: 'Next-Hop MTU', value: String(pdu.nextHopMtu) }]
+          : []),
         { name: 'Data', value: `${pdu.dataSize} bytes` },
       ];
   }
@@ -114,5 +127,7 @@ function summarizeArp(p: ArpPdu): string {
 
 function summarizeIp(p: Ipv4Pdu): string {
   const i: IcmpPdu = p.payload;
-  return `${i.type} ${p.src} → ${p.dst} id=${i.id} seq=${i.seq} ttl=${p.ttl}`;
+  const frag = p.mf || p.fragOffset > 0 ? ` frag@${p.fragOffset * 8}${p.mf ? '+' : ''}` : '';
+  const what = i.orig ? `${i.type} code=${i.code}` : `${i.type} id=${i.id} seq=${i.seq}`;
+  return `${what} ${p.src} → ${p.dst} ttl=${p.ttl}${frag}`;
 }

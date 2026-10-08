@@ -50,6 +50,8 @@ const ping: EthernetPdu = {
     protocol: IP_PROTO.icmp,
     id: 7,
     df: false,
+    mf: false,
+    fragOffset: 0,
     payload: { kind: 'icmp', type: 'echo-request', code: 0, id: 1, seq: 1, dataSize: 32 },
   },
 };
@@ -109,6 +111,29 @@ describe('pdu', () => {
     const reply = { ...ip.payload, type: 'echo-reply' as const };
     expect(describePdu(reply)[0]?.value).toContain('reply');
   });
+  it('Fragmente und ICMP-Fehler', () => {
+    const ip = ping.payload as Ipv4Pdu;
+    const frag: Ipv4Pdu = { ...ip, mf: true, fragOffset: 185, dataLen: 1480 };
+    expect(pduSize(frag)).toBe(1500);
+    expect(summarizeFrame({ ...ping, payload: frag }).info).toContain('frag@1480+');
+    const err: Ipv4Pdu = {
+      ...ip,
+      payload: {
+        kind: 'icmp',
+        type: 'dest-unreachable',
+        code: 4,
+        id: 0,
+        seq: 0,
+        dataSize: 28,
+        nextHopMtu: 1400,
+        orig: { src: '10.0.0.1', dst: '10.0.0.2', ipId: 7, protocol: 1, icmpId: 1, icmpSeq: 1 },
+      },
+    };
+    const f = describePdu(err.payload);
+    expect(f.map((x) => x.name)).toEqual(['Type', 'Code', 'Original', 'Next-Hop MTU', 'Data']);
+    expect(summarizeFrame({ ...ping, payload: err }).info).toContain('code=4');
+  });
+
   it('Zusammenfassung', () => {
     expect(summarizeFrame(arpReq)).toEqual({
       proto: 'ARP',

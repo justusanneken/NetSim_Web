@@ -1,6 +1,7 @@
 import {
   isValidIpv4,
   macFromCounter,
+  parseIpv4,
   maskToPrefix,
   pduSize,
   sameSubnet,
@@ -11,12 +12,15 @@ import { CATALOG, PORT_MAX_SPEED } from './catalog';
 import type { DeviceCtx, LogInput } from './ctx';
 import {
   announce,
+  hostPing,
   hostRx,
   hostTimer,
-  resetHostRuntime,
-  startPing,
+  hostTrace,
+  resetIpRuntime,
   type PingOptions,
 } from './devices/host';
+import { routerPing, routerRx, routerTimer, routerTrace } from './devices/router';
+import { buildRib, networkOf, type RibEntry } from './rib';
 import { hubRx } from './devices/hub';
 import { activeMacTable, switchPortDown, switchRx } from './devices/switch';
 import { heapPop, heapPush, heapRemove } from './heap';
@@ -112,10 +116,12 @@ export class Engine {
     for (const dev of Object.values(s.devices)) {
       delete dev.crashed;
       const cfg = dev.config;
-      if (cfg.kind === 'host') {
-        resetHostRuntime(cfg);
+      if (cfg.kind === 'host' || cfg.kind === 'router') {
+        resetIpRuntime(cfg);
         cfg.pings = [];
+        cfg.traces = [];
         cfg.nextPingId = 1;
+        cfg.nextTraceId = 1;
         cfg.nextIpId = 1;
       } else if (cfg.kind === 'switch') cfg.macTable = {};
       else if (cfg.kind === 'hub') cfg.busyUntil = 0;
@@ -150,7 +156,7 @@ export class Engine {
       name: ps.name,
       kind: ps.kind,
       mac: macFromCounter(++s.macCounter),
-      adminUp: true,
+      adminUp: !spec.portsDefaultDown,
       operUp: false,
       speed: 'auto',
       duplex: type === 'hub' ? 'half' : 'auto',
@@ -166,9 +172,9 @@ export class Engine {
       operSpeed: 0,
       operDuplex: 'full',
       txBusyUntil: 0,
+      mtu: 1500,
     }));
-    const config = spec.makeConfig();
-    if (config.kind === 'switch') config.hostname = name;
+    const config = spec.makeConfig(name);
     s.devices[id] = {
       id,
       type,
@@ -196,7 +202,7 @@ export class Engine {
     const dev = this.state.devices[deviceId];
     if (!dev) return;
     dev.name = name;
-    if (dev.config.kind === 'switch') dev.config.hostname = name;
+    if (dev.config.kind === 'switch' || dev.config.kind === 'router') dev.config.sys.hostname = name;
   }
 
   moveDevice(deviceId: string, pos: Point): void {
@@ -300,7 +306,7 @@ export class Engine {
     dev.powered = on;
     if (!on) {
       heapRemove(this.state.queue, (e) => e.deviceId === deviceId);
-      if (dev.config.kind === 'host') resetHostRuntime(dev.config);
+      if (dev.config.kind === 'host' || dev.config.kind === 'router') resetIpRuntime(dev.config);
       if (dev.config.kind === 'switch') dev.config.macTable = {};
       if (dev.config.kind === 'hub') dev.config.busyUntil = 0;
       for (const p of dev.ports) p.txBusyUntil = 0;
@@ -337,7 +343,7 @@ export class Engine {
       cfg.ip = undefined;
       cfg.mask = undefined;
       cfg.gateway = undefined;
-      resetHostRuntime(cfg);
+      resetIpRuntime(cfg);
       return { ok: true, value: true };
     }
     if (!isValidIpv4(ip)) return { ok: false, error: 'ip.invalidIp' };
@@ -349,18 +355,149 @@ export class Engine {
     cfg.ip = ip;
     cfg.mask = mask;
     cfg.gateway = gateway || undefined;
-    resetHostRuntime(cfg);
+    resetIpRuntime(cfg);
     if (dev.powered && !dev.crashed) this.withCtx(dev, (ctx) => announce(ctx, cfg));
     return { ok: true, value: true };
   }
 
+  /** Ping von einem Host oder Router aus (Ergebnisse in `config.pings`). */
   ping(deviceId: string, dst: string, opts?: PingOptions): Result<number> {
     const dev = this.state.devices[deviceId];
-    if (!dev || dev.config.kind !== 'host') return { ok: false, error: 'ip.notAHost' };
+    if (!dev || (dev.config.kind !== 'host' && dev.config.kind !== 'router'))
+      return { ok: false, error: 'ip.notAHost' };
     if (!dev.powered || dev.crashed) return { ok: false, error: 'dev.off' };
     if (!isValidIpv4(dst)) return { ok: false, error: 'ip.invalidIp' };
     const cfg = dev.config;
-    return this.withCtx(dev, (ctx) => startPing(ctx, cfg, dst, opts));
+    return this.withCtx(dev, (ctx) =>
+      cfg.kind === 'host' ? hostPing(ctx, cfg, dst, opts) : routerPing(ctx, cfg, dst, opts),
+    );
+  }
+
+  /** Traceroute (Ergebnis in `config.traces`). */
+  trace(deviceId: string, dst: string, maxHops = 30): Result<number> {
+    const dev = this.state.devices[deviceId];
+    if (!dev || (dev.config.kind !== 'host' && dev.config.kind !== 'router'))
+      return { ok: false, error: 'ip.notAHost' };
+    if (!dev.powered || dev.crashed) return { ok: false, error: 'dev.off' };
+    if (!isValidIpv4(dst)) return { ok: false, error: 'ip.invalidIp' };
+    const cfg = dev.config;
+    return this.withCtx(dev, (ctx) =>
+      cfg.kind === 'host' ? hostTrace(ctx, cfg, dst, maxHops) : routerTrace(ctx, cfg, dst, maxHops),
+    );
+  }
+
+  // ------------------------------------------------------------ Router-Konfiguration
+
+  private router(deviceId: string): Device | undefined {
+    const d = this.state.devices[deviceId];
+    return d?.config.kind === 'router' ? d : undefined;
+  }
+
+  /** IP-Adresse einer Router-Schnittstelle setzen (`ip=''` löscht sie). */
+  setInterfaceIp(deviceId: string, portId: string, ip: string, mask: string): Result<true> {
+    const dev = this.router(deviceId);
+    const port = dev?.ports.find((p) => p.id === portId);
+    if (!dev || !port || dev.config.kind !== 'router') return { ok: false, error: 'ip.notARouter' };
+    const cfg = dev.config;
+    if (ip === '') {
+      delete cfg.ifaces[portId];
+      return { ok: true, value: true };
+    }
+    if (!isValidIpv4(ip)) return { ok: false, error: 'ip.invalidIp' };
+    const plen = maskToPrefix(mask);
+    if (plen === undefined) return { ok: false, error: 'ip.invalidMask' };
+    if (plen < 31 && (parseIpv4(ip) as number) === parseIpv4(networkOf(ip, plen))) {
+      return { ok: false, error: 'ip.networkAddress' };
+    }
+    for (const other of dev.ports) {
+      const o = cfg.ifaces[other.id];
+      if (other.id === portId || !o?.ip || !o.mask) continue;
+      const olen = maskToPrefix(o.mask) as number;
+      const common = Math.min(plen, olen);
+      if (networkOf(ip, common) === networkOf(o.ip, common)) {
+        return {
+          ok: false,
+          error: 'ip.overlap',
+          params: { net: networkOf(ip, plen), port: other.name },
+        };
+      }
+    }
+    cfg.ifaces[portId] = { ip, mask };
+    return { ok: true, value: true };
+  }
+
+  addStaticRoute(
+    deviceId: string,
+    r: { prefix: string; mask: string; nextHop?: string; outPortId?: string; ad?: number },
+  ): Result<true> {
+    const dev = this.router(deviceId);
+    if (!dev || dev.config.kind !== 'router') return { ok: false, error: 'ip.notARouter' };
+    if (!isValidIpv4(r.prefix)) return { ok: false, error: 'ip.invalidIp' };
+    if (maskToPrefix(r.mask) === undefined) return { ok: false, error: 'ip.invalidMask' };
+    if (r.nextHop !== undefined && !isValidIpv4(r.nextHop)) return { ok: false, error: 'ip.invalidGateway' };
+    if (r.nextHop === undefined && r.outPortId === undefined) return { ok: false, error: 'ip.invalidGateway' };
+    const entry = {
+      prefix: networkOf(r.prefix, maskToPrefix(r.mask) as number),
+      mask: r.mask,
+      nextHop: r.nextHop,
+      outPortId: r.outPortId,
+      ad: r.ad ?? 1,
+    };
+    const routes = dev.config.staticRoutes;
+    const same = (x: (typeof routes)[number]) =>
+      x.prefix === entry.prefix && x.mask === entry.mask && x.nextHop === entry.nextHop && x.outPortId === entry.outPortId;
+    if (!routes.some(same)) routes.push(entry);
+    return { ok: true, value: true };
+  }
+
+  removeStaticRoute(
+    deviceId: string,
+    r: { prefix: string; mask: string; nextHop?: string; outPortId?: string },
+  ): Result<true> {
+    const dev = this.router(deviceId);
+    if (!dev || dev.config.kind !== 'router') return { ok: false, error: 'ip.notARouter' };
+    const plen = maskToPrefix(r.mask);
+    if (plen === undefined) return { ok: false, error: 'ip.invalidMask' };
+    const prefix = networkOf(r.prefix, plen);
+    const routes = dev.config.staticRoutes;
+    const i = routes.findIndex(
+      (x) => x.prefix === prefix && x.mask === r.mask && x.nextHop === r.nextHop && x.outPortId === r.outPortId,
+    );
+    if (i >= 0) routes.splice(i, 1);
+    return { ok: true, value: true };
+  }
+
+  setPortMtu(deviceId: string, portId: string, mtu: number): Result<true> {
+    const p = this.getPort({ deviceId, portId });
+    if (!p) return { ok: false, error: 'cable.reject.notFound' };
+    if (!Number.isInteger(mtu) || mtu < 68 || mtu > 9216) return { ok: false, error: 'ip.invalidMtu' };
+    p.mtu = mtu;
+    return { ok: true, value: true };
+  }
+
+  /** Routing-Tabelle eines Routers (C/L/S). */
+  routingTable(deviceId: string): RibEntry[] {
+    const dev = this.router(deviceId);
+    return dev && dev.config.kind === 'router' ? buildRib(dev.config, dev.ports) : [];
+  }
+
+  /** Werkseinstellungen für Router/Switch (Startup-Config bleibt erhalten) – Basis für `reload`. */
+  factoryReset(deviceId: string): void {
+    const dev = this.state.devices[deviceId];
+    const spec = dev ? CATALOG[dev.type] : undefined;
+    if (!dev || !spec) return;
+    if (dev.config.kind !== 'router' && dev.config.kind !== 'switch') return;
+    const startup = dev.config.sys.startupConfig;
+    dev.config = spec.makeConfig(dev.name);
+    if (dev.config.kind === 'router' || dev.config.kind === 'switch') dev.config.sys.startupConfig = startup;
+    for (const p of dev.ports) {
+      p.adminUp = !spec.portsDefaultDown;
+      p.speed = 'auto';
+      p.duplex = 'auto';
+      p.mtu = 1500;
+    }
+    heapRemove(this.state.queue, (e) => e.deviceId === deviceId);
+    this.refreshLinks();
   }
 
   // ------------------------------------------------------------ Link-Status
@@ -454,7 +591,7 @@ export class Engine {
 
   arpTable(deviceId: string): { ip: string; mac: string }[] {
     const dev = this.state.devices[deviceId];
-    if (dev?.config.kind !== 'host') return [];
+    if (dev?.config.kind !== 'host' && dev?.config.kind !== 'router') return [];
     const now = this.state.now;
     return Object.entries(dev.config.arpCache)
       .filter(([, e]) => e.expiresAt > now)
@@ -629,6 +766,9 @@ export class Engine {
         case 'host':
           hostRx(ctx, cfg, p.portId, p.frame, fromId);
           break;
+        case 'router':
+          routerRx(ctx, cfg, p.portId, p.frame, fromId);
+          break;
         case 'switch':
           switchRx(ctx, cfg, p.portId, p.frame, fromId);
           break;
@@ -653,6 +793,7 @@ export class Engine {
     }
     const cfg = dev.config;
     if (cfg.kind === 'host') this.withCtx(dev, (ctx) => hostTimer(ctx, cfg, p.name));
+    else if (cfg.kind === 'router') this.withCtx(dev, (ctx) => routerTimer(ctx, cfg, p.name));
   }
 
   private onCollision(dev: Device, p: CollisionPayload): void {

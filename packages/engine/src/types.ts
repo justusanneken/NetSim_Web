@@ -71,6 +71,8 @@ export interface Port {
   operDuplex: 'half' | 'full';
   /** Virtuelle Zeit (µs), bis zu der der Sender belegt ist. */
   txBusyUntil: number;
+  /** Maximale IP-Paketgröße in Byte. */
+  mtu: number;
 }
 
 export interface PortRef {
@@ -112,6 +114,13 @@ export interface PingResult {
   sentAt: number;
   status: 'pending' | 'reply' | 'timeout' | 'unreachable' | 'failed';
   rttUs?: number;
+  /** Absender der Antwort bzw. der ICMP-Fehlermeldung. */
+  from?: Ipv4Addr;
+  /** i18n-/CLI-Schlüssel der Fehlerursache (z. B. `ping.ttlExpired`). */
+  note?: string;
+  /** TTL der Antwort. */
+  ttl?: number;
+  bytes?: number;
 }
 
 export interface PingSession {
@@ -121,6 +130,33 @@ export interface PingSession {
   sent: number;
   intervalUs: number;
   dataSize: number;
+  df: boolean;
+  /** Quell-IP (erweitertes Ping); sonst Adresse der Ausgangsschnittstelle. */
+  source?: Ipv4Addr;
+  timeoutUs: number;
+}
+
+export interface TraceProbe {
+  status: 'pending' | 'reply' | 'timeout';
+  from?: Ipv4Addr;
+  rttUs?: number;
+  sentAt: number;
+  /** `reached` = Ziel erreicht, `unreachable` = Zielnetz/-host meldet Unreachable. */
+  outcome?: 'hop' | 'reached' | 'unreachable';
+}
+
+export interface TraceHop {
+  ttl: number;
+  probes: TraceProbe[];
+}
+
+export interface TraceSession {
+  id: number;
+  dst: Ipv4Addr;
+  maxHops: number;
+  ttl: number;
+  hops: TraceHop[];
+  done: boolean;
 }
 
 export interface ArpEntry {
@@ -130,20 +166,79 @@ export interface ArpEntry {
 
 export interface ArpPending {
   attempts: number;
+  portId: string;
   queue: Ipv4Pdu[];
 }
 
-export interface HostConfig {
-  kind: 'host';
-  ip?: Ipv4Addr;
-  mask?: string;
-  gateway?: Ipv4Addr;
+export interface ReasmEntry {
+  firstSeen: number;
+  parts: { off: number; len: number }[];
+  total?: number;
+  payload: Ipv4Pdu['payload'];
+}
+
+/** Gemeinsamer Zustand jedes Geräts mit IPv4-Stack (Host und Router). */
+export interface IpCore {
   arpCache: Record<Ipv4Addr, ArpEntry>;
   arpPending: Record<Ipv4Addr, ArpPending>;
+  reasm: Record<string, ReasmEntry>;
   pingSessions: PingSession[];
   pings: PingResult[];
   nextPingId: number;
   nextIpId: number;
+  traces: TraceSession[];
+  nextTraceId: number;
+}
+
+export interface HostConfig extends IpCore {
+  kind: 'host';
+  ip?: Ipv4Addr;
+  mask?: string;
+  gateway?: Ipv4Addr;
+}
+
+export interface LineConfig {
+  password?: string;
+  /** `login` konfiguriert (Passwortabfrage). */
+  login: boolean;
+}
+
+/** Gemeinsame Systemkonfiguration von Router und Switch (CLI-Geräte). */
+export interface SysConfig {
+  hostname: string;
+  enableSecret?: string;
+  enablePassword?: string;
+  servicePasswordEncryption: boolean;
+  bannerMotd?: string;
+  domainName?: string;
+  lineCon: LineConfig;
+  lineVty: LineConfig;
+  /** Port-ID → Beschreibung. */
+  descriptions: Record<string, string>;
+  /** Gespeicherte Startup-Konfiguration (Text). */
+  startupConfig?: string;
+}
+
+export interface RouterIface {
+  ip?: Ipv4Addr;
+  mask?: string;
+}
+
+export interface StaticRoute {
+  prefix: Ipv4Addr;
+  mask: string;
+  nextHop?: Ipv4Addr;
+  /** Alternativ zum Next-Hop: Ausgangsschnittstelle. */
+  outPortId?: string;
+  /** Administrative Distance (Default 1). */
+  ad: number;
+}
+
+export interface RouterConfig extends IpCore {
+  kind: 'router';
+  sys: SysConfig;
+  ifaces: Record<string, RouterIface>;
+  staticRoutes: StaticRoute[];
 }
 
 export interface MacEntry {
@@ -153,7 +248,7 @@ export interface MacEntry {
 
 export interface SwitchConfig {
   kind: 'switch';
-  hostname: string;
+  sys: SysConfig;
   macTable: Record<Mac, MacEntry>;
   /** Aging in Sekunden (Default 300). */
   agingSec: number;
@@ -169,7 +264,12 @@ export interface UnsupportedConfig {
   kind: 'none';
 }
 
-export type DeviceState = HostConfig | SwitchConfig | HubConfig | UnsupportedConfig;
+export type DeviceState =
+  | HostConfig
+  | RouterConfig
+  | SwitchConfig
+  | HubConfig
+  | UnsupportedConfig;
 
 export interface Device {
   id: string;
@@ -294,4 +394,6 @@ export interface EngineSnapshot {
   logLength: number;
 }
 
-export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+export type Result<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: string; params?: Record<string, string | number> };

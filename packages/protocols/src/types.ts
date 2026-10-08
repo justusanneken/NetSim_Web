@@ -17,14 +17,34 @@ export interface ArpPdu {
   targetIp: Ipv4Addr;
 }
 
+export type IcmpType = 'echo-request' | 'echo-reply' | 'dest-unreachable' | 'time-exceeded';
+
+/** ICMP-Codes für `dest-unreachable`. */
+export const ICMP_UNREACH = { net: 0, host: 1, protocol: 2, port: 3, fragNeeded: 4 } as const;
+
+/** Auszug des auslösenden Pakets in ICMP-Fehlermeldungen (RFC 792: IP-Header + 8 Byte). */
+export interface IcmpOriginal {
+  src: Ipv4Addr;
+  dst: Ipv4Addr;
+  ipId: number;
+  protocol: number;
+  /** ID/Seq des ursprünglichen ICMP-Echos (für die Zuordnung beim Absender). */
+  icmpId: number;
+  icmpSeq: number;
+}
+
 export interface IcmpPdu {
   kind: 'icmp';
-  type: 'echo-request' | 'echo-reply';
+  type: IcmpType;
   code: number;
   id: number;
   seq: number;
   /** Nutzdatengröße in Byte (Inhalt wird nicht simuliert). */
   dataSize: number;
+  /** Nur bei Fehlermeldungen. */
+  orig?: IcmpOriginal;
+  /** Nur bei `dest-unreachable`/`fragNeeded`: MTU des nächsten Hops. */
+  nextHopMtu?: number;
 }
 
 export interface Ipv4Pdu {
@@ -35,6 +55,13 @@ export interface Ipv4Pdu {
   protocol: number;
   id: number;
   df: boolean;
+  /** More Fragments. */
+  mf: boolean;
+  /** Fragment-Offset in Einheiten à 8 Byte. */
+  fragOffset: number;
+  /** Länge der IP-Nutzdaten dieses (Fragments); fehlt bei unfragmentierten Paketen. */
+  dataLen?: number;
+  /** Bei Fragmenten trägt jedes Fragment (vereinfachend) die Nutzlast-Referenz mit. */
   payload: IcmpPdu;
 }
 

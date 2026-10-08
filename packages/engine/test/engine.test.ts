@@ -478,9 +478,9 @@ describe('Topologie', () => {
     e.renameDevice('nope', 'x');
     e.moveDevice('nope', { x: 0, y: 0 });
     expect(e.getDevice(sw)).toMatchObject({ name: 'Core', pos: { x: 5, y: 6 } });
-    expect(e.getDevice(sw)?.config).toMatchObject({ hostname: 'Core' });
-    expect(() => e.addDevice('router')).toThrow(/not supported/);
-    expect(Object.keys(CATALOG).sort()).toEqual(['hub', 'pc', 'switch-l2']);
+    expect(e.getDevice(sw)?.config).toMatchObject({ sys: { hostname: 'Core' } });
+    expect(() => e.addDevice('firewall')).toThrow(/not supported/);
+    expect(Object.keys(CATALOG).sort()).toEqual(['hub', 'laptop', 'pc', 'router', 'server', 'switch-l2']);
   });
 });
 
