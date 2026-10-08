@@ -1,4 +1,4 @@
-import { HOST_EPOCH_MS, mgmtOf, newClock } from '../p5defaults';
+import { HOST_EPOCH_MS, IOS_EPOCH_MS, mgmtOf, newClock } from '../p5defaults';
 import type { ClockCfg } from '../p5types';
 import type { Device } from '../types';
 
@@ -12,12 +12,23 @@ export function clockOf(dev: Device): ClockCfg | undefined {
 
 /** Gerätezeit in Epoch-Millisekunden zur virtuellen Zeit `nowUs`. */
 export function deviceTimeMs(dev: Device, nowUs: number): number {
+  const d = dev.config;
+  if (d.kind === 'router' || d.kind === 'switch') {
+    // `clock set` (SysConfig.clock) ist die gemeinsame Zeitbasis von CLI und NTP
+    const k = d.sys.clock;
+    return Math.floor(k ? k.baseMs + (nowUs - k.atUs) / 1000 : IOS_EPOCH_MS + nowUs / 1000);
+  }
   const c = clockOf(dev);
   return (c?.baseMs ?? HOST_EPOCH_MS) + Math.floor(nowUs / 1000);
 }
 
 /** Uhr auf `epochMs` stellen (manuell oder per NTP). */
 export function setDeviceTime(dev: Device, nowUs: number, epochMs: number): void {
+  const d = dev.config;
+  if (d.kind === 'router' || d.kind === 'switch') {
+    d.sys.clock = { baseMs: epochMs, atUs: nowUs };
+    return;
+  }
   const c = clockOf(dev);
   if (c) c.baseMs = epochMs - Math.floor(nowUs / 1000);
 }

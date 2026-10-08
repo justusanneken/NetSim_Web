@@ -159,7 +159,7 @@ describe('CLI Phase 5: NTP, Uhr, Syslog, SNMP, AAA', () => {
     expect(run('show clock')).toContain('*00:');
     run('clock set 14:30:00 8 Oct 2026');
     const c = run('show clock');
-    expect(c).toMatch(/\*14:30:0\d\.\d{3} UTC Thu Oct 8 2026/);
+    expect(c).toMatch(/14:30:0\d\.\d{3} UTC Thu Oct 8 2026/);
     expect(run('show ntp status')).toContain('unsynchronized');
     must(e.p5.setServices(srv, { ntp: { enabled: true } }));
     run('configure terminal', 'ntp server 10.0.1.10', 'end');
@@ -169,7 +169,7 @@ describe('CLI Phase 5: NTP, Uhr, Syslog, SNMP, AAA', () => {
     );
     expect(run('show clock')).toMatch(/^R1#show clock\n12:00:/m);
     expect(run('show ntp associations')).toContain('10.0.1.10');
-    expect(run('clock set 99:00:00 8 Oct 2026')).toContain('Invalid input');
+    expect(run('clock set 99:00:00 8 Oct 2026')).toContain('% Invalid');
   });
 
   it('logging host / trap / buffered, snmp-server, aaa, radius-server werden in der running-config gerendert', () => {

@@ -10,6 +10,7 @@ import {
   classfulNet,
   classfulPlen,
   dbg,
+  distPermits,
   inNet,
   installRoutes,
   pfxKey,
@@ -20,7 +21,7 @@ import {
   setBg,
   type Rt,
 } from './core';
-import { isPassive, type RipCfg, type RipRoute } from './types';
+import { isPassive, maxPathsOf, type RipCfg, type RipRoute } from './types';
 
 export const RIP_GROUP = '224.0.0.9';
 const MAX_ENTRIES = 25;
@@ -34,7 +35,6 @@ export const newRip = (): RipCfg => ({
   autoSummary: true,
   defaultOriginate: false,
   redistribute: [],
-  defaultMetric: 1,
   timers: { update: 30, invalid: 180, holddown: 180, flush: 240 },
   poison: false,
   routes: {},
@@ -111,6 +111,13 @@ export function ripRecompute(rt: Rt): boolean {
   const c = rt.r.rip;
   if (!c) return false;
   let changed = false;
+  // geänderte `distribute-list in`: bereits gelernte, nun gefilterte Routen verwerfen
+  for (const [k, r] of Object.entries(c.routes)) {
+    if (r.origin === 'rip' && !distPermits(rt, c.distributeLists, 'in', r.ifaceId, r)) {
+      delete c.routes[k];
+      changed = true;
+    }
+  }
   const want = new Map<string, RipRoute>();
   const add = (r: RipRoute): void => {
     const k = pfxKey(r.prefix, r.plen);
@@ -132,14 +139,17 @@ export function ripRecompute(rt: Rt): boolean {
   for (const red of c.redistribute) {
     for (const s of redistSource(rt, red, 'rip')) {
       if (s.plen === 0) continue;
+      // IOS: ohne Metrik (weder `metric` noch `default-metric`) ist die Metrik unendlich
+      const m = s.set?.metric ?? red.metric ?? c.defaultMetric;
+      if (m === undefined || m >= INF) continue;
       add({
         prefix: s.prefix,
         plen: s.plen,
-        metric: Math.min(INF - 1, red.metric ?? c.defaultMetric),
+        metric: m,
         ifaceId: s.ifaceId,
         changed: false,
         origin: 'redistributed',
-        tag: red.tag ?? 0,
+        tag: s.set?.tag ?? red.tag ?? 0,
       });
     }
   }
@@ -150,8 +160,17 @@ export function ripRecompute(rt: Rt): boolean {
   for (const [k, r] of Object.entries(c.routes)) {
     if (r.origin === 'rip') continue;
     if (!want.has(k)) {
-      delete c.routes[k];
-      changed = true;
+      if (r.metric < INF) {
+        // lokales Ziel ist weggefallen: als unerreichbar (Poison) ankündigen, danach löschen
+        r.metric = INF;
+        r.changed = true;
+        r.flushAt = rt.ctx.now + (c.timers.flush - c.timers.invalid) * SEC;
+        scheduleTrigger(rt);
+        changed = true;
+      } else if (r.flushAt !== undefined && rt.ctx.now >= r.flushAt) {
+        delete c.routes[k];
+        changed = true;
+      }
     }
   }
   for (const [k, r] of want) {
@@ -167,6 +186,16 @@ export function ripRecompute(rt: Rt): boolean {
   return changed || inst;
 }
 
+/** Holddown: Updates mit gleicher oder schlechterer Metrik werden bis zum Ablauf ignoriert. */
+function startHolddown(rt: Rt, c: RipCfg, key: string, oldMetric: number, via?: string): void {
+  if (c.timers.holddown <= 0) return;
+  (c.held ??= {})[key] = {
+    until: rt.ctx.now + c.timers.holddown * SEC,
+    metric: oldMetric,
+    via,
+  };
+}
+
 const networkOfIp = (ip: string, plen: number): string => {
   const m = (plen === 0 ? 0 : (0xffffffff << (32 - plen)) >>> 0) >>> 0;
   const n = ip.split('.').reduce((a, b) => a * 256 + Number(b), 0) >>> 0;
@@ -179,15 +208,19 @@ function installRip(rt: Rt): boolean {
   if (!c) return installRoutes(rt, 'rip', []);
   const out = Object.values(c.routes)
     .filter((r) => r.origin === 'rip' && r.metric < INF && r.nextHop && r.ifaceId)
-    .map((r) => ({
-      proto: 'R' as const,
-      prefix: r.prefix,
-      plen: r.plen,
-      ad: AD.rip as number,
-      metric: r.metric,
-      nextHop: r.nextHop,
-      ifaceId: r.ifaceId as string,
-    }));
+    .flatMap((r) =>
+      [{ nextHop: r.nextHop as string, ifaceId: r.ifaceId as string }, ...(r.alts ?? [])]
+        .slice(0, maxPathsOf(c))
+        .map((p) => ({
+          proto: 'R' as const,
+          prefix: r.prefix,
+          plen: r.plen,
+          ad: AD.rip as number,
+          metric: r.metric,
+          nextHop: p.nextHop,
+          ifaceId: p.ifaceId,
+        })),
+    );
   return installRoutes(rt, 'rip', out);
 }
 
@@ -199,6 +232,7 @@ function entriesFor(rt: Rt, c: RipCfg, iface: Iface, onlyChanged: boolean): RipE
   const agg = new Map<string, RipEntry>();
   for (const r of Object.values(c.routes)) {
     if (onlyChanged && !r.changed) continue;
+    if (!distPermits(rt, c.distributeLists, 'out', iface.id, r)) continue;
     let metric = r.metric >= INF ? INF : Math.min(INF, r.metric + 1);
     if (r.origin === 'rip' && r.ifaceId === iface.id && split) {
       if (!c.poison) continue;
@@ -271,8 +305,35 @@ function ripAge(rt: Rt, c: RipCfg): void {
   const now = rt.ctx.now;
   let changed = false;
   for (const [k, r] of Object.entries(c.routes)) {
-    if (r.origin !== 'rip') continue;
-    if (r.metric < INF && r.updatedAt !== undefined && now - r.updatedAt > c.timers.invalid * SEC) {
+    if (r.origin !== 'rip') {
+      if (r.metric >= INF && r.flushAt !== undefined && now >= r.flushAt) {
+        delete c.routes[k];
+        changed = true;
+      }
+      continue;
+    }
+    if (r.alts?.some((a) => now - a.updatedAt > c.timers.invalid * SEC)) {
+      r.alts = r.alts.filter((a) => now - a.updatedAt <= c.timers.invalid * SEC);
+      changed = true;
+    }
+    if (
+      r.metric < INF &&
+      r.updatedAt !== undefined &&
+      now - r.updatedAt > c.timers.invalid * SEC &&
+      r.alts?.length
+    ) {
+      const a = r.alts[0] as NonNullable<RipRoute['alts']>[number];
+      r.nextHop = a.nextHop;
+      r.ifaceId = a.ifaceId;
+      r.updatedAt = a.updatedAt;
+      r.alts = r.alts.slice(1);
+      changed = true;
+    } else if (
+      r.metric < INF &&
+      r.updatedAt !== undefined &&
+      now - r.updatedAt > c.timers.invalid * SEC
+    ) {
+      startHolddown(rt, c, k, r.metric, r.nextHop);
       r.metric = INF;
       r.changed = true;
       r.flushAt = now + (c.timers.flush - c.timers.invalid) * SEC;
@@ -295,7 +356,19 @@ function ripIfaceDown(rt: Rt, ifaceId: string): void {
   if (!c) return;
   let changed = false;
   for (const r of Object.values(c.routes)) {
-    if (r.origin === 'rip' && r.ifaceId === ifaceId && r.metric < INF) {
+    if (r.alts?.some((a) => a.ifaceId === ifaceId)) {
+      r.alts = r.alts.filter((a) => a.ifaceId !== ifaceId);
+      changed = true;
+    }
+    if (r.origin === 'rip' && r.ifaceId === ifaceId && r.metric < INF && r.alts?.length) {
+      // gleichwertiger Zusatzpfad übernimmt
+      const a = r.alts[0] as NonNullable<RipRoute['alts']>[number];
+      r.nextHop = a.nextHop;
+      r.ifaceId = a.ifaceId;
+      r.updatedAt = a.updatedAt;
+      r.alts = r.alts.slice(1);
+      changed = true;
+    } else if (r.origin === 'rip' && r.ifaceId === ifaceId && r.metric < INF) {
       r.metric = INF;
       r.changed = true;
       r.flushAt = rt.ctx.now + (c.timers.flush - c.timers.invalid) * SEC;
@@ -342,11 +415,19 @@ export function ripRx(rt: Rt, iface: Iface, base: Base, ip: Ipv4Pdu, pdu: RipPdu
   const now = rt.ctx.now;
   for (const e of pdu.entries) {
     const plen = plenOfMask(e.mask);
+    if (!distPermits(rt, c.distributeLists, 'in', iface.id, { prefix: e.prefix, plen })) continue;
     const key = pfxKey(e.prefix, plen);
     const metric = Math.min(INF, e.metric);
     const nh = e.nextHop === '0.0.0.0' ? ip.src : e.nextHop;
     const cur = c.routes[key];
     if (cur && cur.origin !== 'rip') continue; // lokale Route hat Vorrang
+    const hold = c.held?.[key];
+    if (hold) {
+      // Ausnahme: der ursprüngliche Nachbar meldet das Ziel mit unveränderter Metrik wieder
+      const recovered = nh === hold.via && metric <= hold.metric;
+      if (now >= hold.until || metric < hold.metric || recovered) delete c.held?.[key];
+      else continue; // Holddown: keine Änderung zulassen
+    }
     if (!cur) {
       if (metric >= INF) continue;
       c.routes[key] = {
@@ -365,7 +446,9 @@ export function ripRx(rt: Rt, iface: Iface, base: Base, ip: Ipv4Pdu, pdu: RipPdu
     }
     if (cur.nextHop === nh && cur.ifaceId === iface.id) {
       if (metric !== cur.metric) {
+        if (metric >= INF && cur.metric < INF) startHolddown(rt, c, key, cur.metric, cur.nextHop);
         cur.metric = metric;
+        cur.alts = undefined;
         cur.changed = true;
         cur.flushAt = metric >= INF ? now + (c.timers.flush - c.timers.invalid) * SEC : undefined;
         changed = true;
@@ -380,8 +463,22 @@ export function ripRx(rt: Rt, iface: Iface, base: Base, ip: Ipv4Pdu, pdu: RipPdu
       cur.ifaceId = iface.id;
       cur.updatedAt = now;
       cur.flushAt = undefined;
+      cur.alts = undefined;
       cur.changed = true;
       changed = true;
+    } else {
+      // gleichwertiger bzw. schlechterer Zusatzpfad (ECMP)
+      const alt = cur.alts?.find((a) => a.nextHop === nh && a.ifaceId === iface.id);
+      if (metric === cur.metric && metric < INF) {
+        if (alt) alt.updatedAt = now;
+        else if ((cur.alts?.length ?? 0) + 1 < maxPathsOf(c)) {
+          cur.alts = [...(cur.alts ?? []), { nextHop: nh, ifaceId: iface.id, updatedAt: now }];
+          changed = true;
+        }
+      } else if (alt) {
+        cur.alts = cur.alts?.filter((a) => a !== alt);
+        changed = true;
+      }
     }
   }
   if (changed) {

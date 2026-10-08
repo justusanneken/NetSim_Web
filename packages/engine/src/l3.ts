@@ -58,7 +58,8 @@ export interface IpNode {
   vips?: { ip: Ipv4Addr; mac: string; ifaceId: string }[];
   /** Alle konfigurierten virtuellen MACs (HSRP): Frames daran werden als Nicht-Active still verworfen. */
   silentMacs?: { mac: string; ifaceId: string }[];
-  lookup(dst: Ipv4Addr): NextHop | undefined;
+  /** Next-Hop; `src` dient der Pro-Flow-Lastverteilung (ECMP). */
+  lookup(dst: Ipv4Addr, src?: Ipv4Addr): NextHop | undefined;
   /** IPv6-Sicht (Schnittstellen, Routing); fehlt, solange kein IPv6 konfiguriert ist. */
   v6?: Node6;
   /** Sendet einen fertigen Frame aus der Schnittstelle (Tag/SVI-Besonderheiten inklusive). */
@@ -207,7 +208,7 @@ export function ipSendVia(ctx: DeviceCtx, node: IpNode, hop: NextHop, pkt: Ipv4P
 
 /** Routet ein lokal erzeugtes Paket: Lookup → MTU/Fragmentierung → ARP → Senden. */
 export function ipSend(ctx: DeviceCtx, node: IpNode, pkt: Ipv4Pdu): SendResult {
-  const hop = node.lookup(pkt.dst);
+  const hop = node.lookup(pkt.dst, pkt.src);
   if (!hop) return { ok: false, reason: 'noRoute' };
   return ipSendVia(ctx, node, hop, pkt);
 }
@@ -488,7 +489,7 @@ function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn:
     sendIcmpError(ctx, node, 'time-exceeded', 0, ip, ifaceIn.ip);
     return;
   }
-  const hop = node.lookup(ip.dst);
+  const hop = node.lookup(ip.dst, ip.src);
   if (!hop) {
     ctx.log({
       ...base,

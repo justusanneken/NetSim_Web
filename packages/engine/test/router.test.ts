@@ -165,11 +165,8 @@ describe('Routing-Tabelle', () => {
       ad: 200,
     });
     const rib = e.routingTable(r1).filter((x) => x.type === 'S');
-    expect(rib.map((x) => `${x.prefix}/${x.plen}`)).toEqual([
-      '10.0.2.0/24',
-      '0.0.0.0/0',
-      '10.0.2.0/24',
-    ]);
+    // Floating Static (AD 200) steht nicht in der Routing-Tabelle, solange die bessere Route existiert
+    expect(rib.map((x) => `${x.prefix}/${x.plen}`)).toEqual(['10.0.2.0/24', '0.0.0.0/0']);
     e.ping(pc0, '10.0.2.10');
     e.runAll();
     expect(pings(e, pc0)[0]?.status).toBe('reply');

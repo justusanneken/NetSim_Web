@@ -23,11 +23,14 @@ import {
   type Mac,
 } from '@netsim/protocols';
 import type { DeviceCtx } from './ctx';
-import { failPing } from './diag';
+import { TRACE_BASE, failPing, traceResponse6 } from './diag';
 import { ifaceUp, isVirtualIface } from './ifaces';
 import type { Base } from './l3';
-import type { RibEntry } from './rib';
-import { routingRx6 } from './routing';
+import { lookupRibAll, pickPath, type RibEntry } from './rib';
+import { routingRx6, routingSync } from './routing';
+import type { L3Dev } from './devices/l3dev';
+import { dhcp6ClientRx, dhcp6ClientStart, dhcp6ServerRx, dhcp6Timer } from './svc/dhcp6';
+import { hsrpVips6 } from './routing/hsrp';
 import type {
   Device,
   HostConfig,
@@ -52,8 +55,11 @@ export interface Iface6 {
   vlan?: number;
   mac: Mac;
   ll: Ipv6Addr;
-  /** Globale/ULA-Adressen (inkl. SLAAC und EUI-64). */
+  /** Globale/ULA-Adressen (inkl. SLAAC und EUI-64), nach erfolgreicher DAD. */
   addrs: V6Addr[];
+  /** Adressen in der Duplicate Address Detection (noch nicht nutzbar) bzw. als Duplikat erkannt. */
+  tentative: V6Addr[];
+  dup: V6Addr[];
   mtu: number;
   cfg: IfaceCfg;
 }
@@ -68,7 +74,11 @@ export interface Node6 {
   forwarding: boolean;
   hopLimit: number;
   rib: RibEntry[];
-  lookup(dst: Ipv6Addr): NextHop6 | undefined;
+  lookup(dst: Ipv6Addr, src?: Ipv6Addr): NextHop6 | undefined;
+  /** Aktive HSRP-IPv6-Adressen (ND beantworten, lokal zustellen) mit virtueller MAC. */
+  vips?: { ip: Ipv6Addr; mac: Mac; ifaceId: string }[];
+  /** Alle konfigurierten HSRP-IPv6-MACs: Frames daran werden als Nicht-Active still verworfen. */
+  silentMacs?: { mac: Mac; ifaceId: string }[];
 }
 
 export type SendResult6 = { ok: true } | { ok: false; reason: 'noRoute' | 'tooBig' };
@@ -104,12 +114,74 @@ export function listIfaces6(
       vlan: c.kind === 'sub' || c.kind === 'svi' ? c.vlan : undefined,
       mac,
       ll,
-      addrs: [...v6.addrs.map((a) => effective(a, mac)), ...v6.slaac],
+      ...splitDad(cfg, [...v6.addrs.map((a) => effective(a, mac)), ...v6.slaac]),
       mtu: c.kind === 'tunnel' ? 1476 : (port?.mtu ?? 1500),
       cfg: c,
     });
   }
   return out;
+}
+
+// ------------------------------------------------------------------ Duplicate Address Detection
+
+const dadKey = (a: Ipv6Addr): Ipv6Addr => normalizeIpv6(a) ?? a;
+export const DAD_WAIT_US = 1_000_000;
+
+/** Trennt Adressen nach DAD-Zustand: nutzbar / in Prüfung (auch noch nicht geprüfte) / Duplikat. */
+function splitDad(
+  cfg: IpCore,
+  all: V6Addr[],
+): { addrs: V6Addr[]; tentative: V6Addr[]; dup: V6Addr[] } {
+  const out = { addrs: [] as V6Addr[], tentative: [] as V6Addr[], dup: [] as V6Addr[] };
+  for (const a of all) {
+    const st = cfg.dad?.[dadKey(a.addr)]?.state;
+    if (st === 'ok') out.addrs.push(a);
+    else if (st === 'dup') out.dup.push(a);
+    else out.tentative.push(a);
+  }
+  return out;
+}
+
+/** Startet DAD für neue Adressen (Neighbor Solicitation von `::`) und räumt Einträge entfernter Adressen auf. */
+export function dadScan(ctx: DeviceCtx, n: Ip6Host): void {
+  const dad = (n.cfg.dad ??= {});
+  const live = new Set<string>();
+  for (const iface of n.v6.ifaces) {
+    for (const a of [...iface.addrs, ...iface.tentative, ...iface.dup]) live.add(dadKey(a.addr));
+    for (const a of iface.tentative) {
+      const key = dadKey(a.addr);
+      if (dad[key]) continue;
+      dad[key] = { state: 'tentative', ifaceId: iface.id };
+      sendDadNs(ctx, n, iface, key);
+      ctx.setTimer(`dad:${key}`, DAD_WAIT_US);
+    }
+  }
+  for (const k of Object.keys(dad)) {
+    if (live.has(k)) continue;
+    delete dad[k];
+    ctx.cancelTimer(`dad:${k}`);
+  }
+}
+
+function sendDadNs(ctx: DeviceCtx, n: Ip6Host, iface: Iface6, target: Ipv6Addr): void {
+  const dst = solicitedNode(target);
+  const pkt = newIp6(n.v6, '::', dst, icmp6('ns', { target }), 255);
+  n.xmit(ctx, iface, eth6(iface.mac, multicastMacV6(dst), pkt));
+}
+
+function markDup(ctx: DeviceCtx, n: Ip6Host, iface: Iface6, target: Ipv6Addr): void {
+  const key = dadKey(target);
+  const e = n.cfg.dad?.[key];
+  if (!e || e.state !== 'tentative') return;
+  e.state = 'dup';
+  ctx.cancelTimer(`dad:${key}`);
+  ctx.log({
+    kind: 'error',
+    proto: 'ND',
+    status: 'error',
+    msg: { key: 'nd.dad.dup', params: { addr: key, iface: ctx.deviceIfaceName(iface.id) } },
+  });
+  ctx.requestRefresh();
 }
 
 /** Unterscheidet Link-Local-Adressen virtueller Schnittstellen (SVI, Loopback, Tunnel) derselben Basis-MAC. */
@@ -130,7 +202,7 @@ export function hostIfaces6(dev: Device, cfg: HostConfig): Iface6[] {
       portId: port.id,
       mac: port.mac,
       ll: linkLocalFromMac(port.mac),
-      addrs: [...cfg.v6.addrs, ...cfg.v6.slaac],
+      ...splitDad(cfg, [...cfg.v6.addrs, ...cfg.v6.slaac, ...(cfg.v6.dhcpAddrs ?? [])]),
       mtu: port.mtu,
       cfg: { kind: 'phys', portId: port.id },
     },
@@ -206,20 +278,27 @@ export function lookupRib6(rib: RibEntry[], dst: Ipv6Addr): RibEntry | undefined
   return best;
 }
 
+export const lookupRibPaths6 = (rib: RibEntry[], dst: Ipv6Addr): RibEntry[] =>
+  lookupRibAll(rib, dst, (e, d) => ipv6Network(d, e.plen) === e.prefix);
+
 export function routerNode6(ifaces: Iface6[], cfg: L3Cfg): Node6 {
   const rib = buildRib6(cfg, ifaces);
   const forwarding = cfg.ipv6Routing;
+  const { vips, silent } = hsrpVips6(ifaces);
   return {
     ifaces,
     forwarding,
     hopLimit: 255,
     rib,
-    lookup(dst) {
+    vips,
+    silentMacs: silent,
+    lookup(dst, src) {
       if (isLinkLocalIpv6(dst) || isMulticastIpv6(dst)) {
         const i = ifaces[0];
         return i ? { nextHop: dst, iface: i } : undefined;
       }
-      const e = lookupRib6(rib, dst);
+      const paths = lookupRibPaths6(rib, dst);
+      const e = paths.length ? pickPath(paths, src, dst) : undefined;
       const iface = e?.ifaceId ? ifaces.find((i) => i.id === e.ifaceId) : undefined;
       if (!e || !iface) return undefined;
       return { nextHop: e.type === 'C' || !e.nextHop ? dst : e.nextHop, iface };
@@ -297,7 +376,10 @@ const eqAddr = (a: Ipv6Addr, b: Ipv6Addr): boolean =>
   (normalizeIpv6(a) ?? a) === (normalizeIpv6(b) ?? b);
 
 export function isLocal6(node: Node6, ip: Ipv6Addr): boolean {
-  return node.ifaces.some((i) => eqAddr(i.ll, ip) || i.addrs.some((a) => eqAddr(a.addr, ip)));
+  return (
+    node.ifaces.some((i) => eqAddr(i.ll, ip) || i.addrs.some((a) => eqAddr(a.addr, ip))) ||
+    (node.vips?.some((v) => eqAddr(v.ip, ip)) ?? false)
+  );
 }
 
 /** Absenderadresse passend zum Ziel: Link-Local für Link-Local-/Multicast-Ziele, sonst erste globale Adresse. */
@@ -351,7 +433,7 @@ export function ip6SendVia(ctx: DeviceCtx, n: Ip6Host, hop: NextHop6, pkt: Ipv6P
 }
 
 export function ip6Send(ctx: DeviceCtx, n: Ip6Host, pkt: Ipv6Pdu): SendResult6 {
-  const hop = n.v6.lookup(pkt.dst);
+  const hop = n.v6.lookup(pkt.dst, pkt.src);
   if (!hop) return { ok: false, reason: 'noRoute' };
   return ip6SendVia(ctx, n, hop, pkt);
 }
@@ -409,9 +491,13 @@ export function ip6FrameRx(
 ): void {
   const pkt = frame.payload;
   if (pkt.kind !== 'ipv6') return;
+  dadScan(ctx, n);
   const { proto, info } = summarizeFrame(frame);
   const base: Base = { from: fromId, port, frame, summary: info, proto };
-  if (frame.dst !== iface.mac && !isMulticastMacAddr(frame.dst)) {
+  const vipMac = n.v6.vips?.some((v) => v.ifaceId === iface.id && v.mac === frame.dst) ?? false;
+  if (!vipMac && n.v6.silentMacs?.some((v) => v.ifaceId === iface.id && v.mac === frame.dst))
+    return; // Standby-Router: Frames an die virtuelle MAC still verwerfen
+  if (frame.dst !== iface.mac && !vipMac && !isMulticastMacAddr(frame.dst)) {
     ctx.log({
       ...base,
       kind: 'drop',
@@ -445,8 +531,16 @@ function isLocalMulticast6(n: Ip6Host, iface: Iface6, dst: Ipv6Addr): boolean {
   if (d === ALL_NODES_V6) return true;
   if (d === ALL_ROUTERS_V6) return n.v6.forwarding;
   if (d === 'ff02::5' || d === 'ff02::6') return n.v6.forwarding;
+  if (d === 'ff02::66') return Object.keys(iface.cfg.hsrp6 ?? {}).length > 0;
+  if (d === 'ff02::9') return !!iface.cfg.v6?.ripng;
+  if (d === 'ff02::1:2') return !!iface.cfg.v6?.dhcp6Server;
   const sn = (a: Ipv6Addr): boolean => (normalizeIpv6(solicitedNode(a)) ?? '') === d;
-  return sn(iface.ll) || iface.addrs.some((a) => sn(a.addr));
+  return (
+    sn(iface.ll) ||
+    iface.addrs.some((a) => sn(a.addr)) ||
+    iface.tentative.some((a) => sn(a.addr)) ||
+    (n.v6.vips?.some((v) => v.ifaceId === iface.id && sn(v.ip)) ?? false)
+  );
 }
 
 function learn6(ctx: DeviceCtx, n: Ip6Host, ip: Ipv6Addr, mac: Mac): void {
@@ -473,8 +567,17 @@ function deliverLocal6(
   frame: Frame,
 ): void {
   const p = pkt.payload;
-  if (p.kind === 'routing' || p.kind === 'gre') {
+  if (
+    p.kind === 'routing' ||
+    p.kind === 'gre' ||
+    (p.kind === 'udp' && (p.app?.kind === 'hsrp' || p.app?.kind === 'rip'))
+  ) {
     routingRx6(ctx, n, iface, base, pkt);
+    return;
+  }
+  if (p.kind === 'udp' && p.app?.kind === 'dhcp6') {
+    if (n.host) dhcp6ClientRx(ctx, n, iface, p.app);
+    else dhcp6ServerRx(ctx, n, iface, base, pkt, p.app);
     return;
   }
   if (p.kind !== 'icmp6') {
@@ -543,7 +646,30 @@ function rxNs(
 ): void {
   const target = p.target;
   if (!target || pkt.hopLimit !== 255) return;
-  const mine = eqAddr(iface.ll, target) || iface.addrs.some((a) => eqAddr(a.addr, target));
+  if (pkt.src === '::') {
+    // DAD-Probe eines anderen Knotens
+    if (iface.tentative.some((a) => eqAddr(a.addr, target))) {
+      markDup(ctx, n, iface, target); // beide Seiten prüfen gleichzeitig: beide scheitern
+      return;
+    }
+    if (iface.addrs.some((a) => eqAddr(a.addr, target))) {
+      const na = newIp6(
+        n.v6,
+        target,
+        ALL_NODES_V6,
+        icmp6('na', {
+          target,
+          lladdr: iface.mac,
+          naFlags: { router: n.v6.forwarding, solicited: false, override: true },
+        }),
+        255,
+      );
+      n.xmit(ctx, iface, eth6(iface.mac, multicastMacV6(ALL_NODES_V6), na));
+    }
+    return;
+  }
+  const vip = n.v6.vips?.find((v) => v.ifaceId === iface.id && eqAddr(v.ip, target));
+  const mine = eqAddr(iface.ll, target) || iface.addrs.some((a) => eqAddr(a.addr, target)) || !!vip;
   if (!mine) {
     ctx.log({
       ...base,
@@ -568,12 +694,12 @@ function rxNs(
     pkt.src,
     icmp6('na', {
       target,
-      lladdr: iface.mac,
+      lladdr: vip?.mac ?? iface.mac,
       naFlags: { router: n.v6.forwarding, solicited: true, override: true },
     }),
     255,
   );
-  n.xmit(ctx, iface, eth6(iface.mac, p.lladdr ?? frame.src, na));
+  n.xmit(ctx, iface, eth6(vip?.mac ?? iface.mac, p.lladdr ?? frame.src, na));
 }
 
 function rxNa(
@@ -587,6 +713,11 @@ function rxNa(
   const target = p.target;
   if (!target) return;
   const mac = p.lladdr ?? frame.src;
+  if (n.v6.ifaces.some((i) => i.tentative.some((a) => eqAddr(a.addr, target)))) {
+    const i = n.v6.ifaces.find((x) => x.tentative.some((a) => eqAddr(a.addr, target)));
+    if (i) markDup(ctx, n, i, target);
+    return;
+  }
   learn6(ctx, n, target, mac);
   ctx.log({ ...base, kind: 'rx', status: 'ok', msg: { key: 'nd.na', params: { target, mac } } });
   flushPending(ctx, n, target, mac);
@@ -618,10 +749,12 @@ function rxRa(
   p: Icmp6Pdu,
 ): void {
   const host = n.host;
-  if (!host || !host.v6.autoconfig) return;
+  if (!host || !(host.v6.autoconfig || host.v6.dhcp6)) return;
   if (p.lladdr) learn6(ctx, n, pkt.src, p.lladdr);
   ctx.log({ ...base, kind: 'rx', status: 'ok', msg: { key: 'nd.ra', params: { src: pkt.src } } });
+  if (host.v6.dhcp6) dhcp6ClientStart(ctx, n, !!p.raFlags?.managed, !!p.raFlags?.other);
   for (const pf of p.prefixes ?? []) {
+    if (!host.v6.autoconfig) break;
     if (!pf.autonomous || pf.plen !== 64) continue;
     const addr = slaacAddress(pf.prefix, iface.mac);
     if (!host.v6.slaac.some((a) => a.addr === addr)) {
@@ -634,6 +767,7 @@ function rxRa(
       });
     }
   }
+  ctx.setTimer('dadscan', 1); // neue SLAAC-Adresse: DAD mit frisch aufgebauter Sicht starten
   if ((p.routerLifetime ?? 0) > 0)
     host.v6.raGateway = {
       addr: pkt.src,
@@ -665,10 +799,40 @@ export function sendRa(ctx: DeviceCtx, n: Ip6Host, iface: Iface6): void {
     n.v6,
     iface.ll,
     ALL_NODES_V6,
-    icmp6('ra', { lladdr: iface.mac, prefixes, routerLifetime: 1800 }),
+    icmp6('ra', {
+      lladdr: iface.mac,
+      prefixes,
+      routerLifetime: 1800,
+      raFlags:
+        iface.cfg.v6?.managed || iface.cfg.v6?.otherConfig
+          ? { managed: !!iface.cfg.v6.managed, other: !!iface.cfg.v6.otherConfig }
+          : undefined,
+    }),
     255,
   );
   n.xmit(ctx, iface, eth6(iface.mac, multicastMacV6(ALL_NODES_V6), pkt));
+}
+
+/** Unaufgeforderte Neighbor Advertisement (z. B. HSRP-IPv6: neue virtuelle MAC im Segment bekanntmachen). */
+export function sendUnsolicitedNa(
+  ctx: DeviceCtx,
+  n: Ip6Host,
+  iface: Iface6,
+  target: Ipv6Addr,
+  mac: Mac,
+): void {
+  const pkt = newIp6(
+    n.v6,
+    iface.ll,
+    ALL_NODES_V6,
+    icmp6('na', {
+      target,
+      lladdr: mac,
+      naFlags: { router: n.v6.forwarding, solicited: false, override: true },
+    }),
+    255,
+  );
+  n.xmit(ctx, iface, eth6(mac, multicastMacV6(ALL_NODES_V6), pkt));
 }
 
 export function sendRs(ctx: DeviceCtx, n: Ip6Host, iface: Iface6): void {
@@ -721,7 +885,7 @@ function forward6(ctx: DeviceCtx, n: Ip6Host, ifaceIn: Iface6, base: Base, pkt: 
     sendIcmp6Error(ctx, n, 'time-exceeded', 0, pkt, srcFor6(ifaceIn, pkt.src));
     return;
   }
-  const hop = n.v6.lookup(pkt.dst);
+  const hop = n.v6.lookup(pkt.dst, pkt.src);
   if (!hop) {
     ctx.log({
       ...base,
@@ -823,6 +987,7 @@ export function sendPing6(
 }
 
 function onEchoReply6(ctx: DeviceCtx, n: Ip6Host, pkt: Ipv6Pdu, p: Icmp6Pdu): void {
+  if (p.id >= TRACE_BASE) return traceResponse6(ctx, n.cfg, p.id, p.seq, pkt.src, 'reached');
   const res = n.cfg.pings.find((x) => x.id === p.id && x.seq === p.seq);
   if (!res || res.status !== 'pending') return;
   res.status = 'reply';
@@ -843,6 +1008,15 @@ function onEchoReply6(ctx: DeviceCtx, n: Ip6Host, pkt: Ipv6Pdu, p: Icmp6Pdu): vo
 }
 
 function onIcmp6Error(ctx: DeviceCtx, n: Ip6Host, pkt: Ipv6Pdu, p: Icmp6Pdu): void {
+  if (p.id >= TRACE_BASE)
+    return traceResponse6(
+      ctx,
+      n.cfg,
+      p.id,
+      p.seq,
+      pkt.src,
+      p.type === 'time-exceeded' ? 'hop' : 'unreachable',
+    );
   const res = n.cfg.pings.find((x) => x.id === p.id && x.seq === p.seq);
   if (!res || res.status !== 'pending') return;
   ctx.cancelTimer(`ping-timeout:${res.id}:${res.seq}`);
@@ -858,6 +1032,28 @@ function onIcmp6Error(ctx: DeviceCtx, n: Ip6Host, pkt: Ipv6Pdu, p: Icmp6Pdu): vo
 // ------------------------------------------------------------------ Timer
 
 export function ip6Timer(ctx: DeviceCtx, n: Ip6Host, name: string): boolean {
+  if (dhcp6Timer(ctx, n, name)) return true;
+  if (name === 'dadscan') {
+    dadScan(ctx, n);
+    return true;
+  }
+  if (name.startsWith('dad:')) {
+    const key = name.slice(4);
+    const e = n.cfg.dad?.[key];
+    if (e?.state === 'tentative') {
+      e.state = 'ok';
+      ctx.log({
+        kind: 'info',
+        proto: 'ND',
+        status: 'ok',
+        msg: { key: 'nd.dad.ok', params: { addr: key, iface: ctx.deviceIfaceName(e.ifaceId) } },
+      });
+      // Router: Routing/RA neu bewerten; Host: neue Sicht beim nächsten Ereignis
+      if (n.dev && 'ipv6Routing' in n.cfg) routingSync(ctx, n.dev as L3Dev);
+      ctx.requestRefresh();
+    }
+    return true;
+  }
   if (name.startsWith('nd:')) {
     const ip = name.slice(3);
     const pend = n.cfg.ndPending[ip];

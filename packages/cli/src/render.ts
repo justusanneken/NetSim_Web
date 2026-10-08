@@ -1,8 +1,10 @@
+import { renderPolicyConfig } from './showGaps';
 import { maskToPrefix, parseIpv4 } from '@netsim/protocols';
 import type {
   AclEntry,
   AddrMatch,
   Device,
+  DistList,
   Engine,
   IfaceCfg,
   L3Cfg,
@@ -92,22 +94,41 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
   if (c.ripSplitHorizon === false) out.push(' no ip split-horizon');
   const o = c.ospf;
   if (o) {
-    out.push(` ip ospf ${o.pid} area ${area(o.area)}`);
+    if (o.area !== undefined) out.push(` ip ospf ${o.pid ?? 1} area ${area(o.area)}`);
+    if (o.auth)
+      out.push(
+        ` ip ospf authentication${o.auth === 'md5' ? ' message-digest' : o.auth === 'null' ? ' null' : ''}`,
+      );
+    if (o.authKey !== undefined) out.push(` ip ospf authentication-key ${o.authKey}`);
+    for (const [id, key] of Object.entries(o.md5Keys ?? {}))
+      out.push(` ip ospf message-digest-key ${id} md5 ${key}`);
     if (o.cost !== undefined) out.push(` ip ospf cost ${o.cost}`);
     if (o.priority !== undefined) out.push(` ip ospf priority ${o.priority}`);
     if (o.helloSec !== undefined) out.push(` ip ospf hello-interval ${o.helloSec}`);
     if (o.deadSec !== undefined) out.push(` ip ospf dead-interval ${o.deadSec}`);
     if (o.network) out.push(` ip ospf network ${o.network}`);
   }
-  for (const g of Object.values(c.hsrp ?? {})) {
-    if (g.vip) out.push(` standby ${g.group} ip ${g.vip}`);
-    if (g.priority !== 100) out.push(` standby ${g.group} priority ${g.priority}`);
-    if (g.preempt) out.push(` standby ${g.group} preempt`);
+  if (c.hsrpVersion === 2) out.push(' standby version 2');
+  const hsrpIds = [
+    ...new Set([...Object.keys(c.hsrp ?? {}), ...Object.keys(c.hsrp6 ?? {})].map(Number)),
+  ].sort((a, b) => a - b);
+  for (const id of hsrpIds) {
+    const g4 = c.hsrp?.[id];
+    const g6 = c.hsrp6?.[id];
+    const g = (g4 ?? g6) as NonNullable<typeof g4>;
+    if (g4?.vip) out.push(` standby ${id} ip ${g4.vip}`);
+    if (g6)
+      out.push(
+        ` standby ${id} ipv6 ${g6.autoconfig ? 'autoconfig' : (g6.vip ?? '').toUpperCase()}`,
+      );
+    if (g.authKey !== undefined) out.push(` standby ${id} authentication ${g.authKey}`);
+    if (g.priority !== 100) out.push(` standby ${id} priority ${g.priority}`);
+    if (g.preempt) out.push(` standby ${id} preempt`);
     if (g.helloSec !== 3 || g.holdSec !== 10)
-      out.push(` standby ${g.group} timers ${g.helloSec} ${g.holdSec}`);
+      out.push(` standby ${id} timers ${g.helloSec} ${g.holdSec}`);
     for (const t of g.track)
-      out.push(` standby ${g.group} track ${trackName(t.ifaceId)} ${t.decrement}`);
-    if (g.name) out.push(` standby ${g.group} name ${g.name}`);
+      out.push(` standby ${id} track ${trackName(t.ifaceId)} ${t.decrement}`);
+    if (g.name) out.push(` standby ${id} name ${g.name}`);
   }
   const v6 = c.v6;
   if (v6) {
@@ -116,9 +137,13 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
       out.push(` ipv6 address ${a.addr.toUpperCase()}/${a.plen}${a.eui64 ? ' eui-64' : ''}`);
     if (v6.autoconfig) out.push(' ipv6 address autoconfig');
     if (v6.raSuppress) out.push(' ipv6 nd ra suppress');
+    if (v6.managed) out.push(' ipv6 nd managed-config-flag');
+    if (v6.otherConfig) out.push(' ipv6 nd other-config-flag');
+    if (v6.dhcp6Server) out.push(` ipv6 dhcp server ${v6.dhcp6Server}`);
+    if (v6.ripng) out.push(` ipv6 rip ${v6.ripng} enable`);
     const v = v6.ospf;
     if (v) {
-      out.push(` ipv6 ospf ${v.pid} area ${area(v.area)}`);
+      if (v.area !== undefined) out.push(` ipv6 ospf ${v.pid ?? 1} area ${area(v.area)}`);
       if (v.cost !== undefined) out.push(` ipv6 ospf cost ${v.cost}`);
       if (v.priority !== undefined) out.push(` ipv6 ospf priority ${v.priority}`);
       if (v.helloSec !== undefined) out.push(` ipv6 ospf hello-interval ${v.helloSec}`);
@@ -272,6 +297,16 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
   if (cfg.kind === 'switch' && d.type === 'switch-l3' && cfg.ipRouting) L.push('ip routing', '!');
   if (cfg.ipv6Routing) L.push('ipv6 unicast-routing', '!');
   trackNamer = (id) => ifDisplay(d, id);
+  for (const p of cfg.dhcp6?.pools ?? []) {
+    L.push(`ipv6 dhcp pool ${p.name}`);
+    if (p.prefix)
+      L.push(
+        ` address prefix ${p.prefix.prefix.toUpperCase()}/${p.prefix.plen}${p.leaseSec !== 86400 ? ` lifetime ${p.leaseSec} ${p.leaseSec}` : ''}`,
+      );
+    for (const dns of p.dns) L.push(` dns-server ${dns.toUpperCase()}`);
+    if (p.domain) L.push(` domain-name ${p.domain}`);
+    L.push('!');
+  }
   for (const ex of cfg.dhcp.excluded) {
     L.push(`ip dhcp excluded-address ${ex.from}${ex.to !== ex.from ? ` ${ex.to}` : ''}`);
   }
@@ -334,6 +369,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     }
   }
   renderRouting(d, L);
+  L.push(...renderPolicyConfig(cfg.routing));
   if (cfg.defaultGateway) L.push(`ip default-gateway ${cfg.defaultGateway}`);
   if (cfg.staticRoutes.length > 0) {
     const routes = [...cfg.staticRoutes].sort(
@@ -398,6 +434,22 @@ const redistText = (r: RedistCfg, proto: 'rip' | 'ospf' | 'eigrp' | 'bgp'): stri
     if (r.metricType) s += ` metric-type ${r.metricType}`;
     if (r.subnets) s += ' subnets';
   }
+  if (r.routeMap) s += ` route-map ${r.routeMap}`;
+  return s;
+};
+
+function distLines(d: Device, lists: DistList[] | undefined, L: string[]): void {
+  for (const l of lists ?? [])
+    L.push(
+      ` distribute-list ${l.kind === 'prefix-list' ? 'prefix ' : ''}${l.name} ${l.dir}${l.ifaceId ? ' ' + ifDisplay(d, l.ifaceId) : ''}`,
+    );
+}
+
+const redist6Text = (r: RedistCfg): string => {
+  let s = ` redistribute ${r.source}${r.id !== undefined ? ' ' + r.id : ''}`;
+  if (r.metric !== undefined) s += ` metric ${r.metric}`;
+  if (r.metricType) s += ` metric-type ${r.metricType}`;
+  if (r.routeMap) s += ` route-map ${r.routeMap}`;
   return s;
 };
 
@@ -421,10 +473,12 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     for (const n of c.networks) L.push(` network ${n}`);
     if (!c.autoSummary) L.push(' no auto-summary');
     if (c.defaultOriginate) L.push(' default-information originate');
-    if (c.defaultMetric !== 1) L.push(` default-metric ${c.defaultMetric}`);
+    if (c.defaultMetric !== undefined) L.push(` default-metric ${c.defaultMetric}`);
     const t = c.timers;
     if (t.update !== 30 || t.invalid !== 180 || t.holddown !== 180 || t.flush !== 240)
       L.push(` timers basic ${t.update} ${t.invalid} ${t.holddown} ${t.flush}`);
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    distLines(d, c.distributeLists, L);
     for (const x of c.redistribute) L.push(redistText(x, 'rip'));
     L.push('!');
   }
@@ -434,6 +488,17 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     if (c.refBwMbps !== 100) L.push(` auto-cost reference-bandwidth ${c.refBwMbps}`);
     passiveLines(d, c, L);
     for (const n of c.networks) L.push(` network ${n.prefix} ${n.wildcard} area ${n.area}`);
+    for (const a of Object.values(c.areas ?? {})) {
+      const id = a.id;
+      if (a.type === 'stub') L.push(` area ${id} stub${a.noSummary ? ' no-summary' : ''}`);
+      if (a.type === 'nssa')
+        L.push(
+          ` area ${id} nssa${a.noSummary ? ' no-summary' : ''}${a.nssaDefaultOriginate ? ' default-information-originate' : ''}`,
+        );
+      if (a.defaultCost !== undefined) L.push(` area ${id} default-cost ${a.defaultCost}`);
+      if (a.auth) L.push(` area ${id} authentication${a.auth === 'md5' ? ' message-digest' : ''}`);
+    }
+    for (const v of c.vlinks ?? []) L.push(` area ${v.area} virtual-link ${v.rid}`);
     for (const g of c.ranges)
       L.push(
         ` area ${g.area} range ${g.prefix} ${prefixMaskText(g.plen)}${g.notAdvertise ? ' not-advertise' : ''}`,
@@ -444,7 +509,23 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
         ` default-information originate${o.always ? ' always' : ''} metric ${o.metric} metric-type ${o.metricType}`,
       );
     }
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    distLines(d, c.distributeLists, L);
     for (const x of c.redistribute) L.push(redistText(x, 'ospf'));
+    L.push('!');
+  }
+  for (const c of Object.values(r.ripng ?? {})) {
+    L.push(`ipv6 router rip ${c.name}`);
+    if (c.defaultOriginate) L.push(' default-information originate');
+    if (c.defaultMetric !== undefined) L.push(` default-metric ${c.defaultMetric}`);
+    if (c.poison) L.push(' poison-reverse');
+    const t = c.timers;
+    if (t.update !== 30 || t.invalid !== 180 || t.holddown !== 180 || t.flush !== 240)
+      L.push(` timers ${t.update} ${t.invalid} ${t.holddown} ${t.flush}`);
+    for (const id of c.passive ?? []) L.push(` passive-interface ${ifDisplay(d, id)}`);
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    distLines(d, c.distributeLists, L);
+    for (const x of c.redistribute) L.push(redist6Text(x));
     L.push('!');
   }
   for (const c of Object.values(r.ospf6)) {
@@ -458,6 +539,8 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
         ` default-information originate${o.always ? ' always' : ''} metric ${o.metric} metric-type ${o.metricType}`,
       );
     }
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    for (const x of c.redistribute) L.push(redist6Text(x));
     L.push('!');
   }
   for (const c of Object.values(r.eigrp)) {
@@ -467,6 +550,8 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     for (const n of c.networks) L.push(` network ${n.prefix} ${n.wildcard}`);
     if (!c.autoSummary) L.push(' no auto-summary');
     if (c.variance !== 1) L.push(` variance ${c.variance}`);
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    distLines(d, c.distributeLists, L);
     for (const x of c.redistribute) L.push(redistText(x, 'eigrp'));
     L.push('!');
   }
@@ -482,10 +567,25 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
       if (n.ebgpMultihop) L.push(` neighbor ${n.ip} ebgp-multihop ${n.ebgpMultihop}`);
       if (n.nextHopSelf) L.push(` neighbor ${n.ip} next-hop-self`);
       if (n.weight !== undefined) L.push(` neighbor ${n.ip} weight ${n.weight}`);
+      if (n.sendCommunity) L.push(` neighbor ${n.ip} send-community`);
+      if (n.rrClient) L.push(` neighbor ${n.ip} route-reflector-client`);
+      if (n.prefixListIn) L.push(` neighbor ${n.ip} prefix-list ${n.prefixListIn} in`);
+      if (n.prefixListOut) L.push(` neighbor ${n.ip} prefix-list ${n.prefixListOut} out`);
+      if (n.routeMapIn) L.push(` neighbor ${n.ip} route-map ${n.routeMapIn} in`);
+      if (n.routeMapOut) L.push(` neighbor ${n.ip} route-map ${n.routeMapOut} out`);
       if (n.shutdown) L.push(` neighbor ${n.ip} shutdown`);
     }
     for (const n of c.networks) L.push(` network ${n.prefix} mask ${prefixMaskText(n.plen)}`);
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
     for (const x of c.redistribute) L.push(redistText(x, 'bgp'));
+    if (c.clusterId) L.push(` bgp cluster-id ${c.clusterId}`);
+    const af6 = Object.values(c.neighbors).filter((n) => n.activate6);
+    if (af6.length > 0 || (c.networks6?.length ?? 0) > 0) {
+      L.push(' address-family ipv6');
+      for (const n of af6) L.push(`  neighbor ${n.ip} activate`);
+      for (const n of c.networks6 ?? []) L.push(`  network ${n.prefix.toUpperCase()}/${n.plen}`);
+      L.push(' exit-address-family');
+    }
     L.push('!');
   }
 }

@@ -119,3 +119,34 @@ sticky|mac-address MAC]`, `spanning-tree portfast|bpduguard enable|guard root`, 
 `access-group NAME in interface NAMEIF`, `same-security-traffic permit inter-interface`,
 `object network NAME` → `subnet A M` | `host A`, `nat (A,B) dynamic interface | static MAPPED`.
 **Show:** `conn`, `xlate`, `nameif`.
+
+## Lücken-Erweiterungen (Phasen 1–4)
+
+**ECMP:** `maximum-paths N` in `router rip|ospf|eigrp|bgp` (IGPs Default 4, BGP 1); `show ip route` zeigt gleichwertige Pfade als weitere `via`-Zeilen, `show ip route A.B.C.D` mehrere Descriptor Blocks mit `traffic share count`.
+
+**Prefix-Lists / Route-Maps:** `ip prefix-list NAME [seq N] (permit|deny) A.B.C.D/L [ge N] [le N]` (auch `ipv6 prefix-list`), `ip community-list standard NAME (permit|deny) AA:NN …`,
+`route-map NAME [permit|deny] [SEQ]` mit `match ip address [prefix-list] NAME…`, `match ip next-hop prefix-list`, `match tag|metric|community`,
+`set local-preference|metric [BW DLY REL LOAD MTU]|metric-type type-1|type-2|tag|weight|as-path prepend ASNs|community VALUES [additive|none]|ip next-hop A|origin`.
+`redistribute … route-map NAME` (RIP/OSPF/EIGRP/BGP/RIPng/OSPFv3), `distribute-list (ACL|prefix NAME) (in|out) [IF]` in RIP/EIGRP/OSPF (nur `in`)/RIPng.
+**Show:** `show ip prefix-list [NAME]`, `show ipv6 prefix-list`, `show route-map [NAME]`, `show ip community-list`.
+
+**OSPF:** `area N stub [no-summary]`, `area N nssa [no-summary] [default-information-originate]`, `area N default-cost C`, `area N authentication [message-digest]`,
+`area N virtual-link RID`; Schnittstelle: `ip ospf authentication [message-digest|null]`, `ip ospf authentication-key KEY`, `ip ospf message-digest-key ID md5 KEY`.
+**Show:** `show ip ospf` (Bereichstypen), `show ip ospf virtual-links`. Routen: `O IA`, `O E1/E2`, `O N1/N2`, Default als `O*IA`/`O*E2`.
+
+**EIGRP:** `variance N` wirkt (ungleiche Lastverteilung), `maximum-paths`, Stuck-in-Active nach 3 min (Meldung `eigrp.sia`).
+
+**HSRP:** `standby version 1|2`, Gruppen 0–4095 (> 255 nur mit Version 2), `standby G authentication KEY`, `standby G ipv6 autoconfig|X:X::X` (nur Version 2).
+`show standby [brief]` zeigt Version, virtuelle MAC, Authentifizierung und IPv6-Gruppen.
+
+**BGP:** `neighbor A prefix-list NAME in|out`, `neighbor A route-map NAME in|out`, `neighbor A send-community`, `neighbor A route-reflector-client`,
+`neighbor A soft-reconfiguration inbound` (ohne Wirkung nötig), `bgp cluster-id A.B.C.D`, `address-family ipv6` (`neighbor A activate`, `network X::/L`, `exit-address-family`).
+**Show:** `show ip bgp A.B.C.D` (Pfaddetails mit Communities, Originator/Cluster-List), `show bgp ipv6 unicast [summary]`.
+
+**IPv6:** `ipv6 dhcp pool NAME` (`address prefix P/L [lifetime A B]`, `dns-server`, `domain-name`), Schnittstelle: `ipv6 dhcp server NAME`, `ipv6 nd managed-config-flag|other-config-flag`;
+`ipv6 router rip NAME` (`default-information originate`, `default-metric`, `poison-reverse`, `timers u i h f`, `passive-interface`, `redistribute`, `distribute-list`, `maximum-paths`),
+Schnittstelle `ipv6 rip NAME enable`; `redistribute connected|static|rip|ospf|bgp …` in `ipv6 router ospf`; `traceroute ipv6 X` bzw. `traceroute X::`.
+**Show:** `show ipv6 dhcp pool|binding`, `show ipv6 rip [NAME]`, `show ipv6 interface` (Adressen in DAD als `[TEN]`, Duplikate als `[DUP]`).
+**Host-Shell:** `tracert <IPv6>`, `ipconfig /all` (DHCPv6, IPv6-DNS, `(Preferred)/(Tentative)/(Duplicate)`), `ipconfig /renew6`, `ipconfig /release6`.
+
+**Uhr:** `clock set HH:MM:SS DAY MONTH YEAR` (auch `MONTH DAY`) im privilegierten Modus; `show clock` und `debug`-Zeitstempel folgen der gesetzten Uhr.

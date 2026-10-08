@@ -1,6 +1,6 @@
 import { isValidIpv4 } from '@netsim/protocols';
 import type { Acl } from '@netsim/engine';
-import { fwApplyNat, mgmtOf, newFw, parseClockSet, SEVERITY_NAMES } from '@netsim/engine';
+import { fwApplyNat, mgmtOf, newFw, SEVERITY_NAMES } from '@netsim/engine';
 import { AclParseError, addEntry, parseAclEntry } from './aclparse';
 import { aclEntryText, renderRunningConfig } from './render';
 import { K, P, R, choice, opt, type ModeId, type Registry } from './parser';
@@ -282,23 +282,6 @@ export function addPhase5(r: Registry<CliSession>): void {
       mg(s).ntp.master = s.negated ? undefined : Number(a.stratum ?? 8);
     },
   });
-  r.add({
-    modes: PR,
-    slots: [
-      K('clock', 'Manage the system clock'),
-      K('set', 'Set the time and date'),
-      P('time', 'word', 'hh:mm:ss', 'Current Time'),
-      P('a', 'word', 'WORD', 'Day of the month or month'),
-      P('b', 'word', 'WORD', 'Month or day of the month'),
-      P('year', 'int', '<1993-2035>', 'Year', [1993, 2035]),
-    ],
-    run: (s, a) => {
-      const ms = parseClockSet(a.time as string, a.a as string, a.b as string, a.year as string);
-      if (ms === undefined) throw new CliError("% Invalid input detected at '^' marker.");
-      s.engine.p5.setClock(s.deviceId, ms);
-    },
-  });
-
   // --- Syslog / SNMP / AAA
   r.add({
     modes: CF,

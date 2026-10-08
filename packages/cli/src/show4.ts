@@ -10,7 +10,7 @@ import type {
   OspfIfState,
   OspfNbr,
 } from '@netsim/engine';
-import { listIfaces6, newHsrp, vmacOf } from '@netsim/engine';
+import { listIfaces6, newHsrp, virtualLl6, vmac6Of, vmacOf } from '@netsim/engine';
 import { ciscoMac } from './format';
 import { ifDisplay, ifShort } from './ifnames';
 
@@ -62,7 +62,7 @@ export function showIpProtocols(e: Engine, d: D): string[] {
     out.push(
       `  Automatic network summarization is ${c.autoSummary ? 'in effect' : 'not in effect'}`,
     );
-    out.push('  Maximum path: 4', '  Routing for Networks:');
+    out.push(`  Maximum path: ${c.maxPaths ?? 4}`, '  Routing for Networks:');
     for (const n of c.networks) out.push(`    ${n}`);
     out.push('  Routing Information Sources:', '    Gateway         Distance      Last Update');
     const gws = new Map<string, number>();
@@ -87,7 +87,7 @@ export function showIpProtocols(e: Engine, d: D): string[] {
     );
     for (const n of Object.values(c.neighbors)) out.push(`    ${n.ip}`);
     out.push(
-      '  Maximum path: 1',
+      `  Maximum path: ${c.maxPaths ?? 1}`,
       '  Routing Information Sources:',
       '    Gateway         Distance      Last Update',
     );
@@ -107,11 +107,12 @@ function ospfProto(e: Engine, d: D, c: OspfCfg, now: number): string[] {
   out.push('  Incoming update filter list for all interfaces is not set');
   out.push(`  Router ID ${c.rid ?? c.routerId ?? '0.0.0.0'}`);
   const areas = [...new Set(Object.values(c.ifs).map((i) => i.area))];
+  const kinds = areas.map((a) => c.areas?.[a]?.type ?? 'normal');
   out.push(
-    `  Number of areas in this router is ${areas.length}. ${areas.length} normal 0 stub 0 nssa`,
+    `  Number of areas in this router is ${areas.length}. ${kinds.filter((k) => k === 'normal').length} normal ${kinds.filter((k) => k === 'stub').length} stub ${kinds.filter((k) => k === 'nssa').length} nssa`,
   );
   if (c.redistribute.length) out.push(`  It is an autonomous system boundary router`);
-  out.push('  Maximum path: 4', '  Routing for Networks:');
+  out.push(`  Maximum path: ${c.maxPaths ?? 4}`, '  Routing for Networks:');
   for (const n of c.networks) out.push(`    ${n.prefix} ${n.wildcard} area ${n.area}`);
   out.push('  Routing Information Sources:', '    Gateway         Distance      Last Update');
   const seen = new Set<string>();
@@ -142,7 +143,11 @@ function eigrpProto(e: Engine, d: D, c: EigrpCfg, now: number): string[] {
   out.push(
     `    Automatic network summarization is ${c.autoSummary ? 'in effect' : 'not in effect'}`,
   );
-  out.push('    Maximum path: 4', '    Routing for Networks:');
+  out.push(
+    `    Maximum path: ${c.maxPaths ?? 4}`,
+    `    Maximum metric variance ${c.variance}`,
+    '    Routing for Networks:',
+  );
   for (const n of c.networks)
     out.push(`      ${n.prefix}${isClassfulWc(n.prefix, n.wildcard) ? '' : ' ' + n.wildcard}`);
   out.push('    Routing Information Sources:', '      Gateway         Distance      Last Update');
@@ -200,15 +205,27 @@ export function showOspf(e: Engine, d: D, pid?: number): string[] {
     const areas = [...new Set(Object.values(c.ifs).map((i) => i.area))].sort();
     if (areas.length > 1) out.push(' It is an area border router');
     out.push(` Reference bandwidth unit is ${c.refBwMbps} mbps`);
+    const kinds = areas.map((a) => c.areas?.[a]?.type ?? 'normal');
     out.push(
-      ` Number of areas in this router is ${areas.length}. ${areas.length} normal 0 stub 0 nssa`,
+      ` Number of areas in this router is ${areas.length}. ${kinds.filter((k) => k === 'normal').length} normal ${kinds.filter((k) => k === 'stub').length} stub ${kinds.filter((k) => k === 'nssa').length} nssa`,
     );
     for (const a of areas) {
+      const ac = c.areas?.[a];
       out.push(`    Area ${a === '0' ? 'BACKBONE(0)' : a}`);
       out.push(
         `        Number of interfaces in this area is ${Object.values(c.ifs).filter((i) => i.area === a).length}`,
       );
-      out.push('        Area has no authentication');
+      if (ac?.type === 'stub')
+        out.push(`        It is a stub area${ac.noSummary ? ', no summary LSA in this area' : ''}`);
+      if (ac?.type === 'nssa')
+        out.push(`        It is a NSSA area${ac.noSummary ? ', no summary LSA in this area' : ''}`);
+      out.push(
+        ac?.auth === 'md5'
+          ? '        Area has message digest authentication'
+          : ac?.auth === 'simple'
+            ? '        Area has simple password authentication'
+            : '        Area has no authentication',
+      );
       out.push(`        SPF algorithm last executed ${clock(e.state.now - c.lastSpf)}.000 ago`);
       out.push(`        SPF algorithm executed ${c.spfRuns} times`);
       out.push(`        Number of LSA ${Object.keys(c.lsdb[a] ?? {}).length}`);
@@ -436,24 +453,34 @@ export function showStandby(e: Engine, d: D, brief: boolean): string[] {
     out.push('Interface   Grp  Pri P State   Active          Standby         Virtual IP');
   }
   for (const [id, ic] of Object.entries(cfg.ifaces)) {
-    for (const g of Object.values(ic.hsrp ?? {})) {
+    const ver = ic.hsrpVersion ?? 1;
+    for (const g of [
+      ...Object.values(ic.hsrp ?? {}),
+      ...Object.values(ic.hsrp6 ?? {}).map((x) => ({ ...x, v6: true })),
+    ]) {
       const pri = effective(cfg, g);
+      const vip = g.v6 && g.autoconfig ? virtualLl6(g.group) : g.vip;
+      const mac = ciscoMac(g.v6 ? vmac6Of(g.group) : vmacOf(g.group, ver));
       const active = g.state === 'active' ? 'local' : (g.activeIp ?? 'unknown');
       const standby = g.state === 'standby' ? 'local' : (g.standbyIp ?? 'unknown');
       if (brief) {
         out.push(
-          `${ifShort(d, id).padEnd(12)}${String(g.group).padEnd(5)}${String(pri).padEnd(4)}${g.preempt ? 'P' : ' '} ${cap(g.state).padEnd(8)}${active.padEnd(16)}${standby.padEnd(16)}${g.vip ?? 'unknown'}`,
+          `${ifShort(d, id).padEnd(12)}${String(g.group).padEnd(5)}${String(pri).padEnd(4)}${g.preempt ? 'P' : ' '} ${cap(g.state).padEnd(8)}${active.padEnd(16)}${standby.padEnd(16)}${vip ?? 'unknown'}`,
         );
         continue;
       }
-      out.push(`${ifDisplay(d, id)} - Group ${g.group}`);
+      out.push(`${ifDisplay(d, id)} - Group ${g.group}${g.v6 ? ' (IPv6)' : ''}`);
+      if (ver === 2 || g.v6) out.push('  (HSRP version 2)');
       out.push(
         `  State is ${cap(g.state)}`,
         `    last state change ${clock(e.state.now - g.stateSince)}`,
       );
-      out.push(`  Virtual IP address is ${g.vip ?? 'unknown'}`);
-      out.push(`  Active virtual MAC address is ${ciscoMac(vmacOf(g.group))}`);
-      out.push(`    Local virtual MAC address is ${ciscoMac(vmacOf(g.group))} (v1 default)`);
+      out.push(`  Virtual ${g.v6 ? 'IPv6' : 'IP'} address is ${vip ?? 'unknown'}`);
+      out.push(`  Active virtual MAC address is ${mac}`);
+      out.push(
+        `    Local virtual MAC address is ${mac} (${g.v6 ? 'v2 IPv6 default' : ver === 2 ? 'v2 default' : 'v1 default'})`,
+      );
+      if (g.authKey !== undefined) out.push(`  Authentication text "${g.authKey}"`);
       out.push(`  Hello time ${g.helloSec} sec, hold time ${g.holdSec} sec`);
       out.push(`  Preemption ${g.preempt ? 'enabled' : 'disabled'}`);
       out.push(
@@ -600,7 +627,14 @@ export function showIpv6Route(e: Engine, d: D): string[] {
               ? 'OE2'
               : 'O'
         : r.type;
-    out.push(`${code.padEnd(4)}${up6(r.prefix)}/${r.plen} [${r.ad}/${r.metric}]`);
+    const prev = sorted[sorted.indexOf(r) - 1];
+    const sameAsPrev =
+      prev !== undefined &&
+      prev.prefix === r.prefix &&
+      prev.plen === r.plen &&
+      prev.type === r.type &&
+      prev.ad === r.ad;
+    if (!sameAsPrev) out.push(`${code.padEnd(4)}${up6(r.prefix)}/${r.plen} [${r.ad}/${r.metric}]`);
     const ifn = r.ifaceId ? ifDisplay(d, r.ifaceId) : '';
     out.push(
       r.nextHop ? `     via ${up6(r.nextHop)}, ${ifn}` : `     via ${ifn}, directly connected`,
@@ -630,6 +664,10 @@ export function showIpv6Interface(e: Engine, d: D, brief: boolean): string[] {
     if (i.addrs.length) out.push('  Global unicast address(es):');
     for (const a of i.addrs)
       out.push(`    ${up6(a.addr)}, subnet is ${up6(ipv6Network(a.addr, a.plen))}/${a.plen}`);
+    for (const a of i.tentative)
+      out.push(`    ${up6(a.addr)}, subnet is ${up6(ipv6Network(a.addr, a.plen))}/${a.plen} [TEN]`);
+    for (const a of i.dup)
+      out.push(`    ${up6(a.addr)}, subnet is ${up6(ipv6Network(a.addr, a.plen))}/${a.plen} [DUP]`);
     out.push(
       '  Joined group address(es):',
       '    FF02::1',
@@ -637,7 +675,7 @@ export function showIpv6Interface(e: Engine, d: D, brief: boolean): string[] {
     );
     out.push(
       `  MTU is ${i.mtu} bytes`,
-      '  ND DAD is not supported',
+      '  ND DAD is enabled, number of DAD attempts: 1',
       '  ND reachable time is 30000 milliseconds',
     );
     out.push('');
@@ -669,6 +707,17 @@ export function showIpv6Protocols(e: Engine, d: D): string[] {
     for (const id of Object.keys(c.ifs)) out.push(`    ${ifDisplay(d, id)}`);
     out.push('  Redistribution:', '    None', '');
   }
+  for (const c of Object.values(cfg.routing.ripng ?? {})) {
+    out.push(`IPv6 Routing Protocol is "rip ${c.name}"`);
+    out.push(`  Interfaces:`);
+    for (const [id, ic] of Object.entries(cfg.ifaces))
+      if (ic.v6?.ripng === c.name) out.push(`    ${ifDisplay(d, id)}`);
+    out.push(
+      '  Redistribution:',
+      c.redistribute.length ? `    ${c.redistribute.map((x) => x.source).join(', ')}` : '    None',
+      '',
+    );
+  }
   if (!out.length) out.push('IPv6 Routing Protocol is "connected"', '');
   void e;
   return out;
@@ -695,4 +744,87 @@ export function showDebugging(d: D): string[] {
     gre: 'Tunnel debugging is on',
   };
   return ['', ...tags.map((t) => names[t] ?? `${t} debugging is on`)];
+}
+
+export function showOspfVirtualLinks(e: Engine, d: D): string[] {
+  const cfg = l3(d);
+  const out: string[] = [];
+  if (!cfg) return out;
+  for (const c of Object.values(cfg.routing.ospf)) {
+    for (const v of c.vlinks ?? []) {
+      const ifs = c.ifs[`vl-${v.rid.replaceAll('.', '_')}`];
+      const n = ifs ? Object.values(ifs.neighbors)[0] : undefined;
+      out.push(
+        `Virtual Link OSPF_VL0 to router ${v.rid} is ${n?.state === 'full' ? 'up' : 'down'}`,
+        `  Run as demand circuit`,
+        `  DoNotAge LSA allowed.`,
+        `  Transit area ${v.area}, cost of using ${v.cost ?? 'unknown'}`,
+        `  Adjacency State ${n ? n.state.toUpperCase() : 'DOWN'}`,
+      );
+    }
+  }
+  void e;
+  return out;
+}
+
+export function showBgp6(e: Engine, d: D): string[] {
+  const c = l3(d)?.routing.bgp;
+  if (!c) return [];
+  const out = [
+    `BGP table version is ${Object.keys(c.locRib6 ?? {}).length}, local router ID is ${c.rid ?? c.routerId ?? '0.0.0.0'}`,
+    'Status codes: s suppressed, d damped, h history, * valid, > best, i - internal,',
+    '              r RIB-failure, S Stale',
+    'Origin codes: i - IGP, e - EGP, ? - incomplete',
+    '',
+    '   Network          Next Hop                  Metric LocPrf Weight Path',
+  ];
+  for (const [k, p] of Object.entries(c.locRib6 ?? {})) {
+    const lp = p.attrs.localPref !== undefined ? String(p.attrs.localPref) : '';
+    out.push(
+      `*>${p.ebgp || p.local ? ' ' : 'i'}${k.toUpperCase()}`,
+      `${' '.repeat(20)}${(p.attrs.nextHop6 ?? '::').toUpperCase().padEnd(26)}${String(p.attrs.med ?? 0).padStart(6)} ${lp.padStart(6)} ${String(p.weight).padStart(6)} ${pathText(p)}`,
+    );
+  }
+  void e;
+  return out;
+}
+
+export function showBgpDetail(d: D, net: string): string[] {
+  const c = l3(d)?.routing.bgp;
+  if (!c) return [];
+  const hits = Object.entries(c.locRib).filter(([k]) => k.split('/')[0] === net);
+  if (hits.length === 0) return ['% Network not in table'];
+  const out: string[] = [];
+  for (const [k, best] of hits) {
+    out.push(`BGP routing table entry for ${k}`);
+    const all = [
+      best,
+      ...Object.values(c.neighbors)
+        .map((n) => n.ribIn[k])
+        .filter((x): x is BgpPath => !!x && x.from !== best.from),
+    ];
+    out.push(`Paths: (${all.length} available, best #1)`);
+    for (const p of all) {
+      out.push(`  ${p.attrs.asPath.join(' ') || 'Local'}`);
+      out.push(
+        `    ${p.attrs.nextHop} from ${p.local ? '0.0.0.0 (' + (c.rid ?? c.routerId ?? '0.0.0.0') + ')' : p.from + ' (' + p.fromRid + ')'}`,
+      );
+      const bits = [
+        `Origin ${p.attrs.origin === 'igp' ? 'IGP' : p.attrs.origin === 'egp' ? 'EGP' : 'incomplete'}`,
+        `metric ${p.attrs.med ?? 0}`,
+        `localpref ${p.attrs.localPref ?? c.defaultLocalPref}`,
+        `weight ${p.weight}`,
+        p.ebgp || p.local ? 'external' : 'internal',
+        ...(p === best ? ['best'] : []),
+      ];
+      out.push(`      ${bits.join(', ')}`);
+      if (p.attrs.communities?.length)
+        out.push(`      Community: ${p.attrs.communities.join(' ')}`);
+      if (p.attrs.originatorId)
+        out.push(
+          `      Originator: ${p.attrs.originatorId}, Cluster list: ${(p.attrs.clusterList ?? []).join(', ')}`,
+        );
+    }
+  }
+  return out;
 }

@@ -1,17 +1,11 @@
 import type { Device, Engine, MgmtCfg } from '@netsim/engine';
-import { clockOf, formatClock, idleText, mgmtOf, oidName } from '@netsim/engine';
+import { clockOf, idleText, mgmtOf, oidName } from '@netsim/engine';
 import { ifDisplay } from './ifnames';
 
 type D = Device;
 
 const cli = (d: D) =>
   d.config.kind === 'router' || d.config.kind === 'switch' ? d.config : undefined;
-
-/** `show clock` – Gerätezeit (mit `*`, solange nicht per NTP synchronisiert). */
-export function showClock(e: Engine, d: D): string[] {
-  const ms = e.p5.clockMs(d.id) ?? 0;
-  return [formatClock(ms, clockOf(d)?.syncedTo !== undefined)];
-}
 
 export function showNtpStatus(d: D): string[] {
   const c = clockOf(d);

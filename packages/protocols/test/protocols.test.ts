@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Frame, Ipv4Pdu, Ipv6Pdu, OspfMsg } from '../src';
+import type { Frame, Ipv6Pdu, OspfMsg } from '../src';
 import {
   isLinkLocalIpv6,
   isMulticastIpv4,

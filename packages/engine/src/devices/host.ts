@@ -5,7 +5,7 @@ import type { DeviceCtx } from '../ctx';
 import { diagTimer, startPing, startTrace, type PingOptions } from '../diag';
 import type { Iface } from '../ifaces';
 import { ifaceFrameRx, ipTimer, sendArpRequest, type IpNode } from '../l3';
-import { hostIfaces6, hostNode6, ip6FrameRx, ip6Timer, hostV6Start } from '../l3v6';
+import { dadScan, hostIfaces6, hostNode6, ip6FrameRx, ip6Timer, hostV6Start } from '../l3v6';
 import { dhcpProbeReply, dhcpStart, dhcpStop, dhcpTimer } from '../svc/dhcpclient';
 import { dnsResolve, dnsTimer } from '../svc/dns';
 import { httpGet, tcpTimer } from '../svc/tcp';
@@ -202,4 +202,6 @@ export const isHostDevice = (d: Device): d is Device & { config: HostConfig } =>
 /** IPv6-Start eines Hosts: Router Solicitation für SLAAC. */
 export function hostV6(ctx: DeviceCtx, cfg: HostConfig): void {
   hostV6Start(ctx, cfg);
+  const node = hostNode(ctx, cfg);
+  if (node.v6) dadScan(ctx, { cfg, v6: node.v6, host: cfg, xmit: node.xmit });
 }

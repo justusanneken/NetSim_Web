@@ -112,4 +112,8 @@ export const SUBMODES: ModeId[] = [
   'config-eigrp',
   'config-bgp',
   'config-obj-net',
+  'config-route-map',
+  'config-bgp-af6',
+  'config-dhcp6',
+  'config-rip6',
 ];

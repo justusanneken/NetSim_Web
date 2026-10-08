@@ -8,6 +8,7 @@ import {
   classfulNet,
   classfulPlen,
   dbg,
+  distPermits,
   ifaceBwKbps,
   ifaceDelay,
   inNet,
@@ -20,13 +21,22 @@ import {
   wildcardMatch,
   type Rt,
 } from './core';
-import { isPassive, type EigrpCfg, type EigrpNbr, type EigrpPath, type EigrpTopo } from './types';
+import {
+  isPassive,
+  maxPathsOf,
+  type EigrpCfg,
+  type EigrpNbr,
+  type EigrpPath,
+  type EigrpTopo,
+} from './types';
 
 export const EIGRP_GROUP = '224.0.0.10';
 const HELLO = 5;
 const HOLD = 15;
 const RTO = 2 * SEC;
 const MAX_TRIES = 16;
+/** Stuck-in-Active-Timer (3 Minuten). */
+export const SIA_SEC = 180;
 
 export const newEigrp = (asn: number): EigrpCfg => ({
   asn,
@@ -48,6 +58,8 @@ export const metricOf = (bwKbps: number, delay: number): number =>
   256 * (Math.floor(1e7 / Math.max(1, bwKbps)) + delay);
 
 const key = (prefix: string, plen: number): string => `${prefix}/${plen}`;
+/** Beim Neuankündigen nach `distribute-list`-Änderung gefilterte Ziele als unreachable melden. */
+let withdrawDenied = false;
 const nameOf = (rt: Rt, id: string): string => rt.ctx.deviceIfaceName(id);
 
 export function eigrpIfaces(rt: Rt, c: EigrpCfg): Iface[] {
@@ -324,6 +336,8 @@ function goActive(rt: Rt, c: EigrpCfg, k: string, t: EigrpTopo): void {
   }
   t.active = true;
   t.waiting = targets;
+  t.activeSince = rt.ctx.now;
+  setBg(rt, `rt:eigrp:sia:${c.asn}:${k}`, SIA_SEC * SEC);
   const q: EigrpRoute = {
     prefix: t.prefix,
     plen: t.plen,
@@ -339,7 +353,9 @@ function goActive(rt: Rt, c: EigrpCfg, k: string, t: EigrpTopo): void {
 }
 
 function finishActive(rt: Rt, c: EigrpCfg, k: string, t: EigrpTopo): void {
+  cancelBg(rt, `rt:eigrp:sia:${c.asn}:${k}`);
   t.active = false;
+  t.activeSince = undefined;
   t.waiting = [];
   const origin = t.origin;
   t.origin = undefined;
@@ -372,7 +388,8 @@ function routeFor(
   const [prefix, plenS] = _k.split('/') as [string, string];
   const plen = Number(plenS);
   const p = t?.paths.find((x) => x.via === t.succ);
-  if (!t || !p) return { prefix, plen, delay: 0, bandwidth: 0, hops: 0, unreachable: true };
+  if (!t || !p || !distPermits(_rt, _c.distributeLists, 'out', _ifaceId, { prefix, plen }))
+    return { prefix, plen, delay: 0, bandwidth: 0, hops: 0, unreachable: true };
   return {
     prefix,
     plen,
@@ -404,6 +421,18 @@ function buildAdv(rt: Rt, c: EigrpCfg, iface: Iface, keys: string[]): EigrpRoute
     const p = t.paths.find((x) => x.via === t.succ);
     if (!p) continue;
     if (p.via !== 'local' && p.ifaceId === iface.id) continue; // Split Horizon
+    if (!distPermits(rt, c.distributeLists, 'out', iface.id, t)) {
+      if (withdrawDenied)
+        out.push({
+          prefix: t.prefix,
+          plen: t.plen,
+          delay: 0,
+          bandwidth: 0,
+          hops: 0,
+          unreachable: true,
+        });
+      continue;
+    }
     const r = routeFor(rt, c, k, t, iface.id);
     if (c.autoSummary && t.plen > 0 && classfulNet(t.prefix) !== major) {
       const sp = classfulPlen(t.prefix);
@@ -484,7 +513,8 @@ export function eigrpRx(rt: Rt, iface: Iface, _base: Base, ip: Ipv4Pdu, msg: Eig
 function applyRoute(rt: Rt, c: EigrpCfg, iface: Iface, n: EigrpNbr, r: EigrpRoute): string {
   const k = key(r.prefix, r.plen);
   const t = topoFor(c, r.prefix, r.plen);
-  if (r.unreachable) t.paths = t.paths.filter((p) => p.via !== n.ip);
+  if (r.unreachable || !distPermits(rt, c.distributeLists, 'in', iface.id, r))
+    t.paths = t.paths.filter((p) => p.via !== n.ip);
   else setPath(t, pathFrom(rt, iface, n.ip, { ...r }));
   return k;
 }
@@ -545,26 +575,60 @@ export function eigrpRecompute(rt: Rt): boolean {
   }
   for (const c of Object.values(rt.r.eigrp)) {
     if (syncLocals(rt, c)) changed = true;
+    if (applyDistChange(rt, c)) changed = true;
     flushAdv(rt, c);
     const routes = [];
     for (const t of Object.values(c.topology)) {
-      const p = t.paths.find((x) => x.via === t.succ);
-      if (!p || p.via === 'local') continue;
-      const ext = !!p.external;
-      routes.push({
-        proto: 'D' as const,
-        sub: ext ? 'EX' : undefined,
-        prefix: t.prefix,
-        plen: t.plen,
-        ad: ext ? AD.eigrpExt : AD.eigrp,
-        metric: t.fd,
-        nextHop: p.via,
-        ifaceId: p.ifaceId,
-      });
+      const p0 = t.paths.find((x) => x.via === t.succ);
+      if (!p0 || p0.via === 'local') continue;
+      // Successors (gleiche Distanz) + Feasible Successors innerhalb der Variance
+      const variance = Math.max(1, c.variance);
+      const usable = t.paths
+        .filter(
+          (p) =>
+            p.via !== 'local' &&
+            (p.dist === t.fd || (variance > 1 && p.rd < t.fd && p.dist <= variance * t.fd)),
+        )
+        .sort((a, b) => a.dist - b.dist || a.via.localeCompare(b.via))
+        .slice(0, maxPathsOf(c));
+      if (!usable.some((p) => p === p0)) usable.unshift(p0);
+      const unequal = usable.some((p) => p.dist !== t.fd);
+      for (const p of usable) {
+        const ext = !!p.external;
+        routes.push({
+          proto: 'D' as const,
+          sub: ext ? 'EX' : undefined,
+          prefix: t.prefix,
+          plen: t.plen,
+          ad: ext ? AD.eigrpExt : AD.eigrp,
+          metric: p.dist,
+          nextHop: p.via,
+          ifaceId: p.ifaceId,
+          share: unequal ? Math.max(1, Math.floor((t.fd * 100) / p.dist)) : undefined,
+        });
+      }
     }
     if (installRoutes(rt, `eigrp:${c.asn}`, routes as never)) changed = true;
   }
   return changed;
+}
+
+/** `distribute-list` geändert: Pfade neu filtern, Ankündigungen erneuern (gefilterte werden zurückgezogen). */
+function applyDistChange(rt: Rt, c: EigrpCfg): boolean {
+  const sig = JSON.stringify(c.distributeLists ?? []);
+  if (sig === (c.distSig ?? '[]')) return false;
+  c.distSig = sig;
+  for (const [k, t] of Object.entries(c.topology)) {
+    t.paths = t.paths.filter(
+      (p) => p.via === 'local' || distPermits(rt, c.distributeLists, 'in', p.ifaceId, t),
+    );
+    evaluate(rt, c, k, t);
+    queueAdv(c, k);
+  }
+  withdrawDenied = true;
+  flushAdv(rt, c);
+  withdrawDenied = false;
+  return true;
 }
 
 /** Direkt angeschlossene und redistribuierte Ziele als lokale Pfade führen. */
@@ -596,8 +660,8 @@ function syncLocals(rt: Rt, c: EigrpCfg): boolean {
         ifs.some((i) => netOf(i.ip, maskLen(i.mask)) === s.prefix && maskLen(i.mask) === s.plen)
       )
         continue;
-      const bandwidth = red.bw ?? 100_000;
-      const delay = red.delay ?? 10;
+      const bandwidth = s.set?.eigrpMetric?.bw ?? red.bw ?? 100_000;
+      const delay = s.set?.eigrpMetric?.delay ?? red.delay ?? 10;
       want.set(key(s.prefix, s.plen), {
         prefix: s.prefix,
         plen: s.plen,
@@ -661,6 +725,24 @@ export function eigrpTimer(rt: Rt, name: string): boolean {
         proto: 'eigrp',
         msg: msgBase(rt, c, 'hello'),
       });
+    return true;
+  }
+  if (kind === 'sia') {
+    // rest = Präfix (`a.b.c.d/len`)
+    const t = c.topology[rest as string];
+    if (t?.active) {
+      rlog(rt, 'EIGRP', {
+        key: 'eigrp.sia',
+        params: { prefix: rest as string, nbrs: t.waiting.join(', ') },
+      });
+      // Nachbarn, die nicht geantwortet haben, werden zurückgesetzt (IOS: „stuck in active“)
+      for (const ip of [...t.waiting]) {
+        const n = c.neighbors[ip];
+        if (n) killNbr(rt, c, n, 'stuck in active');
+      }
+      const again = c.topology[rest as string];
+      if (again?.active) finishActive(rt, c, rest as string, again);
+    }
     return true;
   }
   if (kind === 'hold') {

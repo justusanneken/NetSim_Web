@@ -9,8 +9,8 @@ import { secretHash, type7Decrypt } from './secrets';
 import { CliError, type CliSession } from './session';
 import { addPhase3 } from './commands3';
 import { addPhase4 } from './commands4';
+import { addGaps } from './commandsGaps';
 import * as show from './show';
-import * as show5 from './show5';
 import { addPhase5 } from './commands5';
 
 const U: ModeId[] = ['user', 'priv'];
@@ -135,7 +135,7 @@ export function runPing(s: CliSession, dst: string, o: PingParams): void {
   s.out(line);
 }
 
-function runTrace(s: CliSession, dst: string): void {
+export function runTrace(s: CliSession, dst: string): void {
   const e = s.engine;
   const d = s.device;
   const r = e.trace(d.id, dst);
@@ -346,7 +346,8 @@ export function buildRegistry(): Registry<CliSession> {
     modes: ['user', 'priv', ...ANYCFG],
     slots: [K('exit', 'Exit from the EXEC / current mode')],
     run: (s) => {
-      if (SUBMODES.includes(s.mode)) s.mode = 'config';
+      if (s.mode === 'config-bgp-af6') s.mode = 'config-bgp';
+      else if (SUBMODES.includes(s.mode)) s.mode = 'config';
       else if (s.mode === 'config') s.mode = 'priv';
       else logout(s);
     },
@@ -504,9 +505,7 @@ export function buildRegistry(): Registry<CliSession> {
     'switch',
   );
   sh([['history', 'Display the session command history']], (s) => s.outLines([...s.history]));
-  sh([['clock', 'Display the system clock']], (s) =>
-    s.outLines(show5.showClock(s.engine, s.device)),
-  );
+  sh([['clock', 'Display the system clock']], (s) => s.outLines(show.showClock(s.engine, s.sys)));
 
   // --- Diagnose
   r.add({
@@ -1032,5 +1031,6 @@ export function buildRegistry(): Registry<CliSession> {
   addPhase3(r);
   addPhase4(r);
   addPhase5(r);
+  addGaps(r);
   return r;
 }

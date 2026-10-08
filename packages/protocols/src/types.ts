@@ -100,7 +100,7 @@ export interface Ipv4Pdu {
 
 export type IpPayload = IcmpPdu | UdpPdu | TcpPdu | RoutingPdu | GrePdu;
 
-export type AppPdu = DhcpPdu | DnsPdu | RipPdu | HsrpPdu | SvcPdu;
+export type AppPdu = DhcpPdu | Dhcp6Pdu | DnsPdu | RipPdu | HsrpPdu | SvcPdu;
 
 export interface UdpPdu {
   kind: 'udp';
@@ -192,6 +192,22 @@ export interface DhcpPdu {
   };
 }
 
+/** DHCPv6 (UDP 546/547, Multicast ff02::1:2): Solicit/Advertise/Request/Reply bzw. Information-Request/Reply. */
+export interface Dhcp6Pdu {
+  kind: 'dhcp6';
+  op: 'solicit' | 'advertise' | 'request' | 'reply' | 'information-request';
+  xid: number;
+  /** DUID des Clients (vereinfacht: MAC). */
+  clientId: Mac;
+  serverId?: Mac;
+  /** Zugewiesene Adresse (IA_NA) und Präfixlänge. */
+  addr?: Ipv6Addr;
+  plen?: number;
+  leaseSec?: number;
+  dns?: Ipv6Addr[];
+  domain?: string;
+}
+
 export type DnsType = 'A' | 'AAAA' | 'CNAME' | 'MX' | 'PTR';
 
 export interface DnsRecord {
@@ -239,8 +255,11 @@ export interface VtpPdu {
 // ---------------------------------------------------------------- Routing-Protokolle (Phase 4)
 
 export interface RipEntry {
-  prefix: Ipv4Addr;
+  /** IPv4-Präfix (RIPv2) bzw. IPv6-Präfix (RIPng). */
+  prefix: string;
+  /** Subnetzmaske (RIPv2); bei RIPng leer, die Länge steht in `plen`. */
   mask: string;
+  plen?: number;
   nextHop: Ipv4Addr;
   /** 1–15, 16 = unerreichbar. */
   metric: number;
@@ -250,6 +269,8 @@ export interface RipEntry {
 /** RIPv2 (UDP 520, Multicast 224.0.0.9). */
 export interface RipPdu {
   kind: 'rip';
+  /** RIPng (UDP 521, ff02::9) statt RIPv2. */
+  ng?: boolean;
   command: 'request' | 'response';
   entries: RipEntry[];
 }
@@ -265,12 +286,16 @@ export interface HsrpPdu {
   helloSec: number;
   holdSec: number;
   priority: number;
-  vip: Ipv4Addr;
+  vip: string;
+  /** 1 (Default) oder 2 (`standby version 2`, Multicast 224.0.0.102 bzw. ff02::66). */
+  version?: 1 | 2;
+  /** Klartext-Authentifizierung (Default `cisco`). */
+  auth?: string;
 }
 
 export interface OspfLsaHeader {
-  /** 1 Router, 2 Network, 3 Summary, 4 ASBR-Summary, 5 AS-External. */
-  type: 1 | 2 | 3 | 4 | 5;
+  /** 1 Router, 2 Network, 3 Summary, 4 ASBR-Summary, 5 AS-External, 7 NSSA-External. */
+  type: 1 | 2 | 3 | 4 | 5 | 7;
   id: string;
   advRouter: string;
   seq: number;
@@ -301,7 +326,21 @@ export type OspfLsaBody =
       eType: 1 | 2;
       fwd?: string;
       tag: number;
+    }
+  | {
+      /** NSSA-External (Typ 7); `p`: Übersetzung in Typ 5 am ABR erlaubt. */
+      type: 7;
+      prefix: string;
+      plen: number;
+      metric: number;
+      eType: 1 | 2;
+      tag: number;
+      p: boolean;
     };
+
+/** OSPF-Authentifizierung: Klartext oder (vereinfachter) MD5-Digest über den gemeinsamen Schlüssel. */
+export type OspfAuth =
+  { type: 'simple'; key: string } | { type: 'md5'; keyId: number; digest: string };
 
 export type OspfLsa = OspfLsaHeader & { body: OspfLsaBody };
 
@@ -310,6 +349,7 @@ export type OspfMsg =
       type: 'hello';
       routerId: string;
       areaId: string;
+      auth?: OspfAuth;
       helloSec: number;
       deadSec: number;
       priority: number;
@@ -318,11 +358,14 @@ export type OspfMsg =
       neighbors: string[];
       /** Subnetzmaske (v2) bzw. Prefixlänge – nur zur Anzeige/Prüfung. */
       plen?: number;
+      /** Options-Bits: E-Bit (normal) / ohne E-Bit (stub) / N-Bit (NSSA). */
+      areaType?: 'normal' | 'stub' | 'nssa';
     }
   | {
       type: 'dbd';
       routerId: string;
       areaId: string;
+      auth?: OspfAuth;
       init: boolean;
       more: boolean;
       master: boolean;
@@ -333,10 +376,17 @@ export type OspfMsg =
       type: 'lsr';
       routerId: string;
       areaId: string;
+      auth?: OspfAuth;
       requests: { type: number; id: string; advRouter: string }[];
     }
-  | { type: 'lsu'; routerId: string; areaId: string; lsas: OspfLsa[] }
-  | { type: 'lsack'; routerId: string; areaId: string; headers: OspfLsaHeader[] };
+  | { type: 'lsu'; routerId: string; areaId: string; auth?: OspfAuth; lsas: OspfLsa[] }
+  | {
+      type: 'lsack';
+      routerId: string;
+      areaId: string;
+      auth?: OspfAuth;
+      headers: OspfLsaHeader[];
+    };
 
 export interface EigrpRoute {
   prefix: string;
@@ -367,6 +417,13 @@ export interface BgpAttrs {
   nextHop: string;
   med?: number;
   localPref?: number;
+  /** Communities (`65001:100`, `no-export`, `no-advertise`, `local-AS`). */
+  communities?: string[];
+  /** Route Reflection (RFC 4456). */
+  originatorId?: string;
+  clusterList?: string[];
+  /** MP-BGP IPv6: Next Hop der `nlri6`-Präfixe. */
+  nextHop6?: string;
 }
 
 export type BgpMsg =
@@ -377,6 +434,9 @@ export type BgpMsg =
       withdrawn: { prefix: string; plen: number }[];
       attrs?: BgpAttrs;
       nlri: { prefix: string; plen: number }[];
+      /** MP-BGP IPv6 (vereinfacht im selben Update). */
+      withdrawn6?: { prefix: string; plen: number }[];
+      nlri6?: { prefix: string; plen: number }[];
     }
   | { type: 'notification'; code: number; text: string };
 
@@ -411,6 +471,8 @@ export interface Icmp6Pdu {
   lladdr?: Mac;
   /** NA-Flags. */
   naFlags?: { router: boolean; solicited: boolean; override: boolean };
+  /** RA: M-Flag (Managed: DHCPv6 für Adressen) und O-Flag (Other: DHCPv6 für übrige Informationen). */
+  raFlags?: { managed: boolean; other: boolean };
   /** RA: Präfixe (SLAAC) und Router-Lebensdauer. */
   prefixes?: { prefix: Ipv6Addr; plen: number; onLink: boolean; autonomous: boolean }[];
   routerLifetime?: number;
@@ -447,6 +509,7 @@ export type Pdu =
   | UdpPdu
   | TcpPdu
   | DhcpPdu
+  | Dhcp6Pdu
   | DnsPdu
   | HttpPdu
   | SvcPdu
