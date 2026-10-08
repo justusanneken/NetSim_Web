@@ -310,6 +310,12 @@ export function bgpRx(rt: Rt, _iface: Iface, ip: Ipv4Pdu, msg: BgpMsg): void {
         resetSession(rt, c, n, 'bad peer AS', false);
         return;
       }
+      if (n.state === 'established') {
+        // RFC 4271: OPEN im Zustand Established (Gegenseite neu gestartet, z. B. `clear ip bgp`) →
+        // FSM-Fehler, Sitzung samt gelernten Routen verwerfen und neu aufbauen
+        resetSession(rt, c, n, 'FSM error', true);
+        return;
+      }
       n.routerId = msg.routerId;
       n.holdSec = Math.min(HOLD, msg.holdSec);
       if (n.state === 'idle' || n.state === 'connect') {
