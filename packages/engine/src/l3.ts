@@ -341,7 +341,13 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
       return;
     }
     const vip = node.vips?.find((v) => v.ifaceId === iface.id && v.ip === a.targetIp);
-    if (a.targetIp !== iface.ip && !vip) {
+    // Static NAT: Der Router antwortet per Proxy-ARP für die globale Adresse (Outside-Schnittstelle)
+    const proxy =
+      !vip &&
+      a.targetIp !== iface.ip &&
+      iface.cfg.natSide === 'outside' &&
+      (node.l3?.nat.rules.some((r) => r.kind === 'static' && r.global === a.targetIp) ?? false);
+    if (a.targetIp !== iface.ip && !vip && !proxy) {
       ctx.log({
         ...base,
         kind: 'drop',
@@ -370,7 +376,7 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
       kind: 'arp',
       op: 'reply',
       senderMac: vip?.mac ?? iface.mac,
-      senderIp: vip?.ip ?? iface.ip,
+      senderIp: vip?.ip ?? (proxy ? a.targetIp : iface.ip),
       targetMac: a.senderMac,
       targetIp: a.senderIp,
     };

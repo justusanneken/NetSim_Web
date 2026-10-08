@@ -27,6 +27,8 @@ export interface UdpRequestOpts {
   dport?: number;
   /** Ohne Antwort erwartet (Syslog). */
   oneWay?: boolean;
+  /** Abweichendes Timeout (µs). */
+  timeoutUs?: number;
 }
 
 /** Sendet eine Dienstanfrage per UDP und registriert sie (Antwort/Timeout füllen `appc.reqs[id]`). */
@@ -53,7 +55,7 @@ export function udpRequest(
   }
   if (o.oneWay) return { ok: true, id };
   core.reqs[id] = { id, proto: o.proto, op: o.op, dst: o.dst, status: 'pending', sentAt: ctx.now };
-  ctx.setTimer(`svc:ureq:${id}`, UDP_TIMEOUT_US);
+  ctx.setTimer(`svc:ureq:${id}`, o.timeoutUs ?? UDP_TIMEOUT_US);
   // alte Anfragen aufräumen
   const ids = Object.keys(core.reqs).map(Number);
   if (ids.length > 60) for (const old of ids.slice(0, ids.length - 60)) delete core.reqs[old];

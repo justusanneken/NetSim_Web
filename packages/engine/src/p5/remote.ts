@@ -163,6 +163,7 @@ function aaaStep(
       proto: 'radius',
       op: 'access-request',
       args: { user, pass, secret: host.key },
+      timeoutUs: 3_000_000,
     });
     if (!r.ok) continue;
     appcOf(node.cfg).aaaWait[r.id] = { key: connKey(conn), user, next: i + 1, pass };

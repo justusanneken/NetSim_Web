@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { Engine, type HostConfig } from '../src';
+import { Engine, type Result, type HostConfig } from '../src';
 
 const host = (e: Engine, id: string): HostConfig => e.getDevice(id)?.config as HostConfig;
-const must = (r: { ok: boolean; error?: string }): void => {
+const must = <T>(r: Result<T>): T => {
   if (!r.ok) throw new Error(r.error);
+  return r.value;
 };
 
 /** Switch – AP, Switch – Server (DHCP 10.0.0.0/24, Pool .100–.150); Laptop in Reichweite. */

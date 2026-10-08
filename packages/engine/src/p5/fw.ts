@@ -23,6 +23,16 @@ const sameFlow = (
   ip: Ipv4Pdu,
 ): 'fwd' | 'rev' | undefined => {
   if (c.proto !== k.proto) return undefined;
+  const icmp = ip.payload.kind === 'icmp' ? ip.payload.type : undefined;
+  if (icmp !== undefined) {
+    // Echo-Request läuft in Richtung des Initiators, Echo-Reply zurück
+    const reply = icmp === 'echo-reply';
+    const dirOk = (d: 'fwd' | 'rev'): 'fwd' | 'rev' | undefined =>
+      (d === 'fwd') === !reply ? d : undefined;
+    if (c.src === ip.src && c.dst === ip.dst && c.sport === k.sport) return dirOk('fwd');
+    if (c.src === ip.dst && c.dst === ip.src && c.sport === k.dport) return dirOk('rev');
+    return undefined;
+  }
   if (c.src === ip.src && c.dst === ip.dst && c.sport === k.sport && c.dport === k.dport)
     return 'fwd';
   if (c.src === ip.dst && c.dst === ip.src && c.sport === k.dport && c.dport === k.sport)
