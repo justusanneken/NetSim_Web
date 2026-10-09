@@ -171,6 +171,21 @@ describe('Szenarien', () => {
   });
 });
 
+describe('Challenge ueber den Dienst', () => {
+  it('liefert Fragen zu einem Log-Eintrag, sonst leer', () => {
+    const { s, a, e } = lab();
+    e.log.length = 0;
+    s.pduAdd({ protocol: 'icmp', src: a, dst: '10.0.2.10' });
+    run(e, 5);
+    const fw = e.log.find((l) => l.msg.key === 'router.forward');
+    expect(fw).toBeDefined();
+    const qs = s.challenge(fw?.id as number);
+    expect(qs.length).toBeGreaterThan(3);
+    expect(qs.every((x) => x.id.startsWith(`${fw?.id}:`))).toBe(true);
+    expect(s.challenge(99999)).toEqual([]);
+  });
+});
+
 describe('Aufgaben im Dienst', () => {
   it('laden, teilweise loesen, Fortschritt, Antwort, Neustart', () => {
     const { s, a, b, r, e } = lab();

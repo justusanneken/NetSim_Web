@@ -8,6 +8,7 @@ import {
   ActivitySchema,
   type Activity,
 } from './activity';
+import { buildChallenge, type ChallengeQuestion, type DeviceClass } from './challenge';
 import { CheckSchema, evaluateChecks, type Check, type EvalSummary } from './checks';
 import { engineFromState, loadStateInto } from './clone';
 import { deriveChecks } from './derive';
@@ -218,6 +219,24 @@ export class TeachService extends EngineService5 {
     loadStateInto(this.engine, this.activity.start);
     this.touch();
     return { ok: true, value: true };
+  }
+
+  // ------------------------------------------------------------ Challenge Me
+
+  /** Fragen zu einem Log-Eintrag (Quiz im PDU-Inspektor); leer, wenn der Eintrag nicht mehr vorhanden ist. */
+  challenge(logId: number): ChallengeQuestion[] {
+    const entry = this.engine.logSlice(logId, 1)[0];
+    if (entry?.id !== logId) return [];
+    const dev = this.engine.getDevice(entry.atDeviceId);
+    const k = dev?.config.kind;
+    const deviceKind: DeviceClass =
+      k === 'host' || k === 'router' || k === 'switch' || k === 'hub' ? k : 'other';
+    return buildChallenge({
+      entry,
+      deviceKind,
+      ports: dev?.ports.map((p) => p.name) ?? [],
+      later: this.engine.logSlice(logId + 1, 40),
+    });
   }
 
   // ------------------------------------------------------------ Autor
