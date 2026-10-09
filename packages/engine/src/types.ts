@@ -282,12 +282,38 @@ export interface AclEntry {
   established?: boolean;
   log?: boolean;
   matches: number;
+  /** `remark` unmittelbar vor diesem Eintrag. */
+  remark?: string;
+}
+
+export type Acl6Match = { any: true } | { prefix: Ipv6Addr; plen: number };
+
+export interface Acl6Entry {
+  seq: number;
+  action: 'permit' | 'deny';
+  proto: 'ipv6' | 'icmp' | 'tcp' | 'udp';
+  src: Acl6Match;
+  dst: Acl6Match;
+  srcPort?: PortMatch;
+  dstPort?: PortMatch;
+  established?: boolean;
+  matches: number;
+  remark?: string;
+}
+
+/** `ipv6 access-list NAME`. */
+export interface Acl6 {
+  name: string;
+  entries: Acl6Entry[];
+  pendingRemark?: string;
 }
 
 export interface Acl {
   name: string;
   type: 'standard' | 'extended';
   entries: AclEntry[];
+  /** `remark` ohne nachfolgenden Eintrag. */
+  pendingRemark?: string;
 }
 
 export interface NatPool {
@@ -584,6 +610,9 @@ export interface V6IfCfg {
   autoconfig: boolean;
   /** `ipv6 nd ra suppress`. */
   raSuppress?: boolean;
+  /** `ipv6 traffic-filter NAME in|out`. */
+  aclIn?: string;
+  aclOut?: string;
   /** `ipv6 rip NAME enable`: RIPng-Prozess an dieser Schnittstelle. */
   ripng?: string;
   /** `ipv6 dhcp server POOL` (Schnittstelle bedient DHCPv6-Clients). */
@@ -653,6 +682,8 @@ export interface L3Cfg extends IpCore {
   ifaces: Record<string, IfaceCfg>;
   staticRoutes: StaticRoute[];
   acls: Record<string, Acl>;
+  /** IPv6-ACLs (`ipv6 access-list`). */
+  acls6?: Record<string, Acl6>;
   nat: NatCfg;
   dhcp: DhcpServerCfg;
   /** `ip routing` (Router: immer an). */

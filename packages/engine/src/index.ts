@@ -73,3 +73,4 @@ export {
   DAI_DEFAULT_RATE,
 } from './devices/swsec';
 export { isPortfast, isBpduguard, recoveryOn } from './devices/switch';
+export { acl6Eval } from './acl6';

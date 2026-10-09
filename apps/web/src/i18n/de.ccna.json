@@ -1,5 +1,18 @@
 {
   "cdp.neighbor": "CDP: neuer Nachbar {{dev}} ({{rport}}) an {{port}}.",
   "lldp.neighbor": "LLDP: neuer Nachbar {{dev}} ({{rport}}) an {{port}}.",
-  "cdp.nativeMismatch": "CDP: Native-VLAN-Konflikt an {{port}} ({{mine}}) mit {{dev}} {{rport}} ({{theirs}})."
+  "cdp.nativeMismatch": "CDP: Native-VLAN-Konflikt an {{port}} ({{mine}}) mit {{dev}} {{rport}} ({{theirs}}).",
+  "storm.shutdown": "Storm Control: {{type}}-Sturm an {{port}} erkannt – Port err-disabled.",
+  "storm.filtered": "Storm Control: {{type}}-Sturm an {{port}} erkannt – Pakete werden verworfen.",
+  "snoop.untrusted": "DHCP-Snooping: {{msg}} von nicht vertrauenswürdigem Port {{port}} verworfen.",
+  "snoop.rate": "DHCP-Snooping: Rate-Limit ({{rate}} pps) an {{port}} überschritten – Port err-disabled.",
+  "snoop.opt82": "DHCP-Snooping: {{msg}} mit Option 82/giaddr an nicht vertrauenswürdigem Port {{port}} verworfen.",
+  "snoop.macFail": "DHCP-Snooping: {{msg}} an {{port}} verworfen – chaddr stimmt nicht mit der Quell-MAC überein.",
+  "dai.rate": "DAI: {{count}} ARP-Pakete in einer Sekunde an {{port}} – Port err-disabled.",
+  "dai.dhcp": "DAI: ARP von {{mac}}/{{ip}} an {{port}} (VLAN {{vlan}}) verworfen – keine passende DHCP-Snooping-Bindung.",
+  "dai.acl": "DAI: ARP von {{mac}}/{{ip}} an {{port}} (VLAN {{vlan}}) durch ARP-ACL verworfen.",
+  "dai.srcMac": "DAI: ARP an {{port}} (VLAN {{vlan}}) verworfen – Sender-MAC passt nicht zur Quell-MAC.",
+  "dai.dstMac": "DAI: ARP an {{port}} (VLAN {{vlan}}) verworfen – Ziel-MAC passt nicht.",
+  "dai.ip": "DAI: ARP an {{port}} (VLAN {{vlan}}) verworfen – ungültige IP-Adresse.",
+  "dhcp.opt82": "DHCP: Anfrage von {{mac}} mit Option 82 ohne giaddr verworfen (ip dhcp relay information trust-all fehlt)."
 }

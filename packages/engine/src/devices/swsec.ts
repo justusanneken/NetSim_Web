@@ -2,7 +2,7 @@ import {
   isBroadcastMac,
   isMulticastMac,
   pduSize as sizeOf,
-  summarizeFrame,
+  type summarizeFrame,
   type DhcpPdu,
   type Frame,
   type ArpPdu,

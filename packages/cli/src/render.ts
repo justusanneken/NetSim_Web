@@ -26,7 +26,9 @@ import { ciscoMac } from './format';
 import { compressVlans, ifDisplay } from './ifnames';
 import { type7Encrypt } from './secrets';
 import { fwGlobalLines, fwIfaceLines, mgmtGlobalLines, vtyExtraLines, vtyLast } from './render5';
+import { acl6Lines, acl6IfLines } from './cmdAcl';
 import { discGlobalLines, discIfLines } from './cmdDisc';
+import { swSecGlobalLines, swSecIfLines } from './cmdSwSec';
 
 type CliConfig = RouterConfig | SwitchConfig;
 
@@ -163,6 +165,7 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
       out.push(` ipv6 address ${a.addr.toUpperCase()}/${a.plen}${a.eui64 ? ' eui-64' : ''}`);
     if (v6.autoconfig) out.push(' ipv6 address autoconfig');
     if (v6.raSuppress) out.push(' ipv6 nd ra suppress');
+    out.push(...acl6IfLines(c));
     if (v6.managed) out.push(' ipv6 nd managed-config-flag');
     if (v6.otherConfig) out.push(' ipv6 nd other-config-flag');
     if (v6.dhcp6Server) out.push(` ipv6 dhcp server ${v6.dhcp6Server}`);
@@ -239,6 +242,7 @@ function renderInterfaces(d: Device & { config: CliConfig }, L: string[]): void 
       const pc = cfg.ports[p.id];
       if (p.mtu !== 1500) out.push(` mtu ${p.mtu}`);
       if (pc) switchportLines(pc, out);
+      out.push(...swSecIfLines(cfg, p.id));
       if (pc?.routed) {
         if (p.mtu !== 1500) out.push(` ip mtu ${p.mtu}`);
         l3Lines(cfg, cfg.ifaces[p.id], out);
@@ -362,11 +366,12 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     )) {
       L.push(`spanning-tree vlan ${v} priority ${pr}`);
     }
-    if (cfg.errdisableRecovery.psecure) {
-      L.push('errdisable recovery cause psecure-violation');
-      if (cfg.errdisableRecovery.intervalSec !== 300) {
-        L.push(`errdisable recovery interval ${cfg.errdisableRecovery.intervalSec}`);
-      }
+    L.push(...swSecGlobalLines(cfg));
+    if (
+      cfg.errdisableRecovery.intervalSec !== 300 &&
+      (cfg.errdisableRecovery.psecure || cfg.errdisableRecovery.causes?.length)
+    ) {
+      L.push(`errdisable recovery interval ${cfg.errdisableRecovery.intervalSec}`);
     }
     if (cfg.agingSec !== 300) L.push(`mac address-table aging-time ${cfg.agingSec}`);
     L.push('!');
@@ -429,16 +434,25 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
   );
   for (const acl of acls) {
     if (/^\d+$/.test(acl.name)) {
-      for (const e of acl.entries) L.push(`access-list ${acl.name} ${aclEntryText(e, acl.type)}`);
+      for (const e of acl.entries) {
+        if (e.remark) L.push(`access-list ${acl.name} remark ${e.remark}`);
+        L.push(`access-list ${acl.name} ${aclEntryText(e, acl.type)}`);
+      }
+      if (acl.pendingRemark) L.push(`access-list ${acl.name} remark ${acl.pendingRemark}`);
     }
   }
   L.push('!');
   for (const acl of acls) {
     if (/^\d+$/.test(acl.name)) continue;
     L.push(`ip access-list ${acl.type} ${acl.name}`);
-    for (const e of acl.entries) L.push(` ${e.seq} ${aclEntryText(e, acl.type)}`);
+    for (const e of acl.entries) {
+      if (e.remark) L.push(` remark ${e.remark}`);
+      L.push(` ${e.seq} ${aclEntryText(e, acl.type)}`);
+    }
+    if (acl.pendingRemark) L.push(` remark ${acl.pendingRemark}`);
     L.push('!');
   }
+  L.push(...acl6Lines(cfg));
   if (sys.bannerMotd !== undefined) L.push(`banner motd ^C${sys.bannerMotd}^C`, '!');
   renderLine(L, 'line con 0', sys.lineCon, enc);
   L.push('!');
