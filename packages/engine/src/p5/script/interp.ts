@@ -628,17 +628,60 @@ const isObj = (v: Value): v is Obj =>
   !(v instanceof Native);
 
 const newObj = (): Obj => Object.create(null) as Obj;
+/** Schlüsselzahl je Objekt (vermeidet `Object.keys` bei jeder Zuweisung). */
+const keyCount = new WeakMap<Obj, number>();
 
-export function toStr(v: Value): string {
-  if (v === undefined) return 'undefined';
-  if (v === null) return 'null';
-  if (typeof v === 'number')
-    return Number.isInteger(v) ? String(v) : String(Math.round(v * 1e9) / 1e9);
-  if (typeof v === 'string' || typeof v === 'boolean') return String(v);
-  if (Array.isArray(v))
-    return v.map((x) => (x === undefined || x === null ? '' : toStr(x))).join(',');
-  if (v instanceof Fn || v instanceof Native) return 'function';
-  return '[object Object]';
+/** Größte Array-Länge und Schlüsselzahl je Objekt (Speichergrenze der Sandbox). */
+export const MAX_ITEMS = 10_000;
+/** Größe des gespeicherten Zustands (JSON der Hauptteil-Variablen). */
+export const MAX_STATE = 100_000;
+
+interface Budget {
+  left: number;
+}
+
+function charge(b: Budget, n: number): void {
+  b.left -= n;
+  if (b.left < 0) throw new ScriptError('string too long');
+}
+
+function strIn(v: Value, b: Budget, depth: number): string {
+  if (Array.isArray(v)) {
+    // zyklische/sehr tief verschachtelte Arrays: Skriptfehler statt Stacküberlauf
+    if (depth > 20) throw new ScriptError('array nesting too deep');
+    const parts: string[] = [];
+    v.forEach((x, i) => {
+      if (i > 0) charge(b, 1);
+      parts.push(x === undefined || x === null ? '' : strIn(x, b, depth + 1));
+    });
+    return parts.join(',');
+  }
+  let s: string;
+  if (v === undefined) s = 'undefined';
+  else if (v === null) s = 'null';
+  else if (typeof v === 'number')
+    s = Number.isInteger(v) ? String(v) : String(Math.round(v * 1e9) / 1e9);
+  else if (typeof v === 'string' || typeof v === 'boolean') s = String(v);
+  else if (v instanceof Fn || v instanceof Native) s = 'function';
+  else s = '[object Object]';
+  charge(b, s.length);
+  return s;
+}
+
+/** Textdarstellung wie in JavaScript; `max` begrenzt die Länge, bevor ein großer String entsteht. */
+export function toStr(v: Value, max = Infinity): string {
+  return strIn(v, { left: max }, 0);
+}
+
+/** `Array.prototype.join` mit Längengrenze. */
+function joinArr(a: Value[], sep: string, max: number): string {
+  const b = { left: max };
+  return a
+    .map((x, i) => {
+      if (i > 0) charge(b, sep.length);
+      return x === undefined || x === null ? '' : strIn(x, b, 1);
+    })
+    .join(sep);
 }
 
 const truthy = (v: Value): boolean =>
@@ -658,19 +701,31 @@ const num = (v: Value): number =>
               : Number(v)
             : NaN;
 
-export function jsonOf(v: Value, depth = 0): string | undefined {
+export function jsonOf(v: Value, depth = 0, b: Budget = { left: Infinity }): string | undefined {
   if (depth > 20) return undefined;
   if (v === undefined || v instanceof Fn || v instanceof Native) return undefined;
-  if (v === null) return 'null';
-  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'null';
-  if (typeof v === 'string' || typeof v === 'boolean') return JSON.stringify(v);
-  if (Array.isArray(v)) return '[' + v.map((x) => jsonOf(x, depth + 1) ?? 'null').join(',') + ']';
-  const parts: string[] = [];
-  for (const k of Object.keys(v)) {
-    const s = jsonOf(v[k], depth + 1);
-    if (s !== undefined) parts.push(JSON.stringify(k) + ':' + s);
+  let s: string;
+  if (v === null) s = 'null';
+  else if (typeof v === 'number') s = Number.isFinite(v) ? String(v) : 'null';
+  else if (typeof v === 'string' || typeof v === 'boolean') s = JSON.stringify(v);
+  else if (Array.isArray(v)) {
+    charge(b, 2);
+    return '[' + v.map((x) => jsonOf(x, depth + 1, b) ?? 'null').join(',') + ']';
+  } else {
+    const parts: string[] = [];
+    charge(b, 2);
+    for (const k of Object.keys(v)) {
+      const s2 = jsonOf(v[k], depth + 1, b);
+      if (s2 !== undefined) {
+        const kk = JSON.stringify(k);
+        charge(b, kk.length + 2);
+        parts.push(kk + ':' + s2);
+      }
+    }
+    return '{' + parts.join(',') + '}';
   }
-  return '{' + parts.join(',') + '}';
+  charge(b, s.length + 1);
+  return s;
 }
 
 export interface InterpLimits {
@@ -748,7 +803,7 @@ export class Interp {
     );
     def(
       'String',
-      nat((a) => toStr(a[0])),
+      nat((a) => toStr(a[0], this.limits.maxString)),
     );
     def(
       'Boolean',
@@ -769,7 +824,7 @@ export class Interp {
     def('NaN', NaN);
     def('Infinity', Infinity);
     const json = newObj();
-    json.stringify = nat((a) => jsonOf(a[0]));
+    json.stringify = nat((a) => jsonOf(a[0], 0, { left: this.limits.maxString }));
     def('JSON', json);
     for (const [k, v] of Object.entries(host)) def(k, v);
   }
@@ -924,9 +979,17 @@ export class Interp {
       const i = typeof k === 'number' ? k : Number(k);
       if (!Number.isInteger(i) || i < 0 || i > o.length + 1000)
         throw new ScriptError('invalid array index', line);
+      if (i >= MAX_ITEMS) throw new ScriptError('array too large', line);
       o[i] = v;
-    } else if (isObj(o)) o[String(k)] = v;
-    else throw new ScriptError('cannot set property', line);
+    } else if (isObj(o)) {
+      const key = String(k);
+      if (!Object.prototype.hasOwnProperty.call(o, key)) {
+        const n = keyCount.get(o) ?? Object.keys(o).length;
+        if (n >= MAX_ITEMS) throw new ScriptError('too many properties', line);
+        keyCount.set(o, n + 1);
+      }
+      o[key] = v;
+    } else throw new ScriptError('cannot set property', line);
   }
 
   private ev(n: Node, env: Env): Value {
@@ -942,7 +1005,7 @@ export class Interp {
       case 'tpl': {
         let s = '';
         for (const p of n.parts as (string | Node)[])
-          s += typeof p === 'string' ? p : toStr(this.ev(p, env));
+          s += typeof p === 'string' ? p : toStr(this.ev(p, env), this.limits.maxString);
         return this.str(s, n.line);
       }
       case 'array':
@@ -1076,7 +1139,7 @@ export class Interp {
     switch (op) {
       case '+':
         if (typeof a === 'string' || typeof b === 'string' || Array.isArray(a) || Array.isArray(b))
-          return this.str(toStr(a) + toStr(b), line);
+          return this.str(toStr(a, this.limits.maxString) + toStr(b, this.limits.maxString), line);
         return num(a) + num(b);
       case '-':
         return num(a) - num(b);
@@ -1139,6 +1202,7 @@ export class Interp {
         case 'split':
           return s.split(toStr(args[0]));
         case 'padStart':
+          if (num(args[0]) > this.limits.maxString) throw new ScriptError('string too long', line);
           return s.padStart(num(args[0]), args[1] === undefined ? ' ' : toStr(args[1]));
       }
     } else if (typeof recv === 'number') {
@@ -1148,20 +1212,25 @@ export class Interp {
     } else if (Array.isArray(recv)) {
       switch (name) {
         case 'push':
-          if (recv.length + args.length > 10_000) throw new ScriptError('array too large', line);
+          if (recv.length + args.length > MAX_ITEMS) throw new ScriptError('array too large', line);
           return recv.push(...args);
         case 'pop':
           return recv.pop();
         case 'shift':
           return recv.shift();
         case 'unshift':
+          if (recv.length + args.length > MAX_ITEMS) throw new ScriptError('array too large', line);
           return recv.unshift(...args);
         case 'indexOf':
           return recv.indexOf(args[0]);
         case 'includes':
           return recv.includes(args[0]);
         case 'join':
-          return recv.map((x) => toStr(x)).join(args[0] === undefined ? ',' : toStr(args[0]));
+          return joinArr(
+            recv,
+            args[0] === undefined ? ',' : toStr(args[0], this.limits.maxString),
+            this.limits.maxString,
+          );
         case 'slice':
           return recv.slice(
             args[0] === undefined ? 0 : num(args[0]),
@@ -1208,9 +1277,15 @@ function methodRef(recv: Value, name: string): Value {
 /** Alle deklarierten Variablen des Hauptteils, die sich als JSON darstellen lassen (Zustand zwischen Aktivierungen). */
 export function exportVars(it: Interp): Record<string, unknown> {
   const out: Record<string, unknown> = {};
+  const budget = { left: MAX_STATE };
   for (const [k, r] of it.global.vars) {
     if (r.v instanceof Fn || r.v instanceof Native || r.v === undefined) continue;
-    const s = jsonOf(r.v);
+    let s: string | undefined;
+    try {
+      s = jsonOf(r.v, 0, budget);
+    } catch {
+      throw new ScriptError('program state too large');
+    }
     if (s !== undefined) out[k] = JSON.parse(s) as unknown;
   }
   return out;

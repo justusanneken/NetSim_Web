@@ -47,7 +47,7 @@ function evaluate(
   const nat = (f: (a: Value[]) => Value): Native => new Native(f);
   const api: Record<string, Value> = {
     log: nat((a) => {
-      if (on) emit(script, ctx.now, a.map(toStr).join(' '));
+      if (on) emit(script, ctx.now, a.map((x) => toStr(x, 20_000)).join(' '));
       return undefined;
     }),
     readSensor: nat((a) => {

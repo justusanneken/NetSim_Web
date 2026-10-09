@@ -247,7 +247,7 @@
   String-/Array-Methoden. Kein `eval`, `new`, `this`, Klassen, Getter, `try/catch`, Promises, Module, Regex, Datum; kein Zugriff auf Globals, Prototypen
   oder `constructor`. API: `readSensor(name)` (`'self'`/eigene Sensorart/ dem IoT-Server bekannte Geräte, sonst `null`), `setActuator(name, on)` (eigener
   Aktor oder per `set` an ein registriertes Gerät), `log(…)`, `every(ms, fn)` (min. 100 ms, max. 16 Handler), `onReport(fn)` (`fn(name, value)` bei eigenem Bericht
-  oder wenn ein Bericht am IoT-Server eintrifft). Grenzen: 100 000 Schritte und Tiefe 40 je Aktivierung, Strings ≤ 20 000 Zeichen. **Zustand:** nur Text,
+  oder wenn ein Bericht am IoT-Server eintrifft). Grenzen: 100 000 Schritte und Tiefe 40 je Aktivierung, Strings ≤ 20 000 Zeichen (auch bei `join`, `padStart`, `JSON.stringify`, Array-zu-String), Arrays und Objekte ≤ 10 000 Einträge, gespeicherter Zustand ≤ 100 000 Zeichen JSON. **Zustand:** nur Text,
   `running`, Konsole (200 Zeilen) und die JSON-fähigen Variablen des Hauptteils sind Teil der Konfiguration; bei jeder Aktivierung wird der Hauptteil still neu
   ausgewertet und die gespeicherten Variablen eingesetzt (Funktionswerte werden nicht gespeichert; Variablen, die Funktionen halten, und Closure-Zustand
   außerhalb des Hauptteils gehen zwischen Aktivierungen verloren). Ein Fehler (Syntax, Laufzeit, Schrittgrenze) hält nur dieses Gerät an (`crashed`) und
