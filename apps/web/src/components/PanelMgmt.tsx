@@ -39,6 +39,7 @@ export function MgmtPanel({ dev }: { dev: DeviceView }) {
   const [log, setLog] = useState('');
   const [comm, setComm] = useState({ name: '', rw: false });
   const [rad, setRad] = useState({ host: '', key: '' });
+  const [tac, setTac] = useState({ host: '', key: '' });
   const [clock, setClock] = useState('');
   const transport = m?.vty.transport ?? ['ssh', 'telnet'];
   const sec = (lines: string[]) => void ios.run(lines);
@@ -310,7 +311,7 @@ export function MgmtPanel({ dev }: { dev: DeviceView }) {
       </details>
 
       <details className="svc5">
-        <summary>AAA / RADIUS</summary>
+        <summary>AAA / RADIUS / TACACS+</summary>
         <label className="inline-check">
           <input
             type="checkbox"
@@ -347,6 +348,40 @@ export function MgmtPanel({ dev }: { dev: DeviceView }) {
                 'aaa authentication login default group radius local',
               ]);
               setRad({ host: '', key: '' });
+            }}
+          >
+            {t('common.add')}
+          </button>
+        </div>
+        <ul className="ping-list">
+          {m?.aaa.tacacs?.map((r) => (
+            <li key={`${r.name ?? ''}${r.host}`}>
+              tacacs-server host {r.host} ({r.pass ?? 0}/{r.fail ?? 0}/{r.errors ?? 0})
+            </li>
+          ))}
+        </ul>
+        <div className="form">
+          <input
+            aria-label="TACACS+ host"
+            placeholder="10.0.0.10"
+            value={tac.host}
+            onChange={(e) => setTac({ ...tac, host: e.target.value })}
+          />
+          <input
+            aria-label="TACACS+ key"
+            placeholder="key"
+            value={tac.key}
+            onChange={(e) => setTac({ ...tac, key: e.target.value })}
+          />
+          <button
+            onClick={() => {
+              if (!tac.host) return;
+              sec([
+                'aaa new-model',
+                `tacacs-server host ${tac.host.trim()} key ${tac.key}`,
+                'aaa authentication login default group tacacs+ local',
+              ]);
+              setTac({ host: '', key: '' });
             }}
           >
             {t('common.add')}

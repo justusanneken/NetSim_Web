@@ -34,6 +34,7 @@ const MODE_SUFFIX: Record<ModeId, string> = {
   'config-ospf6': '(config-rtr)#',
   'config-eigrp': '(config-router)#',
   'config-eigrp6': '(config-rtr)#',
+  'config-tacacs': '(config-server-tacacs)#',
   'config-bgp': '(config-router)#',
   'config-obj-net': '(config-network-object)#',
   'config-route-map': '(config-route-map)#',

@@ -200,6 +200,8 @@ export interface ServerSvc5 {
   syslog?: { enabled: boolean; messages: SyslogMsg[] };
   snmp?: { enabled: boolean; communities: SnmpCommunity[]; location?: string; contact?: string };
   aaa?: { enabled: boolean; clients: { ip: Ipv4Addr; secret: string }[]; users: UserCred[] };
+  /** TACACS+-Dienst (TCP 49): Clients mit Schlüssel und Benutzerliste. */
+  tacacs?: { enabled: boolean; clients: { ip: Ipv4Addr; secret: string }[]; users: UserCred[] };
   iot?: { enabled: boolean; devices: Record<string, IotDevice>; rules: IotRule[] };
 }
 
@@ -298,6 +300,19 @@ export interface VtySession {
   protocol: 'telnet' | 'ssh' | 'console';
 }
 
+/** TACACS+-Server eines CLI-Geräts. */
+export interface TacacsHost {
+  host: Ipv4Addr;
+  key: string;
+  /** Name bei `tacacs server NAME`; ohne Name: `tacacs-server host`. */
+  name?: string;
+  /** Laufzeit: Zähler für `show tacacs`. */
+  opens?: number;
+  pass?: number;
+  fail?: number;
+  errors?: number;
+}
+
 export interface MgmtCfg {
   /** `username X [privilege N] secret Y` (Klartext, wie die übrigen Passwörter). */
   users: Record<string, { secret: string; privilege: number }>;
@@ -317,8 +332,10 @@ export interface MgmtCfg {
   aaa: {
     newModel: boolean;
     radius: { host: Ipv4Addr; key: string }[];
+    /** `tacacs-server host A key K` bzw. `tacacs server NAME` (TCP 49). */
+    tacacs?: TacacsHost[];
     /** `aaa authentication login default group radius local`. */
-    methods: ('radius' | 'local')[];
+    methods: ('radius' | 'tacacs' | 'local')[];
     listName: string;
   };
   /** Laufzeit: offene Sitzungen (Console nicht enthalten). */

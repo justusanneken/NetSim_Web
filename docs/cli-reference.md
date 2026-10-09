@@ -155,3 +155,5 @@ Schnittstelle `ipv6 rip NAME enable`; `redistribute connected|static|rip|ospf|bg
 
 **EIGRP für IPv6:** `ipv6 router eigrp ASN` (Modus `(config-rtr)#`: `eigrp router-id A.B.C.D`, `[no] shutdown`, `passive-interface IF|default`, `variance N`, `maximum-paths N`,
 `redistribute connected|static|rip|ospf|bgp [ID] [metric BW DLY REL LOAD MTU] [route-map M]`), Schnittstelle `ipv6 eigrp ASN`; `show ipv6 eigrp neighbors|topology|interfaces`, `show ipv6 protocols`, `show ipv6 route` (Codes `D`, `EX`).
+
+**TACACS+:** `tacacs-server host A [key K]`, `tacacs server NAME` (`address ipv4 A`, `key K`; Modus `(config-server-tacacs)#`), `aaa authentication login LIST group tacacs+ [group radius] [local]`, `show tacacs`, `show aaa`.

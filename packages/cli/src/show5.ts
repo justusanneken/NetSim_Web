@@ -1,6 +1,7 @@
 import type { Device, Engine, MgmtCfg } from '@netsim/engine';
 import { clockOf, idleText, mgmtOf, oidName } from '@netsim/engine';
 import { ifDisplay } from './ifnames';
+import { aaaMethodText } from './render5';
 
 type D = Device;
 
@@ -161,8 +162,11 @@ export function showAaa(d: D): string[] {
   const m = cfg ? mgmtOf(cfg.sys) : undefined;
   if (!m?.aaa.newModel) return ['AAA is not enabled (aaa new-model)'];
   return [
-    `AAA new-model enabled; login list "${m.aaa.listName}": ${m.aaa.methods.map((x) => (x === 'radius' ? 'group radius' : x)).join(' ') || 'none'}`,
+    `AAA new-model enabled; login list "${m.aaa.listName}": ${m.aaa.methods.map(aaaMethodText).join(' ') || 'none'}`,
     ...m.aaa.radius.map((r) => `RADIUS server ${r.host} (udp port 1812)`),
+    ...(m.aaa.tacacs ?? [])
+      .filter((t) => t.host)
+      .map((t) => `TACACS+ server ${t.host} (tcp port 49)`),
   ];
 }
 

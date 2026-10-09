@@ -181,6 +181,7 @@ const SVC_TAG: Record<SvcPdu['proto'], ProtoTag> = {
   syslog: 'SYSLOG',
   snmp: 'SNMP',
   radius: 'RADIUS',
+  tacacs: 'TACACS',
   telnet: 'TELNET',
   ssh: 'SSH',
   iot: 'IOT',

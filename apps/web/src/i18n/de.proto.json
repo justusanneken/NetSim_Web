@@ -8,5 +8,9 @@
   "ap.radiusHost": "RADIUS-Server",
   "ap.radiusSecret": "Shared Secret",
   "wifi.username": "Benutzername (802.1X)",
-  "wifi.password": "Passwort (802.1X)"
+  "wifi.password": "Passwort (802.1X)",
+  "svc5.tacacsClients": "Erlaubte TACACS+-Clients (Geräte-IP + Schlüssel):",
+  "svc.tacacs.pass": "TACACS+: Benutzer „{{user}}“ von {{src}} authentifiziert (PASS).",
+  "svc.tacacs.fail": "TACACS+: Benutzer „{{user}}“ von {{src}} abgewiesen (FAIL).",
+  "svc.tacacs.badKey": "TACACS+: Schlüssel von {{src}} stimmt nicht – Paket nicht lesbar (ERROR)."
 }

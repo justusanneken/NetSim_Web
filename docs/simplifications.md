@@ -142,7 +142,7 @@
   Sitzungen (Standard 5); alle vty-Leitungen teilen sich eine Konfiguration (`transport`, `login`, Passwort).
 - **Benutzer-Geheimnisse:** `username X secret Y` wird im Konfigurationsbaum im Klartext gehalten und als `secret 5 <Typ-7>`
   gerendert (umkehrbar, damit Replay/`reload` funktionieren); RSA-Schlüssel überstehen `reload` (NVRAM).
-- **AAA:** nur Anmeldung an den vty-Leitungen (kein Console-/Enable-/Accounting-AAA, kein TACACS+). Methodenliste
+- **AAA:** nur Anmeldung an den vty-Leitungen (kein Console-/Enable-/Accounting-AAA, TACACS+ siehe „Erweiterungen proto“). Methodenliste
   `group radius`/`local`; bei RADIUS-Timeout (3 s) wird die nächste Methode genutzt, bei explizitem Reject nicht.
 - **NTP:** Anfrage/Antwort mit Zeitstempel (kein Offset-/Delay-Algorithmus, kein Stratum-Auswahlverfahren, keine Authentifizierung);
   Abfrage 2 s nach Konfiguration, dann alle 64 s. Gerätezeit = Epoch-Basis + virtuelle Zeit; Router starten am 1.3.1993,
@@ -217,3 +217,9 @@
   Status `auth-failed`, kein Link. Die Assoziation ist dadurch asynchron (Status `authenticating`). Ein abgewiesenes Verfahren wird nicht wiederholt, bis Zugangsdaten oder die
   Server-Dienste (`aaa`) geändert werden; nach Trennung (Reichweite, Aus) authentifiziert sich der Client erneut. Roaming zwischen Enterprise-APs authentifiziert den Ziel-AP vorab.
   Keine Zertifikate, keine Schlüsselableitung, keine Gruppen-/Rollenzuweisung, kein Accounting.
+- **TACACS+:** eigener Dienst über die bestehende Dienst-Transportschicht (`p5/conn.ts`, vereinfachtes TCP auf Port 49): Anfrage `authen` (Benutzer, Passwort, Schlüssel) →
+  `authen-pass` | `authen-fail` | `authen-error`. Der gemeinsame Schlüssel wird nur verglichen (kein Header-/Body-Verschleiern); falscher Schlüssel oder unbekannter Client-IP ⇒ Fehler
+  bzw. abgelehnte Verbindung und damit Weiterfallen auf die nächste Methode (`local`), `fail` ⇒ harte Ablehnung ohne Fallback (wie bei IOS). Nur Authentifizierung der vty-Anmeldung
+  (kein Authorization/Accounting, keine Console-/Enable-Authentifizierung), nur der erste konfigurierte Server wird befragt, Server-Gruppen (`aaa group server`) gibt es nicht.
+  Zähler für `show tacacs` (Verbindungen, pass/fail/errors) sind Laufzeitwerte. Der Client-Aufruf sitzt in `p5/remote.ts` (`aaaStep`) und `p5/tacacs.ts`; der Server-Dienst hat
+  eigene Clients und Benutzer (getrennt von RADIUS).

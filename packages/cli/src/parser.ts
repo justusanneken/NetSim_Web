@@ -26,7 +26,8 @@ export type ModeId =
   | 'config-bgp-af6'
   | 'config-dhcp6'
   | 'config-rip6'
-  | 'config-eigrp6';
+  | 'config-eigrp6'
+  | 'config-tacacs';
 export type ParamType =
   'word' | 'int' | 'ip' | 'mask' | 'iface' | 'vlans' | 'mac' | 'wildcard' | 'ipv6' | 'prefix6';
 export type Family = 'router' | 'switch' | 'switch-l3' | 'firewall';

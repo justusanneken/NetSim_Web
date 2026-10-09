@@ -13,6 +13,7 @@ const DEFAULTS: Svc = {
   syslog: { enabled: false, messages: [] },
   snmp: { enabled: false, communities: [{ name: 'public', rw: false }] },
   aaa: { enabled: false, clients: [], users: [] },
+  tacacs: { enabled: false, clients: [], users: [] },
   iot: { enabled: false, devices: {}, rules: [] },
 };
 
@@ -131,6 +132,19 @@ export function Services5Config({ dev }: { dev: DeviceView }) {
           users={get('aaa').users}
           onChange={(users) => save('aaa', { users })}
           prefix="aaa"
+        />
+      </details>
+      <details className="svc5">
+        {head('tacacs', 'TACACS+')}
+        <ClientEditor
+          kind="TACACS+"
+          list={get('tacacs').clients}
+          onChange={(clients) => save('tacacs', { clients })}
+        />
+        <UserList
+          users={get('tacacs').users}
+          onChange={(users) => save('tacacs', { users })}
+          prefix="tacacs"
         />
       </details>
       <details className="svc5">
@@ -275,16 +289,20 @@ function CommunityEditor({
 function ClientEditor({
   list,
   onChange,
+  kind = 'RADIUS',
 }: {
   list: { ip: string; secret: string }[];
   onChange: (l: { ip: string; secret: string }[]) => void;
+  kind?: 'RADIUS' | 'TACACS+';
 }) {
   const { t } = useTranslation();
   const [ip, setIp] = useState('');
   const [secret, setSecret] = useState('');
   return (
     <>
-      <p className="small muted">{t('svc5.radiusClients')}</p>
+      <p className="small muted">
+        {kind === 'RADIUS' ? t('svc5.radiusClients') : t('svc5.tacacsClients')}
+      </p>
       <ul className="ping-list">
         {list.map((c) => (
           <li key={c.ip}>
@@ -300,13 +318,13 @@ function ClientEditor({
       </ul>
       <div className="form inline3">
         <input
-          aria-label="RADIUS client IP"
+          aria-label={`${kind} client IP`}
           placeholder="10.0.0.1"
           value={ip}
           onChange={(e) => setIp(e.target.value)}
         />
         <input
-          aria-label="RADIUS shared secret"
+          aria-label={`${kind} shared secret`}
           placeholder="Shared secret"
           value={secret}
           onChange={(e) => setSecret(e.target.value)}

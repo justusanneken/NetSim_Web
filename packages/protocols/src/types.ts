@@ -151,6 +151,7 @@ export type SvcProto =
   | 'syslog'
   | 'snmp'
   | 'radius'
+  | 'tacacs'
   | 'telnet'
   | 'ssh'
   | 'iot'
@@ -573,5 +574,10 @@ export type ProtoTag =
   | 'WIFI'
   | 'FW'
   | 'CAPWAP'
+  | 'TACACS'
+  | 'PPPOE'
+  | 'PPP'
+  | 'IKE'
+  | 'ESP'
   | 'CSMA'
   | 'SYS';

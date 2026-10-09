@@ -3,11 +3,12 @@ import type { DeviceCtx } from '../ctx';
 import type { Iface } from '../ifaces';
 import type { Base, IpNode } from '../l3';
 import { capwapHandler, capwapReply } from './capwap';
-import { connTimer, tcpRxSvc, type TcpServer } from './conn';
+import { connTimer, tcpRxSvc, type ClientHook, type TcpServer } from './conn';
 import { ftpServer } from './ftp';
 import { iotHandler } from './iot';
 import { mailClientHook, pop3Server, smtpServer } from './mail';
 import { aaaDecision, remoteServer } from './remote';
+import { tacacsClientHook, tacacsServer } from './tacacs';
 import {
   onUdpReply,
   radiusServer,
@@ -26,6 +27,13 @@ const SERVERS: Partial<Record<SvcProto, TcpServer>> = {
   pop3: pop3Server,
   telnet: remoteServer('telnet'),
   ssh: remoteServer('ssh'),
+  tacacs: tacacsServer,
+};
+
+/** Abschluss-Hooks der TCP-Client-Verbindungen (Mail, TACACS+). */
+const clientHook: ClientHook = (ctx, node, c, event) => {
+  mailClientHook(ctx, node, c, event);
+  tacacsClientHook(ctx, node, c, event);
 };
 
 /** UDP-Dienstnachricht (`app.kind === 'svc'`) verarbeiten; `true` = verbraucht. */
@@ -84,7 +92,7 @@ export function svcTcpRx(
   ip: Ipv4Pdu,
   tcp: TcpPdu,
 ): boolean {
-  return tcpRxSvc(ctx, node, iface, base, ip, tcp, SERVERS, mailClientHook);
+  return tcpRxSvc(ctx, node, iface, base, ip, tcp, SERVERS, clientHook);
 }
 
 /** Timer der Dienstschicht (Name ohne `svc:`). */
@@ -104,5 +112,5 @@ export function svcTimer(ctx: DeviceCtx, node: IpNode, name: string): void {
       aaaDecision(ctx, node, ctx.device, id, undefined);
     return;
   }
-  connTimer(ctx, node, name, mailClientHook);
+  connTimer(ctx, node, name, clientHook);
 }

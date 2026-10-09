@@ -8,5 +8,9 @@
   "ap.radiusHost": "RADIUS server",
   "ap.radiusSecret": "Shared secret",
   "wifi.username": "Username (802.1X)",
-  "wifi.password": "Password (802.1X)"
+  "wifi.password": "Password (802.1X)",
+  "svc5.tacacsClients": "Allowed TACACS+ clients (device IP + key):",
+  "svc.tacacs.pass": "TACACS+: user “{{user}}” from {{src}} authenticated (PASS).",
+  "svc.tacacs.fail": "TACACS+: user “{{user}}” from {{src}} rejected (FAIL).",
+  "svc.tacacs.badKey": "TACACS+: key from {{src}} does not match – packet unreadable (ERROR)."
 }

@@ -5,6 +5,10 @@ import { type7Encrypt } from './secrets';
 
 type CliConfig = RouterConfig | SwitchConfig;
 
+/** Methodenname in `aaa authentication login …`. */
+export const aaaMethodText = (x: 'radius' | 'tacacs' | 'local'): string =>
+  x === 'radius' ? 'group radius' : x === 'tacacs' ? 'group tacacs+' : x;
+
 /** Management-Abschnitt der running-config (Benutzer, AAA, SSH, NTP, Syslog, SNMP). */
 export function mgmtGlobalLines(cfg: CliConfig): string[] {
   const m = cfg.sys.mgmt;
@@ -13,7 +17,7 @@ export function mgmtGlobalLines(cfg: CliConfig): string[] {
   if (m.aaa.newModel) L.push('aaa new-model');
   if (m.aaa.methods.length > 0)
     L.push(
-      `aaa authentication login ${m.aaa.listName} ${m.aaa.methods.map((x) => (x === 'radius' ? 'group radius' : x)).join(' ')}`,
+      `aaa authentication login ${m.aaa.listName} ${m.aaa.methods.map(aaaMethodText).join(' ')}`,
     );
   for (const [name, u] of Object.entries(m.users))
     L.push(
@@ -21,6 +25,14 @@ export function mgmtGlobalLines(cfg: CliConfig): string[] {
     );
   for (const r of m.aaa.radius)
     L.push(`radius-server host ${r.host}${r.key ? ` key ${r.key}` : ''}`);
+  for (const t of m.aaa.tacacs ?? []) {
+    if (t.name) {
+      L.push(`tacacs server ${t.name}`);
+      if (t.host) L.push(` address ipv4 ${t.host}`);
+      if (t.key) L.push(` key ${t.key}`);
+      L.push('!');
+    } else L.push(`tacacs-server host ${t.host}${t.key ? ` key ${t.key}` : ''}`);
+  }
   if (m.ssh.keyBits !== undefined || m.ssh.version === 1) L.push(`ip ssh version ${m.ssh.version}`);
   for (const s of m.ntp.servers) L.push(`ntp server ${s}`);
   if (m.ntp.master !== undefined) L.push(`ntp master ${m.ntp.master}`);

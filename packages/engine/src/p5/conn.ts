@@ -21,6 +21,7 @@ export const TCP_PORT: Partial<Record<SvcProto, number>> = {
   telnet: 23,
   smtp: 25,
   pop3: 110,
+  tacacs: 49,
 };
 const PORT_PROTO = new Map<number, SvcProto>(
   Object.entries(TCP_PORT).map(([p, n]) => [n as number, p as SvcProto]),
