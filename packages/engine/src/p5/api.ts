@@ -137,6 +137,7 @@ export class Phase5 {
   timer(ctx: DeviceCtx, dev: Device, name: string): void {
     if (name === 'capwap') return capwapTick(ctx, dev);
     if (name === 'coldstart') return snmpTrap(ctx, dev, 'coldstart');
+    if (name === 'eapretry') return ctx.requestWifiSync();
     if (name.startsWith('script:')) return scriptTimer(ctx, dev, name);
     if (name === 'ntp') {
       ntpPoll(ctx, dev);

@@ -4,6 +4,7 @@ import type { DeviceCtx } from '../ctx';
 import type { Iface } from '../ifaces';
 import { ipSend, newIpPacket, type Base, type IpNode } from '../l3';
 import type { HostConfig, HttpRequest, TcpConn } from '../types';
+import { nextEphemeral } from '../ports';
 import { dnsResolve } from './dns';
 
 const RTO_US = 1_000_000;
@@ -105,7 +106,7 @@ function connect(
 ): void {
   req.addr = addr;
   req.status = 'connecting';
-  const lport = h.nextPort++;
+  const lport = nextEphemeral(h, (p) => Object.values(h.tcp).some((x) => x.lport === p));
   const c: TcpConn = {
     state: 'syn-sent',
     lport,

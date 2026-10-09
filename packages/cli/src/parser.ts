@@ -110,6 +110,8 @@ export interface Env {
 
 interface Compiled<C> extends CommandDef<C> {
   negated: boolean;
+  /** `no`-Form: Namen der im Original erforderlichen Parameter (dürfen hier fehlen). */
+  need?: string[];
 }
 
 interface Pos<C> {
@@ -119,7 +121,14 @@ interface Pos<C> {
 }
 
 export type ParseResult<C> =
-  | { ok: true; def: CommandDef<C>; args: Args; negated: boolean }
+  | {
+      ok: true;
+      def: CommandDef<C>;
+      args: Args;
+      negated: boolean;
+      /** `no`-Form, bei der im Original erforderliche Parameter fehlen. */
+      truncated?: boolean;
+    }
   | { ok: false; error: 'empty' }
   | { ok: false; error: 'invalid'; at: number }
   | { ok: false; error: 'incomplete' }
@@ -211,17 +220,25 @@ export class Registry<C> {
       if (!d.modes.includes(mode) || !familyOk(d.only, env.family)) continue;
       out.push({ ...d, negated: false });
       if (d.negatable) {
-        // Bei `no …` sind nachfolgende Parameter optional (z. B. `no hostname`).
-        const relaxed = d.slots.map((x) => (x.kind === 'kw' ? x : { ...x, opt: true }));
+        // Bei `no …` dürfen Parameter am Ende fehlen (z. B. `no hostname`); ein Parameter, dem noch ein
+        // erforderliches Schlüsselwort folgt, bleibt erforderlich (`no area 1 stub`, nicht `no area stub`)
+        const relaxed = d.slots.map((x, i) =>
+          x.kind === 'kw' || d.slots.slice(i + 1).some((y) => y.kind === 'kw' && !y.opt)
+            ? x
+            : { ...x, opt: true },
+        );
+        const need = d.slots.flatMap((x) => (x.kind !== 'kw' && !x.opt ? [x.name] : []));
         out.push({
           ...d,
           slots: [K('no', 'Negate a command or set its defaults'), ...relaxed],
           negated: true,
+          need,
         });
         out.push({
           ...d,
           slots: [K('default', 'Set a command to its defaults'), ...relaxed],
           negated: true,
+          need,
         });
       }
     }
@@ -294,7 +311,8 @@ export class Registry<C> {
     if (!r.ok) return r;
     const done = r.pos.find((p) => isComplete(p.def.slots, p.idx));
     if (!done) return { ok: false, error: 'incomplete' };
-    return { ok: true, def: done.def, args: done.args, negated: done.def.negated };
+    const truncated = done.def.need?.some((n) => done.args[n] === undefined) ?? false;
+    return { ok: true, def: done.def, args: done.args, negated: done.def.negated, truncated };
   }
 
   /** `?`: Folgeoptionen nach dem Text vor dem Cursor. */

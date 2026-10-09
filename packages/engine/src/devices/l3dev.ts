@@ -72,15 +72,16 @@ export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
         greXmit(c, node, iface, frame);
         return;
       }
-      if (iface.kind === 'dialer' || iface.kind === 'vaccess') {
-        pppoeXmit(c, node, iface, frame);
-        return;
-      }
+      // Crypto Map (auch am Dialer einer PPPoE-Einwahl): passende Pakete werden ESP-gekapselt
       if (
         iface.cfg.cryptoMap &&
         cryptoXmit(c, node, { ...iface, ip: ifaceIp(node, iface.id) }, frame)
       )
         return;
+      if (iface.kind === 'dialer' || iface.kind === 'vaccess') {
+        pppoeXmit(c, node, iface, frame);
+        return;
+      }
       if (iface.kind === 'svi') {
         switchOriginate(c, dev as SwitchDev, iface.vlan ?? 1, frame);
       } else if (iface.kind === 'sub') {

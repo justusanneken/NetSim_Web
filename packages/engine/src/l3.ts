@@ -435,8 +435,9 @@ function ipRx(
     return;
   }
   if (isLocalIp(node, ip.dst) || bcast) {
-    // TCP zum Gerät selbst (BGP, Telnet, SSH …) unterliegt der eingehenden ACL wie Durchgangsverkehr
-    if (!bcast && ip.payload.kind === 'tcp' && !aclInPermits(ctx, node, iface, base, ip)) return;
+    // Unicast an das Gerät selbst (BGP, Telnet, SSH, IKE, ESP, Ping …) unterliegt der eingehenden ACL wie
+    // Durchgangsverkehr (IOS); Broadcast/Multicast (Routing-Protokolle, DHCP) bleiben ausgenommen
+    if (!bcast && !aclInPermits(ctx, node, iface, base, ip)) return;
     deliverLocal(ctx, node, iface, base, ip, frame, bcast && !isLocalIp(node, ip.dst));
     return;
   }

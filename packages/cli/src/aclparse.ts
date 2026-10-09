@@ -1,9 +1,14 @@
 import { isValidIpv4 } from '@netsim/protocols';
-import type { AclEntry, AddrMatch, PortMatch } from '@netsim/engine';
+import type { AclEntry, AclProto, AddrMatch, PortMatch } from '@netsim/engine';
 
 const PORTS: Record<string, number> = {
   ftp: 21,
   'ftp-data': 20,
+  tacacs: 49,
+  bgp: 179,
+  isakmp: 500,
+  'non500-isakmp': 4500,
+  snmptrap: 162,
   ssh: 22,
   telnet: 23,
   smtp: 25,
@@ -20,6 +25,9 @@ const PORTS: Record<string, number> = {
 };
 
 export class AclParseError extends Error {}
+
+/** Protokoll-Schlüsselwörter erweiterter ACLs. */
+const ACL_PROTOS: AclProto[] = ['ip', 'icmp', 'tcp', 'udp', 'esp', 'ahp', 'gre', 'ospf', 'eigrp'];
 
 const portNum = (t: string | undefined): number => {
   if (t === undefined) throw new AclParseError('% Incomplete command.');
@@ -75,10 +83,9 @@ export function parseAclEntry(
     const log = t[0] === 'log';
     return { seq, action, proto: 'ip', src, log, matches: 0 };
   }
-  const proto = t.shift();
-  if (proto !== 'ip' && proto !== 'icmp' && proto !== 'tcp' && proto !== 'udp') {
-    throw new AclParseError('% Invalid protocol');
-  }
+  const word = t.shift();
+  if (!ACL_PROTOS.includes(word as AclProto)) throw new AclParseError('% Invalid protocol');
+  const proto = word as AclProto;
   const src = addr(t, false);
   const srcPort = proto === 'tcp' || proto === 'udp' ? portMatch(t) : undefined;
   const dst = addr(t, false);

@@ -265,10 +265,13 @@ export interface PortMatch {
   b?: number;
 }
 
+export type AclProto = 'ip' | 'icmp' | 'tcp' | 'udp' | 'esp' | 'ahp' | 'gre' | 'ospf' | 'eigrp';
+
 export interface AclEntry {
   seq: number;
   action: 'permit' | 'deny';
-  proto: 'ip' | 'icmp' | 'tcp' | 'udp';
+  /** `esp`/`ahp`/`gre`/`ospf`/`eigrp`: Vergleich über die IP-Protokollnummer. */
+  proto: AclProto;
   src: AddrMatch;
   dst?: AddrMatch;
   srcPort?: PortMatch;

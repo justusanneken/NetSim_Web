@@ -680,7 +680,7 @@ export function addPhase4(r: Registry<CliSession>): void {
       K('neighbor', 'Specify a neighbor router'),
       P('ip', 'ip', 'A.B.C.D', 'Neighbor address'),
       K('remote-as', 'Specify a BGP neighbor'),
-      opt(P('asn', 'int', '<1-65535>', 'AS of remote neighbor', [1, 65535])),
+      P('asn', 'int', '<1-65535>', 'AS of remote neighbor', [1, 65535]),
     ],
     run: (s, a) => {
       const c = bgpCfg(s);
@@ -1044,7 +1044,7 @@ export function addPhase4(r: Registry<CliSession>): void {
         modes: IF,
         only: 'l3',
         negatable: true,
-        slots: [...head, K(word, help), opt(P(name, 'int', `<${lo}-${hi}>`, help, [lo, hi]))],
+        slots: [...head, K(word, help), P(name, 'int', `<${lo}-${hi}>`, help, [lo, hi])],
         run: (s, a) => ospfIf(s, v6, (o) => set(o, s.negated ? undefined : Number(a[name]))),
       });
     };
@@ -1146,7 +1146,7 @@ export function addPhase4(r: Registry<CliSession>): void {
     slots: [
       ...STBY,
       K('priority', 'Priority level'),
-      opt(P('p', 'int', '<0-255>', 'Priority value', [0, 255])),
+      P('p', 'int', '<0-255>', 'Priority value', [0, 255]),
     ],
     run: (s, a) => hs(s, Number(a.g), (g) => (g.priority = s.negated ? 100 : Number(a.p))),
   });
@@ -1264,6 +1264,18 @@ export function addPhase4(r: Registry<CliSession>): void {
       ),
     ],
     run: (s, a) => {
+      if (s.negated && a.p === undefined) {
+        // IOS: `no ipv6 address` entfernt alle globalen IPv6-Adressen der Schnittstelle
+        for (const id of targets(s))
+          for (const x of [...(l3(s).ifaces[id]?.v6?.addrs ?? [])]) {
+            const res = s.engine.setInterfaceIp6(s.deviceId, id, x.addr, x.plen, {
+              eui64: x.eui64,
+              remove: true,
+            });
+            if (!res.ok) throw err(res);
+          }
+        return;
+      }
       const [addr, len] = (a.p as string).split('/') as [string, string];
       for (const id of targets(s)) {
         const res = s.engine.setInterfaceIp6(s.deviceId, id, addr, Number(len), {

@@ -4,6 +4,7 @@ import {
   newPolicy,
   type CryptoCfg,
   type CryptoMapEntry,
+  type IsakmpGroup,
   type IsakmpPolicy,
 } from '@netsim/engine';
 import { targets } from './commands';
@@ -33,6 +34,38 @@ const mapEntry = (s: CliSession): CryptoMapEntry => {
 };
 
 /** IPsec Site-to-Site (Crypto Maps): ISAKMP-Policy, Schlüssel, Transform-Sets, Crypto Maps, show/clear. */
+/** Gültige ESP-Transforms (IOS); `esp-aes` darf eine Schlüssellänge folgen (`esp-aes 256`). */
+const TRANSFORMS = new Set([
+  'esp-des',
+  'esp-3des',
+  'esp-aes',
+  'esp-null',
+  'esp-gcm',
+  'esp-gmac',
+  'esp-seal',
+  'esp-md5-hmac',
+  'esp-sha-hmac',
+  'esp-sha256-hmac',
+  'esp-sha384-hmac',
+  'esp-sha512-hmac',
+]);
+
+/** Transform-Liste prüfen und normalisieren (`esp-aes 256` bleibt ein Eintrag); `undefined` = ungültig. */
+function transformList(text: string): string[] | undefined {
+  const words = text.split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  for (const w of words) {
+    const last = out[out.length - 1];
+    if (/^(128|192|256)$/.test(w) && (last === 'esp-aes' || last === 'esp-gcm')) {
+      out[out.length - 1] = `${last} ${w}`;
+      continue;
+    }
+    if (!TRANSFORMS.has(w)) return undefined;
+    out.push(w);
+  }
+  return out.length ? out : undefined;
+}
+
 export function addIpsec(r: Registry<CliSession>): void {
   // ------------------------------------------------------------ ISAKMP
   r.add({
@@ -63,16 +96,27 @@ export function addIpsec(r: Registry<CliSession>): void {
     negatable: true,
     slots: [
       K('encryption', 'Set encryption algorithm for protection suite'),
-      choice(
-        'e',
-        ['des', 'DES-CBC'],
-        ['3des', 'Three key triple DES'],
-        ['aes', 'AES - Advanced Encryption Standard'],
+      opt(
+        choice(
+          'e',
+          ['des', 'DES-CBC'],
+          ['3des', 'Three key triple DES'],
+          ['aes', 'AES - Advanced Encryption Standard'],
+        ),
       ),
       opt(P('bits', 'int', '<128|192|256>', 'Key size')),
     ],
     run: (s, a) => {
-      policy(s).encr = s.negated ? 'des' : (a.e as 'des' | '3des' | 'aes');
+      if (s.negated) {
+        policy(s).encr = 'des';
+        return;
+      }
+      if (!a.e) throw new CliError('% Incomplete command.');
+      const bits = a.bits === undefined ? 128 : Number(a.bits);
+      if (a.bits !== undefined && (a.e !== 'aes' || ![128, 192, 256].includes(bits)))
+        throw new CliError('% Invalid key size');
+      policy(s).encr =
+        a.e === 'aes' && bits !== 128 ? (`aes ${bits}` as 'aes 192') : (a.e as 'des');
     },
   });
   r.add({
@@ -81,9 +125,10 @@ export function addIpsec(r: Registry<CliSession>): void {
     negatable: true,
     slots: [
       K('hash', 'Set hash algorithm for protection suite'),
-      choice('h', ['md5', 'Message Digest 5'], ['sha', 'Secure Hash Standard']),
+      opt(choice('h', ['md5', 'Message Digest 5'], ['sha', 'Secure Hash Standard'])),
     ],
     run: (s, a) => {
+      if (!s.negated && !a.h) throw new CliError('% Incomplete command.');
       policy(s).hash = s.negated ? 'sha' : (a.h as 'md5' | 'sha');
     },
   });
@@ -93,9 +138,16 @@ export function addIpsec(r: Registry<CliSession>): void {
     negatable: true,
     slots: [
       K('authentication', 'Set authentication method for protection suite'),
-      choice('m', ['pre-share', 'Pre-Shared Key'], ['rsa-sig', 'Rivest-Shamir-Adleman Signature']),
+      opt(
+        choice(
+          'm',
+          ['pre-share', 'Pre-Shared Key'],
+          ['rsa-sig', 'Rivest-Shamir-Adleman Signature'],
+        ),
+      ),
     ],
     run: (s, a) => {
+      if (!s.negated && !a.m) throw new CliError('% Incomplete command.');
       policy(s).auth = s.negated ? 'rsa-sig' : (a.m as 'pre-share' | 'rsa-sig');
     },
   });
@@ -105,15 +157,25 @@ export function addIpsec(r: Registry<CliSession>): void {
     negatable: true,
     slots: [
       K('group', 'Set the Diffie-Hellman group'),
-      choice(
-        'g',
-        ['1', '768 bit Diffie-Hellman'],
-        ['2', '1024 bit Diffie-Hellman'],
-        ['5', '1536 bit Diffie-Hellman'],
+      opt(
+        choice(
+          'g',
+          ['1', '768 bit Diffie-Hellman'],
+          ['2', '1024 bit Diffie-Hellman'],
+          ['5', '1536 bit Diffie-Hellman'],
+          ['14', '2048 bit Diffie-Hellman'],
+          ['15', '3072 bit Diffie-Hellman'],
+          ['16', '4096 bit Diffie-Hellman'],
+          ['19', '256 bit ecp Diffie-Hellman'],
+          ['20', '384 bit ecp Diffie-Hellman'],
+          ['21', '521 bit ecp Diffie-Hellman'],
+          ['24', '2048 bit, 256 bit subgroup Diffie-Hellman'],
+        ),
       ),
     ],
     run: (s, a) => {
-      policy(s).group = s.negated ? 1 : (Number(a.g) as 1 | 2 | 5);
+      if (!s.negated && !a.g) throw new CliError('% Incomplete command.');
+      policy(s).group = s.negated ? 1 : (Number(a.g) as IsakmpGroup);
     },
   });
   r.add({
@@ -122,9 +184,10 @@ export function addIpsec(r: Registry<CliSession>): void {
     negatable: true,
     slots: [
       K('lifetime', 'Set lifetime for ISAKMP security association'),
-      P('sec', 'int', '<60-86400>', 'lifetime in seconds', [60, 86400]),
+      opt(P('sec', 'int', '<60-86400>', 'lifetime in seconds', [60, 86400])),
     ],
     run: (s, a) => {
+      if (!s.negated && a.sec === undefined) throw new CliError('% Incomplete command.');
       policy(s).lifetime = s.negated ? 86400 : Number(a.sec);
     },
   });
@@ -177,8 +240,8 @@ export function addIpsec(r: Registry<CliSession>): void {
         return;
       }
       if (a.t) {
-        const ts = (a.t as string).split(/\s+/).filter(Boolean);
-        if (!ts.every((x) => /^esp-/.test(x))) throw new CliError('% Invalid transform');
+        const ts = transformList(a.t as string);
+        if (!ts) throw new CliError('% Invalid input detected');
         c.transformSets[name] = {
           name,
           transforms: ts,

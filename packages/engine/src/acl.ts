@@ -1,4 +1,4 @@
-import { parseIpv4, type Ipv4Addr, type Ipv4Pdu } from '@netsim/protocols';
+import { IP_PROTO, parseIpv4, type Ipv4Addr, type Ipv4Pdu } from '@netsim/protocols';
 import type { Acl, AclEntry, AddrMatch, PortMatch } from './types';
 
 export function matchAddr(m: AddrMatch | undefined, ip: Ipv4Addr): boolean {
@@ -56,7 +56,11 @@ export function l4Of(ip: Ipv4Pdu): L4Key {
 function entryMatches(e: AclEntry, acl: Acl, ip: Ipv4Pdu, k: L4Key): boolean {
   if (!matchAddr(e.src, ip.src)) return false;
   if (acl.type === 'standard') return true;
-  if (e.proto !== 'ip' && e.proto !== k.proto) return false;
+  if (e.proto !== 'ip' && e.proto !== k.proto) {
+    // Protokolle ohne Ports (ESP, AH, GRE, OSPF, EIGRP): Vergleich über die IP-Protokollnummer
+    if (e.proto === 'icmp' || e.proto === 'tcp' || e.proto === 'udp') return false;
+    if (ip.protocol !== IP_PROTO[e.proto]) return false;
+  }
   if (!matchAddr(e.dst, ip.dst)) return false;
   if (ip.fragOffset > 0) return true; // Nicht-Erst-Fragmente tragen keine Ports
   if (!matchPort(e.srcPort, k.sport) || !matchPort(e.dstPort, k.dport)) return false;

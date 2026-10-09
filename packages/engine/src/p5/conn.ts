@@ -13,6 +13,7 @@ import { ipSend, newIpPacket, type Base, type IpNode } from '../l3';
 import type { AppConn } from '../p5types';
 import type { Device } from '../types';
 import { appcOf } from './node';
+import { nextEphemeral } from '../ports';
 
 /**
  * Gemeinsames, wiederverwendbares simuliertes TCP für Geräte mit IP-Stack (Host, Router, Switch, Firewall).
@@ -209,7 +210,7 @@ export function connOpen(
   const hop = node.lookup(o.dst);
   if (!hop) return { ok: false, error: 'conn.unreachable' };
   const rport = o.port ?? TCP_PORT[o.proto] ?? 0;
-  const lport = core.nextPort++;
+  const lport = nextEphemeral(core, (p) => Object.values(core.conns).some((x) => x.lport === p));
   const c: AppConn = {
     id: core.nextConn++,
     role: 'c',
@@ -389,7 +390,7 @@ export function tcpRxSvc(
 ): boolean {
   const core = appcOf(node.cfg);
   const key = keyOf(t.dstPort, ip.src, t.srcPort);
-  const c = core.conns[key];
+  let c: AppConn | undefined = core.conns[key];
   const dev = ctx.device;
   const app = t.app?.kind === 'svc' ? t.app : undefined;
   const log = (
@@ -401,6 +402,15 @@ export function tcpRxSvc(
   const self = ip.dst;
   const me = { lport: t.dstPort, rport: t.srcPort };
   if (c && t.flags.ack && !t.flags.syn && !t.flags.rst) ackIn(ctx, c, t.ack);
+  // Neuer SYN (andere Sequenznummer) auf dem Tupel einer verwaisten Serververbindung (Gegenstelle ohne FIN
+  // verschwunden, lokaler Port nach dem Umlauf wiederverwendet): alte Verbindung verwerfen, neu annehmen
+  if (c?.role === 's' && t.flags.syn && !t.flags.ack && t.seq + 1 !== c.ack) {
+    servers[c.proto]?.closed?.(ctx, dev, c);
+    dropTimers(ctx, c);
+    delete core.conns[key];
+    log('tcp.closed', 'info', { peer: ip.src });
+    c = undefined;
+  }
 
   // --- Client-Verbindung
   if (c?.role === 'c') {

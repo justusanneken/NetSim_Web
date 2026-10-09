@@ -6,7 +6,12 @@ import { K, P, choice, opt, type Registry } from './parser';
 import { CliError, type CliSession } from './session';
 import * as show4 from './show4';
 
-const normArea = (a: string): string => (a.includes('.') ? a : String(Number(a)));
+/** Area-ID als Dezimalzahl oder in IP-Schreibweise; alles andere ist (wie bei IOS) ungültig. */
+const normArea = (a: string): string => {
+  if (isValidIpv4(a)) return a;
+  if (/^\d{1,10}$/.test(a) && Number(a) <= 4294967295) return String(Number(a));
+  throw new CliError("% Invalid input detected at '^' marker.");
+};
 const OSPF = ['config-ospf'] as const;
 
 function proc(s: CliSession): OspfCfg {

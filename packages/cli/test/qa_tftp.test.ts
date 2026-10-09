@@ -40,6 +40,8 @@ describe('QA TFTP backup/restore of a rich config', () => {
       'ip address 1.1.1.1 255.255.255.255',
       'exit',
       'access-list 1 permit 10.0.1.0 0.0.0.255',
+      // die eingehende ACL gilt (wie bei IOS) auch für Verkehr an den Router: TFTP-Antworten erlauben
+      'access-list 110 permit udp host 10.0.1.10 any',
       'access-list 110 permit tcp any any eq 80',
       'access-list 110 deny ip any any',
       'ip nat inside source list 1 interface gi0/0 overload',

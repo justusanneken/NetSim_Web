@@ -96,6 +96,8 @@ export interface EapEntry {
   user: string;
   /** RADIUS-Anfrage-ID (pending). */
   rid?: number;
+  /** Server nicht erreichbar (Timeout): ab diesem Zeitpunkt (µs) wird das Verfahren wiederholt. */
+  retryAt?: number;
 }
 
 export interface WifiProfile {

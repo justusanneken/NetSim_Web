@@ -49,6 +49,8 @@ const MODE_SUFFIX: Record<ModeId, string> = {
 
 let REGISTRY: Registry<CliSession> | undefined;
 const registry = (): Registry<CliSession> => (REGISTRY ??= buildRegistry());
+/** Untermodus der Konfiguration (alles außer dem globalen `config`). */
+const isSubConfig = (m: ModeId): boolean => m.startsWith('config-') || m === 'dhcp-config';
 
 /** Eine CLI-Sitzung (Console) an einem Router oder Switch. */
 export class CliSession implements Shell {
@@ -107,8 +109,8 @@ export class CliSession implements Shell {
     if (this.remoteGone()) return '';
     const eng = this.engine;
     const log = eng.log;
-    // Cursor = absolute Log-Id; nach Step Back/Trimmen auf den vorhandenen Bereich begrenzen
-    if (this.debugCursor > eng.logLength) this.debugCursor = 0;
+    // Das Log ist geschrumpft (Step Back/Restore, Reset): bis dahin Gezeigtes nicht erneut ausgeben
+    if (this.debugCursor > eng.logLength) this.debugCursor = eng.logLength;
     if (this.debugCursor < eng.logOffset) this.debugCursor = eng.logOffset;
     const cfg = this.device.config;
     const flags = cfg.routing.debug;
@@ -331,7 +333,16 @@ export class CliSession implements Shell {
   }
 
   private run(line: string, mode: ModeId): void {
-    const r = registry().parse(mode, line, this.env());
+    let r = registry().parse(mode, line, this.env());
+    // IOS: ein im Untermodus unbekannter Befehl wird im globalen Konfigurationsmodus versucht;
+    // gelingt das, wechselt die Sitzung dorthin (z. B. `crypto isakmp key …` direkt nach der Policy)
+    if (!r.ok && r.error === 'invalid' && mode === this.mode && isSubConfig(mode)) {
+      const g = registry().parse('config', line, this.env());
+      if (g.ok) {
+        this.mode = 'config';
+        r = g;
+      }
+    }
     if (r.ok) {
       this.negated = r.negated;
       const wasConfig = this.inConfig();
@@ -347,7 +358,11 @@ export class CliSession implements Shell {
           );
       } catch (e) {
         if (e instanceof CliError) this.out(e.message);
-        else throw e;
+        // `no …` ohne die Angaben, die der Befehl zum Entfernen braucht (z. B. `no passive-interface`)
+        else if (r.truncated) {
+          this.out('% Incomplete command.');
+          this.out('');
+        } else throw e;
       }
       return;
     }

@@ -224,6 +224,9 @@ export function natHasInbound(l3: L3Cfg, ip: Ipv4Pdu, now: number, inIf?: string
         x.insideGlobal.ip === ip.dst &&
         x.insideGlobal.port === k.dport &&
         x.outside.ip === ip.src &&
+        // wie natOutside2Inside: auch der Gegenport muss passen (sonst würde z. B. die BGP-Antwort an die
+        // eigene Verbindung des Routers als NAT-Verkehr weitergeleitet)
+        (x.proto === 'icmp' || x.outside.port === k.sport) &&
         (x.toIf === undefined || x.toIf === inIf),
     ) ||
     l3.nat.rules.some(

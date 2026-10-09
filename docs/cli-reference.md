@@ -3,7 +3,8 @@
 Modi: User EXEC `R>` · Privileged EXEC `R#` · Global Config `R(config)#` · Interface `R(config-if)#` ·
 Line `R(config-line)#`. `?` zeigt die Folgeoptionen, Tab vervollständigt, Befehle dürfen eindeutig
 abgekürzt werden. `no`/`default` stehen bei allen als _negatable_ gekennzeichneten Befehlen zur Verfügung.
-`do <exec-Befehl>` führt Privileged-Befehle im Konfigurationsmodus aus. Pipes: `| include|exclude|begin|section|count <regex>`.
+`do <exec-Befehl>` führt Privileged-Befehle im Konfigurationsmodus aus. Wie bei IOS wird ein im Untermodus
+unbekannter Befehl im globalen Konfigurationsmodus ausgeführt (die Sitzung wechselt dorthin), z. B. `crypto isakmp key …` direkt nach `crypto isakmp policy`. Pipes: `| include|exclude|begin|section|count <regex>`.
 
 ## EXEC (User und Privileged)
 
@@ -154,7 +155,7 @@ Schnittstelle `ipv6 rip NAME enable`; `redistribute connected|static|rip|ospf|bg
 ## TCP-Anzeige und BGP-Änderungen
 
 **Show (Router/Switch/Firewall):** `show tcp brief` (TCB, lokale/entfernte Adresse.Port, Zustand `ESTAB`/`SYNSENT`/`CLOSEWAIT`/`CLOSED`; Telnet 23, SSH 22, BGP 179 …).
-**BGP:** `no neighbor A` und `neighbor A shutdown` senden eine Cease-NOTIFICATION; `show ip bgp summary` zeigt `Idle`, `Active` (TCP-Verbindung scheitert/wartet) oder `Connect`.
+**BGP:** `no neighbor A` und `neighbor A shutdown` senden eine Cease-NOTIFICATION; `show ip bgp summary` zeigt `Idle`, `Active` (TCP-Verbindung scheitert/wartet) oder `Connect`; MsgRcvd/MsgSent zählen die BGP-Nachrichten der Sitzung.
 `show ip route` zeigt BGP-Routen mit dem BGP-Next-Hop (`B 10.4.0.0/24 [200/0] via 3.3.3.3, 00:02:19`).
 Telnet/SSH: fällt der Pfad während der Sitzung aus, endet sie nach ≈ 31 s mit `% Connection timed out; remote host not responding`.
 
@@ -165,13 +166,13 @@ Telnet/SSH: fällt der Pfad während der Sitzung aus, endet sie nach ≈ 31 s mi
 
 **TACACS+:** `tacacs-server host A [key K]`, `tacacs server NAME` (`address ipv4 A`, `key K`; Modus `(config-server-tacacs)#`), `aaa authentication login LIST group tacacs+ [group radius] [local]`, `show tacacs`, `show aaa`.
 
-**SNMP-Traps:** `snmp-server host A [version 1|2c] COMMUNITY`, `snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]`, `show snmp` (Trap-Ziele, freigeschaltete Typen).
+**SNMP-Traps:** `snmp-server host A [version 1|2c] COMMUNITY`, `snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]`, `show snmp` (Trap-Ziele, freigeschaltete Typen), `show snmp host`.
 
 **PPPoE:** Client: `interface Dialer N` (`encapsulation ppp`, `ip address negotiated`, `dialer pool N`, `ppp chap hostname X`, `ppp chap password [0] Y`, `ppp ipcp route default`), am Port
 `pppoe-client dial-pool-number N`, `ip route 0.0.0.0 0.0.0.0 Dialer N`. Server: `bba-group pppoe NAME` (`virtual-template N`), `interface Virtual-Template N` (`ip unnumbered IF`,
 `peer default ip address pool P`, `ppp authentication chap`), `ip local pool P START [END]`, am Port `pppoe enable [group NAME]`, `username X password Y`.
 Anzeige/Betrieb: `show pppoe session`, `show ip interface brief` (Dialer/Virtual-Access), `clear pppoe all`.
 
-**IPsec (Crypto Map):** `crypto isakmp policy N` (`encryption des|3des|aes`, `hash md5|sha`, `authentication pre-share|rsa-sig`, `group 1|2|5`, `lifetime S`), `crypto isakmp key K address A [MASK]`,
-`crypto ipsec transform-set NAME esp-… [esp-…]` (`mode tunnel|transport`), `crypto map NAME SEQ ipsec-isakmp` (`set peer A`, `set transform-set T`, `match address ACL`, `set pfs groupN`,
+**IPsec (Crypto Map):** `crypto isakmp policy N` (`encryption des|3des|aes [128|192|256]`, `hash md5|sha`, `authentication pre-share|rsa-sig`, `group 1|2|5|14|15|16|19|20|21|24`, `lifetime S`; `no …` ohne Wert setzt den Standard), `crypto isakmp key K address A [MASK]`,
+`crypto ipsec transform-set NAME esp-… [esp-…]` (IOS-Transforms, `esp-aes 128|192|256`) (`mode tunnel|transport`), `crypto map NAME SEQ ipsec-isakmp` (`set peer A`, `set transform-set T`, `match address ACL`, `set pfs groupN`,
 `set security-association lifetime seconds S`), an der Schnittstelle `crypto map NAME`; `show crypto isakmp sa|policy`, `show crypto ipsec sa|transform-set`, `show crypto map`, `clear crypto sa|isakmp`.

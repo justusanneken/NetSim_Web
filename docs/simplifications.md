@@ -103,7 +103,8 @@
 - **TCP/HTTP:** vereinfachtes TCP (SYN/SYN-ACK, ein Request, Antwort + FIN, RST); keine Retransmission-Fenster, kein TLS
   (HTTPS ist nur ein Port-/Schemaflag). Seiten sind kurze Texte.
 - **NAT:** Timeouts per `ip nat translation timeout` für UDP/TCP/IP gemeinsam (ICMP fest 60 s); ALG/FTP fehlt.
-- **ACL:** `log`-Schlüsselwort wird akzeptiert, aber nicht gezählt; kein `object-group`, keine Zeitbereiche.
+- **ACL:** `log`-Schlüsselwort wird akzeptiert, aber nicht gezählt; kein `object-group`, keine Zeitbereiche. Protokolle: `ip`, `icmp`, `tcp`, `udp`,
+  `esp`, `ahp`, `gre`, `ospf`, `eigrp` (keine Protokollnummern); Portnamen u. a. `bgp`, `tacacs`, `isakmp`, `non500-isakmp`, `snmptrap`.
 
 ## Phase 4
 
@@ -142,7 +143,7 @@
   und damit durch ACLs/Firewalls/NAT. Die Sitzung selbst (Tastatur/Ausgabe) wird nicht paketiert, sondern als CLI-Sitzung des
   Zielgeräts im Worker an das Terminal gehängt; die Zeilen/Ausgaben selbst laufen als TCP-Segmente (siehe unten). SSH-Schlüssel sind
   simuliert (Modulgröße wird gespeichert; Voraussetzung: `ip domain-name` + `crypto key generate rsa`). Maximal `line vty 0 N`
-  Sitzungen (Standard 5); alle vty-Leitungen teilen sich eine Konfiguration (`transport`, `login`, Passwort).
+  Sitzungen (Standard 5; `line vty F L` legt wie bei IOS höchstens Leitungen bis L an, entfernt aber keine); alle vty-Leitungen teilen sich eine Konfiguration (`transport`, `login`, Passwort).
 - **Benutzer-Geheimnisse:** `username X secret Y` wird im Konfigurationsbaum im Klartext gehalten und als `secret 5 <Typ-7>`
   gerendert (umkehrbar, damit Replay/`reload` funktionieren); RSA-Schlüssel überstehen `reload` (NVRAM).
 - **AAA:** nur Anmeldung an den vty-Leitungen (kein Console-/Enable-/Accounting-AAA, TACACS+ siehe „Erweiterungen proto“). Methodenliste
@@ -151,7 +152,8 @@
   Abfrage 2 s nach Konfiguration, dann alle 64 s. **Verlust:** nach 4 aufeinanderfolgenden unbeantworteten Abfragen (≈ 4 min; IOS wertet ein 8-Bit-Reach-Register,
   hier zur schnelleren Rückmeldung 4) wird der Client unsynchronisiert (Stratum 16, `show ntp status`: „Clock is unsynchronized“, Log `svc.ntp.lost`); `no ntp server`
   hebt die Synchronisation sofort auf. **Server:** wie bei IOS bedient ein synchronisierter Router/Switch auch ohne `ntp master` andere Clients (mit seinem eigenen Stratum);
-  `ntp master N` gilt als Rückfall, solange das Gerät nicht synchronisiert ist (ein synchronisiertes Gerät bevorzugt seinen Zeitgeber). Hosts bedienen nur mit aktivem NTP-Dienst (Stratum 1). Gerätezeit = Epoch-Basis + virtuelle Zeit; Router starten am 1.3.1993,
+  `ntp master N` gilt als Rückfall, solange das Gerät nicht synchronisiert ist; ein Server wird dabei nur gewählt, wenn er ein besseres Stratum als die eigene
+  Uhr liefert (Stratum + 1 < N), und Server mit Stratum ≥ 15 werden ignoriert – gegenseitig konfigurierte Server bilden so keine Zählschleife. Hosts bedienen nur mit aktivem NTP-Dienst (Stratum 1). Gerätezeit = Epoch-Basis + virtuelle Zeit; Router starten am 1.3.1993,
   Hosts am 1.1.2026 12:00 UTC (deterministisch statt Wanduhr). Keine Zeitzonen/Sommerzeit (immer UTC).
 - **Syslog:** Meldungen für Link-/Leitungsstatus, Konfigurationsänderung (`%SYS-5-CONFIG_I`) und Logins; Schweregrad-Filter
   (`logging trap`), Puffer 100 Zeilen. Keine Facility-Auswahl, kein `logging source-interface`.
@@ -223,9 +225,11 @@
   (nur die erwartete Sequenznummer wird angenommen), Retransmission mit RTO 1 s (verdoppelt bis 8 s) und 5 Wiederholungen (≈ 31 s) bis zum Abbruch
   (`conn.timeout`), Abbau per FIN bzw. RST (Daten auf unbekannter Verbindung zu/von einem Dienst-Port werden mit RST beantwortet). Kein
   Fenster/Slow Start, keine Segmentierung großer Nachrichten (IP-Fragmentierung übernimmt), keine TIME_WAIT/Half-Close-Zustände, keine
-  Selective-ACKs. Der HTTP-Pfad der Hosts (`svc/tcp.ts`) bleibt das einfache Modell. Ports: FTP 21, SSH 22, Telnet 23, SMTP 25, POP3 110, BGP 179.
-- **Segmente laufen durch den IP-Stack:** ausgehende ACL, NAT, Firewall (Zustandsverfolgung) sehen sie. Neu: die **eingehende ACL** gilt jetzt auch
-  für TCP, das an das Gerät selbst gerichtet ist (BGP/Telnet/SSH zum Router), nicht nur für Durchgangsverkehr.
+  Selective-ACKs. Lokale Client-Ports laufen im Bereich 49152–65535 um; ein neuer SYN (andere Sequenznummer) auf dem Tupel einer noch bestehenden
+  Serververbindung ersetzt diese (Gegenstelle ohne FIN neu gestartet). Der HTTP-Pfad der Hosts (`svc/tcp.ts`) bleibt das einfache Modell. Ports: FTP 21, SSH 22, Telnet 23, SMTP 25, POP3 110, BGP 179.
+- **Segmente laufen durch den IP-Stack:** ausgehende ACL, NAT, Firewall (Zustandsverfolgung) sehen sie. Die **eingehende ACL** gilt wie bei IOS auch
+  für Unicast an das Gerät selbst (BGP/Telnet/SSH/TACACS+-Antworten, IKE, ESP, Ping, TFTP …), nicht nur für Durchgangsverkehr; Broadcast und
+  Multicast (Routing-Protokoll-Hellos, DHCP, HSRP) bleiben – abweichend von IOS – ungefiltert.
 - **BGP über TCP:** Zustände Idle → Connect (SYN in Arbeit) → Active (Verbindung gescheitert/passiv wartend) → OpenSent → OpenConfirm → Established.
   Der Aufbau läuft alle 5 s (Tick) nach Konfiguration; die Gegenseite nimmt nur Verbindungen von konfigurierten, nicht abgeschalteten Nachbarn an
   (sonst RST). **Collision-Detection vereinfacht:** baut ein Router gleichzeitig auf, gewinnt die Verbindung der Seite mit der höheren Quelladresse
@@ -247,7 +251,7 @@
   String-/Array-Methoden. Kein `eval`, `new`, `this`, Klassen, Getter, `try/catch`, Promises, Module, Regex, Datum; kein Zugriff auf Globals, Prototypen
   oder `constructor`. API: `readSensor(name)` (`'self'`/eigene Sensorart/ dem IoT-Server bekannte Geräte, sonst `null`), `setActuator(name, on)` (eigener
   Aktor oder per `set` an ein registriertes Gerät), `log(…)`, `every(ms, fn)` (min. 100 ms, max. 16 Handler), `onReport(fn)` (`fn(name, value)` bei eigenem Bericht
-  oder wenn ein Bericht am IoT-Server eintrifft). Grenzen: 100 000 Schritte und Tiefe 40 je Aktivierung, Strings ≤ 20 000 Zeichen. **Zustand:** nur Text,
+  oder wenn ein Bericht am IoT-Server eintrifft). Grenzen: 100 000 Schritte und Tiefe 40 je Aktivierung, Strings ≤ 20 000 Zeichen (auch bei `join`, `padStart`, `JSON.stringify`, Array-zu-String), Arrays und Objekte ≤ 10 000 Einträge, gespeicherter Zustand ≤ 100 000 Zeichen JSON. **Zustand:** nur Text,
   `running`, Konsole (200 Zeilen) und die JSON-fähigen Variablen des Hauptteils sind Teil der Konfiguration; bei jeder Aktivierung wird der Hauptteil still neu
   ausgewertet und die gespeicherten Variablen eingesetzt (Funktionswerte werden nicht gespeichert; Variablen, die Funktionen halten, und Closure-Zustand
   außerhalb des Hauptteils gehen zwischen Aktivierungen verloren). Ein Fehler (Syntax, Laufzeit, Schrittgrenze) hält nur dieses Gerät an (`crashed`) und
@@ -264,7 +268,7 @@
   einschließlich RADIUS-Server kommt per CAPWAP vom WLC, die Anfrage geht aber direkt vom AP – IP-Adresse des APs muss als RADIUS-Client am Server stehen) und sendet ein
   `access-request` (UDP 1812, Benutzer + Passwort aus dem Wi-Fi-Profil; Passwort/Secret werden im Inspektor maskiert). `access-accept` ⇒ Assoziation, `access-reject`/Timeout (3 s) ⇒
   Status `auth-failed`, kein Link. Die Assoziation ist dadurch asynchron (Status `authenticating`). Ein abgewiesenes Verfahren wird nicht wiederholt, bis Zugangsdaten oder die
-  Server-Dienste (`aaa`) geändert werden; nach Trennung (Reichweite, Aus) authentifiziert sich der Client erneut. Roaming zwischen Enterprise-APs authentifiziert den Ziel-AP vorab.
+  Server-Dienste (`aaa`) geändert werden; nach einem Timeout (Server nicht erreichbar, z. B. vor der STP-Konvergenz) versucht es der AP nach 60 s erneut (held period); nach Trennung (Reichweite, Aus) authentifiziert sich der Client erneut. Roaming zwischen Enterprise-APs authentifiziert den Ziel-AP vorab.
   Keine Zertifikate, keine Schlüsselableitung, keine Gruppen-/Rollenzuweisung, kein Accounting.
 - **TACACS+:** eigener Dienst über die bestehende Dienst-Transportschicht (`p5/conn.ts`, vereinfachtes TCP auf Port 49): Anfrage `authen` (Benutzer, Passwort, Schlüssel) →
   `authen-pass` | `authen-fail` | `authen-error`. Der gemeinsame Schlüssel wird nur verglichen (kein Header-/Body-Verschleiern); falscher Schlüssel oder unbekannter Client-IP ⇒ Fehler
@@ -291,8 +295,9 @@
   Verkehrsauswahl (die passende ACL-Zeile) sowie seinen SPI. Der Responder lehnt mit Grund ab bei: unbekanntem Peer, keiner passenden Policy (Policy-Authentifizierung muss `pre-share`
   sein – Default ist wie bei IOS `rsa-sig`), abweichendem Schlüssel (`authentication failed`), anderem Transform-Set oder fehlender gespiegelter ACL-Zeile (`proxy identities not
 supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolgt frühestens nach 8 s beim nächsten passenden Paket. Während des Aufbaus (und bei fehlgeschlagener SA)
-  werden passende Pakete verworfen (die ersten Pings gehen verloren, wie in der Praxis). Je ACL-Zeile entsteht ein SA-Paar. ESP (IP-Protokoll 50, Tunnelmodus) kapselt das ganze
+  werden passende Pakete verworfen (die ersten Pings gehen verloren, wie in der Praxis). Je ACL-Zeile entsteht ein SA-Paar; bauen beide Seiten gleichzeitig auf, gewinnt der Austausch der Seite mit der höheren Adresse. ESP (IP-Protokoll 50, Tunnelmodus) kapselt das ganze
   Originalpaket; die Nutzlast ist im Inspektor und in Ereignislisten nur als „verschlüsselt“ sichtbar (Transitgeräte sehen nur äußere Adressen, SPI, Sequenz), an den Endpunkten steht
   „decrypted …“ im Log. Keine echte Kryptografie, kein Lifetime-/Rekey-Ablauf (SAs bleiben bis `clear crypto sa`, Reload oder Link-/Strom-Aus), kein Replay-Fenster, kein NAT-T, kein
-  IKEv2, keine Transport-Mode-Wirkung (wird gespeichert), kein DPD, **keine VTI** (`tunnel mode ipsec`) und keine IPsec-Profile; Crypto Maps sind an physischen/Sub-Schnittstellen möglich,
-  nicht am Dialer. Entschlüsselte Pakete laufen danach durch die normale Eingangsverarbeitung der Schnittstelle (ACL-in, Weiterleitung).
+  IKEv2, keine Transport-Mode-Wirkung (wird gespeichert), kein DPD, **keine VTI** (`tunnel mode ipsec`) und keine IPsec-Profile; Crypto Maps sind an physischen/Sub-Schnittstellen und am Dialer
+  einer PPPoE-Einwahl möglich, nicht am Virtual-Template. Nach einem Neustart der Gegenstelle bleibt die alte SA der anderen Seite bestehen (kein DPD, keine
+  Lebensdauer): erst ein von der neu gestarteten Seite aufgebautes IKE oder `clear crypto sa` stellt das VPN wieder her. Entschlüsselte Pakete laufen danach durch die normale Eingangsverarbeitung der Schnittstelle (ACL-in, Weiterleitung).

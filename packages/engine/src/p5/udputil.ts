@@ -3,6 +3,7 @@ import type { DeviceCtx } from '../ctx';
 import { sendUdp, type IpNode } from '../l3';
 import type { Iface } from '../ifaces';
 import { appcOf } from './node';
+import { nextEphemeral } from '../ports';
 
 export const UDP_TIMEOUT_US = 5_000_000;
 
@@ -50,7 +51,7 @@ export function udpRequest(
     body: o.body,
   };
   const dport = o.dport ?? SVC_UDP_PORT[o.proto] ?? 0;
-  const sport = core.nextPort++;
+  const sport = nextEphemeral(core);
   const r = sendUdp(ctx, node, { dst: o.dst, sport, dport, app: msg });
   if (!r.ok) {
     core.reqs[id] = { id, proto: o.proto, op: o.op, dst: o.dst, status: 'failed', sentAt: ctx.now };

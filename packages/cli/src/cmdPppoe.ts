@@ -1,4 +1,4 @@
-import { isValidIpv4 } from '@netsim/protocols';
+import { isValidIpv4, parseIpv4 } from '@netsim/protocols';
 import type { IfaceCfg } from '@netsim/engine';
 import { targets } from './commands';
 import { l3c, touch } from './commandsGaps';
@@ -93,6 +93,8 @@ export function addPppoe(r: Registry<CliSession>): void {
         return;
       }
       if (!a.start || !isValidIpv4(a.start)) throw new CliError('% Incomplete command.');
+      if (a.end && (parseIpv4(a.end) ?? 0) < (parseIpv4(a.start) ?? 0))
+        throw new CliError('%End address less than starting address');
       (c.ipPools ??= {})[name] = { name, start: a.start, end: a.end ?? a.start };
       touch(s);
     },
@@ -264,10 +266,11 @@ export function addPppoe(r: Registry<CliSession>): void {
       P('if', 'iface', 'IFNAME', 'Interface name'),
     ],
     run: (s, a) => {
-      const ref = resolveIface(s.device, a.if as string);
-      if (!ref) throw new CliError('% Invalid interface');
+      // `no ip unnumbered` (ohne Schnittstelle) ist wie bei IOS gültig
+      const ref = s.negated ? undefined : resolveIface(s.device, a.if as string);
+      if (!s.negated && !ref) throw new CliError('% Invalid interface');
       withIface(s, (ic) => {
-        vtemplate(ic).unnumbered = s.negated ? undefined : ref.id;
+        vtemplate(ic).unnumbered = ref?.id;
       });
     },
   });

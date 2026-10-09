@@ -568,7 +568,7 @@ export function showBgpSummary(e: Engine, d: D): string[] {
   ];
   for (const nb of Object.values(c.neighbors)) {
     out.push(
-      `${nb.ip.padEnd(16)}4${String(nb.asn).padStart(12)}${'0'.padStart(8)}${'0'.padStart(8)}${String(n).padStart(9)}${'0'.padStart(5)}${'0'.padStart(5)} ${(nb.established !== undefined ? clock(e.state.now - nb.established) : 'never').padEnd(9)} ${nb.state === 'established' ? String(nb.prefixesRx) : cap(nb.state)}`,
+      `${nb.ip.padEnd(16)}4${String(nb.asn).padStart(12)}${String(nb.msgRx ?? 0).padStart(8)}${String(nb.msgTx ?? 0).padStart(8)}${String(n).padStart(9)}${'0'.padStart(5)}${'0'.padStart(5)} ${(nb.established !== undefined ? clock(e.state.now - nb.established) : 'never').padEnd(9)} ${nb.state === 'established' ? String(nb.prefixesRx) : cap(nb.state)}`,
     );
   }
   return out;
@@ -608,8 +608,11 @@ function ifaces6(d: D): Iface6[] {
 
 export function showIpv6Route(e: Engine, d: D): string[] {
   const rib = e.routingTable6(d.id);
+  // IOS zählt jedes Präfix einmal (ECMP-Pfade nicht doppelt), einschließlich der Local-Routen
+  const locals = ifaces6(d).reduce((n, i) => n + i.addrs.length, 0);
+  const count = new Set(rib.map((r) => `${r.prefix}/${r.plen}`)).size + locals;
   const out = [
-    `IPv6 Routing Table - default - ${rib.length} entries`,
+    `IPv6 Routing Table - default - ${count} entries`,
     'Codes: C - Connected, L - Local, S - Static, U - Per-user Static route',
     '       B - BGP, R - RIP, I1 - ISIS L1, I2 - ISIS L2',
     '       IA - ISIS interarea, IS - ISIS summary, D - EIGRP, EX - EIGRP external',

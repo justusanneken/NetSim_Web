@@ -109,7 +109,7 @@ WLAN-Roaming im selben SSID behält das DHCP-Lease (INIT-REBOOT, Zustand `reboot
 33. **Ein TCP für alle Dienste:** statt eines zweiten Stacks wurde der Phase-5-Dienst-Transport (`p5/conn.ts`) zu einem zuverlässigen Nachrichtenstrom ausgebaut
     (Retransmission, Duplikaterkennung, RST/FIN). BGP, Telnet, SSH, FTP, SMTP, POP3 nutzen ihn; neue Dienste registrieren nur `TcpServer` + Port.
 34. **BGP-Nachrichten im `SvcPdu`** (`proto: 'bgp'`, Feld `bgp`) statt eines eigenen TCP-Anwendungstyps; der `RoutingPdu`-Typ `bgp` bleibt nur als Typ erhalten.
-35. **Eingehende ACL für lokal zugestellten TCP-Verkehr** (BGP/Telnet/SSH zum Router): die ACL-Auswertung ist dazu in `aclInPermits` (l3.ts) ausgelagert.
+35. **Eingehende ACL für lokal zugestellten Unicast-Verkehr** (BGP/Telnet/SSH, IKE/ESP, Ping zum Router): die ACL-Auswertung ist dazu in `aclInPermits` (l3.ts) ausgelagert.
 36. **Telnet/SSH-Ausführung bleibt lokal:** die Ziel-CLI läuft weiter als `CliSession` im Worker; über das Netz gehen Zeile (`line`) und Ausgabe (`out`) – so bleiben
     vty-Limits, AAA, `terminal monitor` und Session-Abbau unverändert (siehe `simplifications.md`).
 37. **IoT-Skripte ohne `eval`:** eigener Interpreter statt `new Function` (Prototyp-Ausbrüche), Zustand als JSON (Variablen des Hauptteils) und stille Neuauswertung

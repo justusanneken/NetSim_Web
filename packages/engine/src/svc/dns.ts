@@ -3,6 +3,7 @@ import type { DeviceCtx } from '../ctx';
 import type { Iface } from '../ifaces';
 import { sendUdp, type Base, type IpNode } from '../l3';
 import type { HostConfig } from '../types';
+import { nextEphemeral } from '../ports';
 import { onDnsDone } from './tcp';
 
 const DNS_TIMEOUT_US = 3_000_000;
@@ -90,7 +91,7 @@ export function dnsResolve(
     question: { name, type: 'A' },
     answers: [],
   };
-  const sport = h.nextPort++;
+  const sport = nextEphemeral(h);
   const r = sendUdp(ctx, node, { dst: server, sport, dport: 53, app: q });
   if (!r.ok) {
     delete h.dnsPending[id];
