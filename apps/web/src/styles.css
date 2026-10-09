@@ -152,7 +152,7 @@ select {
   display: grid;
   height: 100%;
   min-width: 1100px;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr clamp(340px, 24vw, 460px);
   grid-template-rows: 32px 42px 1fr 270px;
   grid-template-areas:
     'menu menu'
@@ -409,6 +409,7 @@ select {
 }
 .device-panel {
   padding: 8px 12px 12px;
+  overflow-x: auto; /* breite Port-Tabellen scrollen im Panel statt die Seitenleiste zu verbreitern */
 }
 .device-panel h4 {
   margin: 14px 0 6px;

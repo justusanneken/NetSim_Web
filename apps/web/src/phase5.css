@@ -225,7 +225,7 @@ button.link {
   white-space: pre-wrap;
 }
 .prog-status.error {
-  color: var(--danger, #c0392b);
+  color: var(--bad);
   font-weight: 600;
 }
 .prog-status.running {

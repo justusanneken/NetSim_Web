@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { scanContrast, type ContrastIssue } from './contrast';
+import { scanContrast, scanStructure, type ContrastIssue, type StructureIssue } from './contrast';
 import {
   cable,
   click,
@@ -33,6 +33,7 @@ async function buildScenario(page: Page): Promise<void> {
   await place(page, 'Netzwerk', 'Switch', 320, 120);
   await place(page, 'Netzwerk', 'Router', 520, 120);
   await place(page, 'Endgeräte', 'Server', 320, 260);
+  await place(page, 'IoT', 'Einplatinenrechner', 520, 260);
   await cable(page, [
     [120, 120, 320, 120],
     [320, 120, 520, 120],
@@ -42,11 +43,23 @@ async function buildScenario(page: Page): Promise<void> {
   await hostIp(page, 320, 260, '10.0.0.10');
 }
 
-type Shot = { screen: string; issues: ContrastIssue[]; checked: number; min: number };
+type Shot = {
+  screen: string;
+  issues: ContrastIssue[];
+  structure: StructureIssue[];
+  checked: number;
+  min: number;
+};
 
 async function scan(page: Page, screen: string, out: Shot[]): Promise<void> {
   const r = await scanContrast(page);
-  out.push({ screen, issues: r.issues, checked: r.checked, min: r.min });
+  out.push({
+    screen,
+    issues: r.issues,
+    structure: await scanStructure(page),
+    checked: r.checked,
+    min: r.min,
+  });
 }
 
 async function tab(page: Page, name: string): Promise<void> {
@@ -118,6 +131,14 @@ async function allScreens(page: Page, out: Shot[]): Promise<void> {
   await scan(page, 'server/Konfiguration', out);
   await closeDialog(page);
 
+  // SBC: Reiter Programmierung (neues Phase-5-Panel) und die übrigen Reiter
+  await click(page, 520, 260, 2);
+  for (const name of ['Programmierung', 'Desktop', 'Konfiguration', 'Physical']) {
+    await tab(page, name);
+    await scan(page, `sbc/${name}`, out);
+  }
+  await closeDialog(page);
+
   // Router: Konfiguration, CLI, Physical
   await click(page, 520, 120, 2);
   await tab(page, 'Konfiguration');
@@ -168,35 +189,58 @@ async function allScreens(page: Page, out: Shot[]): Promise<void> {
   await page.getByRole('button', { name: 'Auswählen' }).click();
 }
 
-test('GUI: Kontrast in allen Themes (WCAG AA)', async ({ page }) => {
-  test.setTimeout(600_000);
-  const errors = collectErrors(page);
-  await page.goto('/');
-  await buildScenario(page);
-  await warp(page, 2000);
-  const report: Record<string, Shot[]> = {};
-  for (const [dark, cb] of [
-    [false, false],
-    [true, false],
-    [false, true],
-    [true, true],
-  ] as const) {
-    const key = `${dark ? 'dark' : 'light'}${cb ? '+cb' : ''}`;
-    await setModes(page, dark, cb);
-    const shots: Shot[] = [];
-    await allScreens(page, shots);
-    report[key] = shots;
-  }
-  const summary = Object.entries(report).map(([k, shots]) => ({
-    mode: k,
-    checked: shots.reduce((n, s) => n + s.checked, 0),
-    min: Math.min(...shots.map((s) => s.min)),
-    issues: shots.flatMap((s) => s.issues.map((i) => ({ screen: s.screen, ...i }))),
-  }));
-  console.log('CONTRAST ' + JSON.stringify(summary, null, 1));
-  expect(errors).toEqual([]);
-  for (const s of summary) expect(s.issues, s.mode).toEqual([]);
-});
+const RUNS = [
+  {
+    size: { width: 1280, height: 800 },
+    modes: [
+      [false, false],
+      [true, false],
+      [false, true],
+      [true, true],
+    ],
+  },
+  {
+    size: { width: 1920, height: 1080 },
+    modes: [
+      [false, false],
+      [true, true],
+    ],
+  },
+] as const;
+
+for (const run of RUNS) {
+  test(`GUI: Kontrast (WCAG AA), Beschriftungen und Layout bei ${run.size.width}×${run.size.height} in allen Designs`, async ({
+    page,
+  }) => {
+    test.setTimeout(600_000);
+    await page.setViewportSize(run.size);
+    const errors = collectErrors(page);
+    await page.goto('/');
+    await buildScenario(page);
+    await warp(page, 2000);
+    const report: Record<string, Shot[]> = {};
+    for (const [dark, cb] of run.modes) {
+      const key = `${dark ? 'dark' : 'light'}${cb ? '+cb' : ''}`;
+      await setModes(page, dark, cb);
+      const shots: Shot[] = [];
+      await allScreens(page, shots);
+      report[key] = shots;
+    }
+    const summary = Object.entries(report).map(([k, shots]) => ({
+      mode: k,
+      checked: shots.reduce((n, s) => n + s.checked, 0),
+      min: Math.min(...shots.map((s) => s.min)),
+      issues: shots.flatMap((s) => s.issues.map((i) => ({ screen: s.screen, ...i }))),
+      structure: shots.flatMap((s) => s.structure.map((i) => ({ screen: s.screen, ...i }))),
+    }));
+    console.log(`CONTRAST ${run.size.width} ` + JSON.stringify(summary, null, 1));
+    expect(errors).toEqual([]);
+    for (const s of summary) {
+      expect(s.issues, `Kontrast ${s.mode}`).toEqual([]);
+      expect(s.structure, `Struktur ${s.mode}`).toEqual([]);
+    }
+  });
+}
 
 test('GUI: Dunkel- und Farbenblind-Modus per Menü, bleiben nach dem Neuladen erhalten', async ({
   page,

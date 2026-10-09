@@ -161,3 +161,87 @@ export async function scanContrast(page: Page): Promise<ContrastScan> {
     return { checked, min: Math.round(min * 100) / 100, issues };
   });
 }
+
+export interface StructureIssue {
+  kind: 'unlabeled' | 'overflow' | 'page-overflow';
+  selector: string;
+  detail: string;
+}
+
+/** Findet unbeschriftete Bedienelemente und horizontale Überläufe (Seite, Dialog, Seitenleiste, Panels). */
+export async function scanStructure(page: Page): Promise<StructureIssue[]> {
+  return page.evaluate(() => {
+    const out: StructureIssue[] = [];
+    const sel = (el: Element): string => {
+      const parts: string[] = [];
+      for (let n: Element | null = el; n && parts.length < 3; n = n.parentElement) {
+        const cls = (n.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)[0];
+        parts.unshift(n.tagName.toLowerCase() + (cls ? '.' + cls : ''));
+      }
+      return parts.join(' > ');
+    };
+    const shown = (el: Element): boolean => {
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return false;
+      for (let n: Element | null = el; n; n = n.parentElement) {
+        const cs = getComputedStyle(n);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      }
+      return true;
+    };
+    const name = (el: Element): string => {
+      const aria = el.getAttribute('aria-label')?.trim();
+      if (aria) return aria;
+      const by = el.getAttribute('aria-labelledby');
+      if (by)
+        return by
+          .split(/\s+/)
+          .map((i) => document.getElementById(i)?.textContent ?? '')
+          .join(' ')
+          .trim();
+      if (el.getAttribute('title')?.trim()) return el.getAttribute('title') as string;
+      const labels = (el as HTMLInputElement).labels;
+      if (labels && labels.length > 0)
+        return Array.from(labels)
+          .map((l) => l.textContent ?? '')
+          .join(' ')
+          .trim();
+      if (el.tagName === 'BUTTON' || el.getAttribute('role') === 'tab')
+        return (el.textContent ?? '').trim();
+      return '';
+    };
+    for (const el of Array.from(
+      document.querySelectorAll('button, input, select, textarea, [role="button"], [role="tab"]'),
+    )) {
+      if (!shown(el) || el.closest('.xterm')) continue;
+      if (el instanceof HTMLInputElement && el.type === 'hidden') continue;
+      if (!name(el))
+        out.push({
+          kind: 'unlabeled',
+          selector: sel(el),
+          detail: (el as HTMLElement).outerHTML.slice(0, 120),
+        });
+    }
+    const root = document.scrollingElement as Element;
+    if (root.scrollWidth > window.innerWidth + 1)
+      out.push({
+        kind: 'page-overflow',
+        selector: 'html',
+        detail: `${root.scrollWidth} > ${window.innerWidth}`,
+      });
+    const boxes =
+      '.dialog, .dialog-body, .sidebar, .bottom, .sim-panel, .palette, .toolbar, .menubar, .desktop, .device-panel';
+    for (const el of Array.from(document.querySelectorAll(boxes))) {
+      if (!shown(el)) continue;
+      const cs = getComputedStyle(el);
+      const clipsX = cs.overflowX === 'visible' || cs.overflowX === 'hidden';
+      if (clipsX && el.scrollWidth > el.clientWidth + 1)
+        out.push({
+          kind: 'overflow',
+          selector: sel(el),
+          detail: `scrollWidth ${el.scrollWidth} > clientWidth ${el.clientWidth}`,
+        });
+    }
+    return out;
+  });
+}
