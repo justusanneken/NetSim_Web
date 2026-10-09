@@ -358,7 +358,11 @@ export class CliSession implements Shell {
           );
       } catch (e) {
         if (e instanceof CliError) this.out(e.message);
-        else throw e;
+        // `no …` ohne die Angaben, die der Befehl zum Entfernen braucht (z. B. `no passive-interface`)
+        else if (r.truncated) {
+          this.out('% Incomplete command.');
+          this.out('');
+        } else throw e;
       }
       return;
     }

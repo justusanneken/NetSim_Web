@@ -1264,6 +1264,18 @@ export function addPhase4(r: Registry<CliSession>): void {
       ),
     ],
     run: (s, a) => {
+      if (s.negated && a.p === undefined) {
+        // IOS: `no ipv6 address` entfernt alle globalen IPv6-Adressen der Schnittstelle
+        for (const id of targets(s))
+          for (const x of [...(l3(s).ifaces[id]?.v6?.addrs ?? [])]) {
+            const res = s.engine.setInterfaceIp6(s.deviceId, id, x.addr, x.plen, {
+              eui64: x.eui64,
+              remove: true,
+            });
+            if (!res.ok) throw err(res);
+          }
+        return;
+      }
       const [addr, len] = (a.p as string).split('/') as [string, string];
       for (const id of targets(s)) {
         const res = s.engine.setInterfaceIp6(s.deviceId, id, addr, Number(len), {

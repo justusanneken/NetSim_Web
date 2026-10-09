@@ -264,10 +264,11 @@ export function addPppoe(r: Registry<CliSession>): void {
       P('if', 'iface', 'IFNAME', 'Interface name'),
     ],
     run: (s, a) => {
-      const ref = resolveIface(s.device, a.if as string);
-      if (!ref) throw new CliError('% Invalid interface');
+      // `no ip unnumbered` (ohne Schnittstelle) ist wie bei IOS gültig
+      const ref = s.negated ? undefined : resolveIface(s.device, a.if as string);
+      if (!s.negated && !ref) throw new CliError('% Invalid interface');
       withIface(s, (ic) => {
-        vtemplate(ic).unnumbered = s.negated ? undefined : ref.id;
+        vtemplate(ic).unnumbered = ref?.id;
       });
     },
   });
