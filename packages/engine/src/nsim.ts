@@ -76,6 +76,8 @@ export interface NsimDoc {
   deviceStates: Record<string, unknown>;
   /** Platzhalter, gehört der Szenario-/Aufgaben-Komponente; wird unverändert durchgereicht. */
   scenarios?: unknown;
+  /** Weitere Komponenten der Oberfläche (Notizen, Gruppen, Hintergrund …), Name → JSON; wird unverändert durchgereicht. */
+  extras?: Record<string, unknown>;
   physical: PhysicalTree;
   /** Eingebettete Dateien (z. B. Hintergrundbild als Data-URI); Schlüssel → String. */
   assets: Record<string, string>;
@@ -211,6 +213,7 @@ const DocSchema = z.object({
   }),
   deviceStates: z.record(ID, z.unknown()),
   scenarios: z.unknown().optional(),
+  extras: z.record(z.string().max(64), z.unknown()).optional(),
   physical: PhysicalSchema,
   assets: z.record(z.string().max(120), z.string().max(8 * 1024 * 1024)),
 });
@@ -288,13 +291,14 @@ const fail = (
 
 // ------------------------------------------------------------------ Export
 
-export function exportNsim(
+function buildDoc(
   engine: Engine,
   opts: {
     name?: string;
     description?: string;
     savedAt?: string;
     scenarios?: unknown;
+    extras?: Record<string, unknown>;
     assets?: Record<string, string>;
   } = {},
 ): NsimDoc {
@@ -354,8 +358,20 @@ export function exportNsim(
     assets: opts.assets ?? {},
   };
   if (opts.scenarios !== undefined) doc.scenarios = opts.scenarios;
-  // Tiefe Kopie (JSON-Semantik): undefined-Felder entfallen wie in der Datei
-  return JSON.parse(JSON.stringify(doc)) as NsimDoc;
+  if (opts.extras !== undefined) doc.extras = opts.extras;
+  return doc;
+}
+
+type ExportOpts = Parameters<typeof buildDoc>[1];
+
+/** Dokument mit JSON-Semantik (tiefe Kopie, `undefined`-Felder entfallen wie in der Datei). */
+export function exportNsim(engine: Engine, opts: ExportOpts = {}): NsimDoc {
+  return JSON.parse(JSON.stringify(buildDoc(engine, opts))) as NsimDoc;
+}
+
+/** Entwurfszustand als JSON-Text (für Undo/Redo-Schnappschüsse und Autosave; vermeidet die zweite Kopie). */
+export function designJson(engine: Engine, opts: ExportOpts = {}): string {
+  return JSON.stringify(buildDoc(engine, opts));
 }
 
 export function encodeNsim(doc: NsimDoc): Uint8Array {
