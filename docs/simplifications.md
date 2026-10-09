@@ -294,7 +294,7 @@
   Verkehrsauswahl (die passende ACL-Zeile) sowie seinen SPI. Der Responder lehnt mit Grund ab bei: unbekanntem Peer, keiner passenden Policy (Policy-Authentifizierung muss `pre-share`
   sein – Default ist wie bei IOS `rsa-sig`), abweichendem Schlüssel (`authentication failed`), anderem Transform-Set oder fehlender gespiegelter ACL-Zeile (`proxy identities not
 supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolgt frühestens nach 8 s beim nächsten passenden Paket. Während des Aufbaus (und bei fehlgeschlagener SA)
-  werden passende Pakete verworfen (die ersten Pings gehen verloren, wie in der Praxis). Je ACL-Zeile entsteht ein SA-Paar. ESP (IP-Protokoll 50, Tunnelmodus) kapselt das ganze
+  werden passende Pakete verworfen (die ersten Pings gehen verloren, wie in der Praxis). Je ACL-Zeile entsteht ein SA-Paar; bauen beide Seiten gleichzeitig auf, gewinnt der Austausch der Seite mit der höheren Adresse. ESP (IP-Protokoll 50, Tunnelmodus) kapselt das ganze
   Originalpaket; die Nutzlast ist im Inspektor und in Ereignislisten nur als „verschlüsselt“ sichtbar (Transitgeräte sehen nur äußere Adressen, SPI, Sequenz), an den Endpunkten steht
   „decrypted …“ im Log. Keine echte Kryptografie, kein Lifetime-/Rekey-Ablauf (SAs bleiben bis `clear crypto sa`, Reload oder Link-/Strom-Aus), kein Replay-Fenster, kein NAT-T, kein
   IKEv2, keine Transport-Mode-Wirkung (wird gespeichert), kein DPD, **keine VTI** (`tunnel mode ipsec`) und keine IPsec-Profile; Crypto Maps sind an physischen/Sub-Schnittstellen und am Dialer

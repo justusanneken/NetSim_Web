@@ -291,6 +291,15 @@ function ikeRequest(rt: Rt, iface: Iface, ip: Ipv4Pdu, udp: UdpPdu, m: IkePdu, c
   );
   if (!sel || !mirror) return fail('proxy identities not supported');
   const key = `${ip.src}|${sel.dst}>${sel.src}${sel.proto ? `/${sel.proto}` : ''}`;
+  // Beide Seiten bauen gleichzeitig auf: der Austausch der Seite mit der höheren Adresse gewinnt (die andere
+  // Seite übernimmt dessen SA als Responder); sonst würden sich die SPIs beider Seiten gegenseitig überschreiben
+  const cur = c.sas[key];
+  if (
+    cur?.state === 'connecting' &&
+    cur.role === 'initiator' &&
+    (parseIpv4(cur.local) ?? 0) > (parseIpv4(ip.src) ?? 0)
+  )
+    return;
   const sa: IpsecSa = {
     key,
     peer: ip.src,

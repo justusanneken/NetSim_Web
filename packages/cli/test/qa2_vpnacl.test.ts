@@ -123,3 +123,31 @@ describe('QA2: IPsec nach Neustart der Gegenstelle', () => {
     expect(up(e, pc1, '10.2.0.10')).toBe(true);
   });
 });
+
+describe('QA2: gleichzeitiger IKE-Aufbau von beiden Seiten', () => {
+  it('beide PCs pingen gleichzeitig: das VPN kommt in beide Richtungen zustande', () => {
+    const { e, pc1, pc3 } = vpnLab();
+    sec(e, 2);
+    e.ping(pc1, '10.2.0.10', { count: 1 });
+    e.ping(pc3, '10.1.0.10', { count: 1 });
+    sec(e, 6);
+    expect(up(e, pc1, '10.2.0.10')).toBe(true);
+    expect(up(e, pc3, '10.1.0.10')).toBe(true);
+  });
+
+  it('umgekehrte Reihenfolge und nach clear crypto sa erneut gleichzeitig', () => {
+    const { e, r1, r3, pc1, pc3 } = vpnLab();
+    sec(e, 2);
+    e.ping(pc3, '10.1.0.10', { count: 1 });
+    e.ping(pc1, '10.2.0.10', { count: 1 });
+    sec(e, 6);
+    expect(up(e, pc3, '10.1.0.10')).toBe(true);
+    r1.run('clear crypto sa');
+    r3.run('clear crypto sa');
+    e.ping(pc1, '10.2.0.10', { count: 1 });
+    e.ping(pc3, '10.1.0.10', { count: 1 });
+    sec(e, 6);
+    expect(up(e, pc1, '10.2.0.10')).toBe(true);
+    expect(up(e, pc3, '10.1.0.10')).toBe(true);
+  });
+});
