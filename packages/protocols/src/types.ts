@@ -131,7 +131,7 @@ export interface IkePdu {
   authHash: string;
   /** Phase 2: Transform-Set und Verkehrsauswahl (Quelle > Ziel als Präfixe). */
   transform: string;
-  selector?: { src: string; dst: string };
+  selector?: { src: string; dst: string; proto?: number };
   /** SPI, den der Absender für eingehenden Verkehr vom Peer erwartet. */
   spi: number;
   /** Ablehnungsgrund (`reject`). */

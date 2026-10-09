@@ -58,7 +58,7 @@ export interface IpsecSa {
   mapName: string;
   seq: number;
   /** Verkehrsauswahl aus Sicht dieses Geräts: Quelle (lokal) > Ziel (entfernt), als `ip/wildcard` bzw. `any`. */
-  sel: { src: string; dst: string };
+  sel: { src: string; dst: string; proto?: number };
   role: 'initiator' | 'responder';
   state: 'connecting' | 'up' | 'failed';
   /** SPI für eingehenden bzw. ausgehenden ESP-Verkehr. */

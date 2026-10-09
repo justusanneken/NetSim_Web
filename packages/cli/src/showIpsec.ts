@@ -122,8 +122,8 @@ export function showIpsecSa(d: Device): string[] {
     for (const s of list) {
       out.push(
         '   protected vrf: (none)',
-        `   local  ident (addr/mask/prot/port): (${identText(s.sel.src)}/0/0)`,
-        `   remote ident (addr/mask/prot/port): (${identText(s.sel.dst)}/0/0)`,
+        `   local  ident (addr/mask/prot/port): (${identText(s.sel.src)}/${s.sel.proto ?? 0}/0)`,
+        `   remote ident (addr/mask/prot/port): (${identText(s.sel.dst)}/${s.sel.proto ?? 0}/0)`,
         `   current_peer ${s.peer} port 500`,
         '     PERMIT, flags={origin_is_acl,}',
         `    #pkts encaps: ${s.encaps}, #pkts encrypt: ${s.encaps}, #pkts digest: ${s.encaps}`,

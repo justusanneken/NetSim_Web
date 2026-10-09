@@ -1,4 +1,5 @@
 import {
+  IP_PROTO,
   parseIpv4,
   summarizeFrame,
   type EspPdu,
@@ -19,7 +20,7 @@ import {
   type IpsecSa,
   type IsakmpPolicy,
 } from '../ipsecTypes';
-import type { AddrMatch, L3Cfg } from '../types';
+import type { AclProto, AddrMatch, L3Cfg } from '../types';
 import { cancelBg, setBg, type Rt } from './core';
 
 /**
@@ -32,6 +33,9 @@ const IKE_TIMEOUT = 3 * SEC;
 const RETRY_AFTER = 8 * SEC;
 
 export const cryptoOf = (cfg: L3Cfg): CryptoCfg => (cfg.crypto ??= newCrypto());
+
+/** IP-Protokollnummer einer Crypto-ACL-Zeile (`ip` = 0, wie `prot` in `show crypto ipsec sa`). */
+const aclProtoNum = (p: AclProto): number => (p === 'ip' ? 0 : IP_PROTO[p]);
 
 const spiOf = (n: number): number => (0x2a31c000 + n * 0x1a7) >>> 0;
 
@@ -122,8 +126,9 @@ export function cryptoXmit(
     if (!acl || !entry.peer) continue;
     const r = aclEval(acl, inner);
     if (r.action !== 'permit' || !r.entry) continue;
-    const sel = { src: am(r.entry.src), dst: am(r.entry.dst) };
-    const key = `${entry.peer}|${sel.src}>${sel.dst}`;
+    const proto = aclProtoNum(r.entry.proto);
+    const sel = { src: am(r.entry.src), dst: am(r.entry.dst), ...(proto ? { proto } : {}) };
+    const key = `${entry.peer}|${sel.src}>${sel.dst}${proto ? `/${proto}` : ''}`;
     const sa = cfg.crypto.sas[key];
     if (sa?.state === 'up') {
       sa.encaps++;
@@ -277,10 +282,15 @@ function ikeRequest(rt: Rt, iface: Iface, ip: Ipv4Pdu, udp: UdpPdu, m: IkePdu, c
   const sel = m.selector;
   // Spiegel: die eigene Crypto-ACL muss Quelle/Ziel des Peers umgekehrt erlauben
   const mirror = acl?.entries.find(
-    (e) => e.action === 'permit' && sel && am(e.src) === sel.dst && am(e.dst) === sel.src,
+    (e) =>
+      e.action === 'permit' &&
+      sel &&
+      am(e.src) === sel.dst &&
+      am(e.dst) === sel.src &&
+      aclProtoNum(e.proto) === (sel.proto ?? 0),
   );
   if (!sel || !mirror) return fail('proxy identities not supported');
-  const key = `${ip.src}|${sel.dst}>${sel.src}`;
+  const key = `${ip.src}|${sel.dst}>${sel.src}${sel.proto ? `/${sel.proto}` : ''}`;
   const sa: IpsecSa = {
     key,
     peer: ip.src,
@@ -288,7 +298,7 @@ function ikeRequest(rt: Rt, iface: Iface, ip: Ipv4Pdu, udp: UdpPdu, m: IkePdu, c
     ifaceId: found.ifaceId,
     mapName,
     seq: entry.seq,
-    sel: { src: sel.dst, dst: sel.src },
+    sel: { src: sel.dst, dst: sel.src, ...(sel.proto ? { proto: sel.proto } : {}) },
     role: 'responder',
     state: 'up',
     inSpi: spiOf(c.nextSpi++),
