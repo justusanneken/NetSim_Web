@@ -178,3 +178,17 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Skript-Sandbox: Speichergrenzen, Prototyp-Ausbrüche                                                                                                              | fertig | `engine › qa2_script`                                                                                                       |
 | Begrenztes Log mit Step Back und debug-Cursor; Determinismus und Chaos (Störungen + Heilung)                                                                     | fertig | `cli › qa2_debuglog`, `cli › qa2_determinism`, `cli › qa2_chaos`                                                            |
 | Befehlsfuzzing: jede Definition (Router/Switch/Firewall) ohne interne Fehler, running-config-Replay stabil, `no`-Formen, IOS-Rückfall aus Untermodi              | fertig | `cli › qa2_cmdfuzz`, `cli › qa2_negfuzz`, `cli › qa2_replay`, `cli › qa2_submode`, `cli › qa2_ipseccli`, `cli › qa2_iosfmt` |
+
+## Szenarien, Aufgabenmodus, Challenge Me (teach)
+
+| Spezifikation                                                                                        | Stand  | Test                                                                |
+| ---------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------- |
+| Simple PDU / Complex PDU (Protokoll, Port, Quell-IP, Nutzlast, Zeit, Wiederholung)                   | fertig | `engine › teach_pdu`, `engine › teach_scenario`, `e2e › teach`      |
+| PDU-Liste mit Successful/Failed, Rerun, Delete                                                       | fertig | `engine › teach_scenario`, `e2e › teach`                            |
+| Mehrere Szenarien je Topologie (anlegen, wechseln, löschen, Beschreibung), `.nsim`-Feld `scenarios`  | fertig | `engine › teach_scenario`, `e2e › teach`                            |
+| Aufgabenmodus `.nsact` (zlib + Zod), Start-/Antwortnetz, Gewichte, Hinweise, Schritte, Zeitlimit     | fertig | `engine › teach_activity`, `engine › teach_scenario`, `e2e › teach` |
+| Prüfungen als Zustandsprädikate (Gerät, IP, VLAN, Route, Config semantisch, Ping, Dienst, OSPF Full) | fertig | `engine › teach_checks`, `cli › teach_activities`                   |
+| Fortschrittsprozent, Ergebnis je Prüfung, „Prüfen“, optionaler Live-Fortschritt                      | fertig | `e2e › teach` (Prüfen), `engine › teach_scenario`                   |
+| Autorenoberfläche (Prüfungen per Formular, aus Antwortnetz ableiten, Export), Sperroptionen          | fertig | `engine › teach_activity` (Ableiten), `web › teach` (Formular)      |
+| Fünf Beispielaufgaben (VLAN/Trunk, Router-on-a-Stick, OSPF, PAT, ACL), de/en                         | fertig | `cli › teach_activities`, `e2e › teach` (ACL)                       |
+| Challenge Me (Entscheidung je Schicht, Erklärung, Punktestand)                                       | fertig | `engine › teach_challenge`, `e2e › teach`                           |

@@ -176,3 +176,7 @@ Anzeige/Betrieb: `show pppoe session`, `show ip interface brief` (Dialer/Virtual
 **IPsec (Crypto Map):** `crypto isakmp policy N` (`encryption des|3des|aes [128|192|256]`, `hash md5|sha`, `authentication pre-share|rsa-sig`, `group 1|2|5|14|15|16|19|20|21|24`, `lifetime S`; `no …` ohne Wert setzt den Standard), `crypto isakmp key K address A [MASK]`,
 `crypto ipsec transform-set NAME esp-… [esp-…]` (IOS-Transforms, `esp-aes 128|192|256`) (`mode tunnel|transport`), `crypto map NAME SEQ ipsec-isakmp` (`set peer A`, `set transform-set T`, `match address ACL`, `set pfs groupN`,
 `set security-association lifetime seconds S`), an der Schnittstelle `crypto map NAME`; `show crypto isakmp sa|policy`, `show crypto ipsec sa|transform-set`, `show crypto map`, `clear crypto sa|isakmp`.
+
+## Lehr-Werkzeuge (teach)
+
+Keine neuen IOS-Befehle. Fix: Schlüsselwörter mit Großbuchstaben (`encapsulation dot1Q N` im Subinterface) werden in jeder Schreibweise erkannt (`dot1q`, `DOT1Q`). Die Beispielaufgaben (Werkzeuge › Aufgabenmodus) benutzen ausschließlich vorhandene Befehle (`vlan`, `switchport …`, `encapsulation dot1Q`, `router ospf`, `network … area`, `ip nat …`, `ip access-list extended`, `ip access-group`).

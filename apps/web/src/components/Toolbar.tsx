@@ -50,7 +50,7 @@ export function Toolbar() {
       <button
         className="tool"
         title={t('pdu.complex')}
-        aria-label={t('pdu.complex')}
+        aria-label={t('pdu.complexShort')}
         onClick={() => useTeach.getState().openPduDialog(true)}
       >
         <span aria-hidden>✉+</span>
