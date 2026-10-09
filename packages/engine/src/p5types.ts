@@ -20,7 +20,13 @@ export interface ClockCfg {
 // ---------------------------------------------------------------- WLAN
 
 export type WifiBand = '2.4' | '5';
-export type WifiSecurity = 'open' | 'wpa2-psk';
+export type WifiSecurity = 'open' | 'wpa2-psk' | 'wpa2-enterprise';
+
+/** RADIUS-Server für WPA2-Enterprise (802.1X). */
+export interface RadiusRef {
+  host: Ipv4Addr;
+  secret: string;
+}
 
 export interface Radio {
   band: WifiBand;
@@ -29,6 +35,8 @@ export interface Radio {
   ssid: string;
   security: WifiSecurity;
   key?: string;
+  /** `wpa2-enterprise`: RADIUS-Server. */
+  radius?: RadiusRef;
 }
 
 export interface Wlan {
@@ -36,6 +44,8 @@ export interface Wlan {
   ssid: string;
   security: WifiSecurity;
   key?: string;
+  /** `wpa2-enterprise`: RADIUS-Server. */
+  radius?: RadiusRef;
   band: 'both' | WifiBand;
   enabled: boolean;
 }
@@ -45,6 +55,7 @@ export interface Bss {
   ssid: string;
   security: WifiSecurity;
   key?: string;
+  radius?: RadiusRef;
   band: WifiBand;
   channel: number;
 }
@@ -69,11 +80,27 @@ export interface ApCfg {
   macTable: Record<Mac, string>;
   /** Laufzeit: assoziierte Clients je Funk-Port. */
   clients: Record<string, ApClient>;
+  /** Laufzeit: 802.1X-Verfahren (Schlüssel `Client-MAC|SSID|Band`). */
+  eap?: Record<string, EapEntry>;
+}
+
+/** Stand der (vereinfachten) EAP-Authentifizierung eines Clients am AP. */
+export interface EapEntry {
+  state: 'pending' | 'ok' | 'fail';
+  /** Zugangsdaten-Signatur (Änderung ⇒ neues Verfahren). */
+  sig: string;
+  client: string;
+  user: string;
+  /** RADIUS-Anfrage-ID (pending). */
+  rid?: number;
 }
 
 export interface WifiProfile {
   ssid: string;
   key?: string;
+  /** WPA2-Enterprise: 802.1X-Zugangsdaten. */
+  username?: string;
+  password?: string;
 }
 
 export interface WifiAssoc {
@@ -85,7 +112,7 @@ export interface WifiAssoc {
   channel: number;
 }
 
-export type WifiStatus = 'idle' | 'connected' | 'auth-failed' | 'no-ap' | 'off';
+export type WifiStatus = 'idle' | 'connected' | 'authenticating' | 'auth-failed' | 'no-ap' | 'off';
 
 export interface WifiClientCfg {
   enabled: boolean;
@@ -256,6 +283,8 @@ export interface AppCore {
   nextReq: number;
   /** Server-seitig wartende Logins (RADIUS): Anfrage-ID → Verbindungsschlüssel. */
   aaaWait: Record<number, { key: string; user: string; pass: string; next: number }>;
+  /** AP: wartende 802.1X-Anfragen (RADIUS-Anfrage-ID → EAP-Schlüssel). */
+  eapWait?: Record<number, string>;
 }
 
 // ---------------------------------------------------------------- Management (Router/Switch/Firewall)

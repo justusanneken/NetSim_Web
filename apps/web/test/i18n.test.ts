@@ -5,9 +5,11 @@ import de0 from '../src/i18n/de.json';
 import en0 from '../src/i18n/en.json';
 import de5 from '../src/i18n/de.phase5.json';
 import en5 from '../src/i18n/en.phase5.json';
+import deProto from '../src/i18n/de.proto.json';
+import enProto from '../src/i18n/en.proto.json';
 
-const de: Record<string, string> = { ...de0, ...de5 };
-const en: Record<string, string> = { ...en0, ...en5 };
+const de: Record<string, string> = { ...de0, ...de5, ...deProto };
+const en: Record<string, string> = { ...en0, ...en5, ...enProto };
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const f of readdirSync(dir)) {

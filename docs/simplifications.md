@@ -125,7 +125,7 @@
   ein SSID; Kanäle beeinflussen sich nicht. Assoziation = ein dynamisch gelegter Link (`wireless`, 54 Mbit/s) zwischen
   einem Funk-Steckplatz des AP (8 Stück) und der WLAN-Karte; Authentifizierung/Assoziation erscheinen als Log-Einträge
   (keine 802.11-Frames/Beacons). Roaming: Wechsel erst, wenn der neue AP deutlich näher ist (< 70 % der Entfernung).
-  WPA2-Enterprise/802.1X fehlt.
+  WPA2-Enterprise/802.1X siehe „Erweiterungen proto“.
 - **Physical View:** Entfernung für die Funkreichweite = Canvas-Abstand; liegen beide Geräte in der Physical View, gilt:
   anderes Gebäude/andere Stadt = außer Reichweite, anderer Raum = + 120 px „Wandabschlag“. Keine Kabellängen/Dämpfung,
   keine maßstäbliche Darstellung.
@@ -210,3 +210,10 @@
   Link-Local-Adressen und die Gruppe `ff02::a` (IP-Protokoll 88 / Next Header 88, Nutzlast `routing/eigrp` mit `v: 6`), Prozesse in `RoutingCfg.eigrp6`, Schnittstellenzuordnung
   `ipv6 eigrp ASN` (`V6IfCfg.eigrp`) statt `network`-Anweisungen. Wie bei IOS startet ein Prozess im Zustand `shutdown` und braucht eine Router-ID (`eigrp router-id` oder eine
   IPv4-Adresse am Gerät). Kein Auto-Summary, kein `distribute-list`/`route-map` für IPv6-EIGRP, keine `metric weights`; Routen erscheinen als `D`/`EX` in `show ipv6 route`.
+- **WPA2-Enterprise / 802.1X:** WLAN-Sicherheit `wpa2-enterprise` (Funkmodul des autonomen AP oder WLAN am WLC) mit RADIUS-Server (Adresse + Shared Secret, Dienst `aaa` des Servers aus Phase 5).
+  Das Verfahren ist vereinfacht: kein EAPOL/EAP-Frame-Austausch, kein TLS-Tunnel. Der AP agiert immer als Authenticator (auch Lightweight-AP: die WLAN-Konfiguration
+  einschließlich RADIUS-Server kommt per CAPWAP vom WLC, die Anfrage geht aber direkt vom AP – IP-Adresse des APs muss als RADIUS-Client am Server stehen) und sendet ein
+  `access-request` (UDP 1812, Benutzer + Passwort aus dem Wi-Fi-Profil; Passwort/Secret werden im Inspektor maskiert). `access-accept` ⇒ Assoziation, `access-reject`/Timeout (3 s) ⇒
+  Status `auth-failed`, kein Link. Die Assoziation ist dadurch asynchron (Status `authenticating`). Ein abgewiesenes Verfahren wird nicht wiederholt, bis Zugangsdaten oder die
+  Server-Dienste (`aaa`) geändert werden; nach Trennung (Reichweite, Aus) authentifiziert sich der Client erneut. Roaming zwischen Enterprise-APs authentifiziert den Ziel-AP vorab.
+  Keine Zertifikate, keine Schlüsselableitung, keine Gruppen-/Rollenzuweisung, kein Accounting.

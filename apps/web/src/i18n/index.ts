@@ -4,6 +4,8 @@ import de from './de.json';
 import en from './en.json';
 import de5 from './de.phase5.json';
 import en5 from './en.phase5.json';
+import deProto from './de.proto.json';
+import enProto from './en.proto.json';
 
 export type Lang = 'de' | 'en';
 
@@ -19,8 +21,8 @@ function storedLang(): Lang {
 
 void i18next.use(initReactI18next).init({
   resources: {
-    de: { translation: { ...de, ...de5 } },
-    en: { translation: { ...en, ...en5 } },
+    de: { translation: { ...de, ...de5, ...deProto } },
+    en: { translation: { ...en, ...en5, ...enProto } },
   },
   lng: storedLang(),
   fallbackLng: 'de',

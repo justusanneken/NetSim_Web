@@ -1,0 +1,12 @@
+{
+  "wifi.eapStart": "{{client}} starts 802.1X (EAP) for “{{ssid}}” at {{ap}} – user “{{user}}”, sending RADIUS Access-Request.",
+  "wifi.eapSuccess": "802.1X: {{client}} (“{{user}}”) accepted for “{{ssid}}” by the RADIUS server (Access-Accept).",
+  "wifi.eapFailure": "802.1X: {{client}} (“{{user}}”) rejected for “{{ssid}}” (Access-Reject) – no association.",
+  "wifi.eapTimeout": "802.1X: no answer from the RADIUS server for {{client}} (“{{ssid}}”) – no association.",
+  "wifi.invalidRadius": "WPA2-Enterprise needs a valid RADIUS server address and a shared secret.",
+  "wifi.status.authenticating": "802.1X authentication in progress …",
+  "ap.radiusHost": "RADIUS server",
+  "ap.radiusSecret": "Shared secret",
+  "wifi.username": "Username (802.1X)",
+  "wifi.password": "Password (802.1X)"
+}
