@@ -4,6 +4,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { api } from '../engine/client';
 
+const token = (name: string): string =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
 /** xterm.js-Anbindung an die Terminal-Sitzung eines Geräts (läuft im Engine-Worker). */
 export function TerminalView({ deviceId, label }: { deviceId: string; label: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -15,7 +18,11 @@ export function TerminalView({ deviceId, label }: { deviceId: string; label: str
       cursorBlink: true,
       fontSize: 13,
       fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
-      theme: { background: '#0b0f14', foreground: '#d6e2ee', cursor: '#9be9a8' },
+      theme: {
+        background: token('--term-bg'),
+        foreground: token('--term-fg'),
+        cursor: token('--term-cursor'),
+      },
       scrollback: 5000,
       convertEol: false,
     });

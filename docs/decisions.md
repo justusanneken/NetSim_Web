@@ -114,3 +114,13 @@ WLAN-Roaming im selben SSID behält das DHCP-Lease (INIT-REBOOT, Zustand `reboot
     vty-Limits, AAA, `terminal monitor` und Session-Abbau unverändert (siehe `simplifications.md`).
 37. **IoT-Skripte ohne `eval`:** eigener Interpreter statt `new Function` (Prototyp-Ausbrüche), Zustand als JSON (Variablen des Hauptteils) und stille Neuauswertung
     pro Aktivierung, damit Snapshots/Step-Back/`.nsim` ohne Closures funktionieren.
+
+## Erweiterungen proto
+
+32. **EIGRP für IPv6 verallgemeinert `eigrp.ts`** statt Kopie: Prozesse in `RoutingCfg.eigrp6`, IPv6-Schnittstellen als Pseudo-Schnittstellen (wie OSPFv3), `v: 6` im Routing-PDU, Timer-Präfix `rt:eigrp6`. Neue Prozesse starten wie bei IOS im Zustand `shutdown`.
+33. **WPA2-Enterprise asynchron:** Die Assoziation wartet auf das RADIUS-Ergebnis des APs (`ap.eap`, Status `authenticating`); wirelessSync wird nach Access-Accept/-Reject/Timeout neu ausgelöst. Der AP ist immer Authenticator.
+34. **TACACS+ über die gemeinsame TCP-Schicht** (`p5/conn.ts`, Port 49) mit Client-Hook `tacacsClientHook` und Server `tacacsServer`; die Anmeldung nutzt dieselbe Warteliste (`aaaWait`) wie RADIUS.
+35. **SNMP-Traps:** eigene `svc`-Nachricht `snmp/trap` (UDP 162), Trap-Typen als Konfigurationsmenge; Empfang in `services.snmp.traps`.
+36. **PPPoE/PPP:** neue Schnittstellenarten `dialer`, `vtemplate`, `vaccess`; Sitzungen als Laufzeitzustand `L3Cfg.ppp`, IP-Schnittstellen erscheinen nur bei stehender Sitzung (`pppIfaces`). PPPoE-Frames werden vor der Schnittstellenzuordnung in `routerRx` abgefangen.
+37. **IPsec:** Crypto-Map-Prüfung im `xmit` der Schnittstelle (`cryptoXmit`), ESP als IP-Nutzlast mit verborgenem `inner`, IKE als ein Austausch; SAs sind Laufzeitzustand in `L3Cfg.crypto.sas`. Kein VTI.
+38. **Neue Protokoll-Tags** `TACACS`, `PPPOE`, `PPP`, `IKE`, `ESP`; Farben in `apps/web/src/proto.css` (Tokens), Übersetzungen in `i18n/{de,en}.proto.json`.

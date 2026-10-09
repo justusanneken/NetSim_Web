@@ -5,33 +5,12 @@ import { useTranslation } from 'react-i18next';
 import type { DeviceType, DeviceView, LinkView } from '@netsim/engine';
 import { api } from '../engine/client';
 import { shortPort } from '../format';
-import { DEVICE_COLORS, ICON_FALLBACK, ICON_PATHS } from '../icons';
+import { deviceColor, ICON_FALLBACK, ICON_PATHS } from '../icons';
 import { useStore } from '../store';
+import { linkLightShape, readCanvasColors, type CanvasColors } from '../theme';
 
 const GRID = 20;
 const BLINK_US = 200_000;
-
-const PALETTE = {
-  light: {
-    bg: '#f6f8fa',
-    grid: '#e1e6eb',
-    text: '#1f2328',
-    card: '#ffffff',
-    line: '#6e7781',
-    sel: '#1f6feb',
-  },
-  dark: {
-    bg: '#0d1117',
-    grid: '#21262d',
-    text: '#e6edf3',
-    card: '#161b22',
-    line: '#8b949e',
-    sel: '#58a6ff',
-  },
-};
-const UP = '#22a35a';
-const DOWN = '#e5484d';
-const BLINK = '#9be9a8';
 
 const snap = (v: number): number => Math.round(v / (GRID / 2)) * (GRID / 2);
 
@@ -54,7 +33,7 @@ export function Canvas() {
   const colorblind = useStore((s) => s.colorblind);
   const theme = useStore((s) => s.theme);
   const stageView = useStore((s) => s.stageView);
-  const colors = PALETTE[theme];
+  const colors = useMemo(() => readCanvasColors(theme, colorblind), [theme, colorblind]);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -200,17 +179,25 @@ export function Canvas() {
             .flatMap((d) => {
               const pos = posOf(d.id);
               return Object.entries(d.p5?.ap?.range ?? {}).map(([band, r]) => (
-                <Circle
-                  key={`${d.id}-${band}`}
-                  x={pos.x}
-                  y={pos.y}
-                  radius={r}
-                  stroke={band === '5' ? '#7048e8' : '#1c7ed6'}
-                  strokeWidth={1.5}
-                  dash={band === '5' ? [4, 6] : [10, 6]}
-                  fill={band === '5' ? 'rgba(112,72,232,0.04)' : 'rgba(28,126,214,0.05)'}
-                  listening={false}
-                />
+                <Group key={`${d.id}-${band}`} listening={false}>
+                  <Circle
+                    x={pos.x}
+                    y={pos.y}
+                    radius={r}
+                    fill={band === '5' ? colors.wifi5 : colors.wifi24}
+                    opacity={0.06}
+                    listening={false}
+                  />
+                  <Circle
+                    x={pos.x}
+                    y={pos.y}
+                    radius={r}
+                    stroke={band === '5' ? colors.wifi5 : colors.wifi24}
+                    strokeWidth={1.5}
+                    dash={band === '5' ? [4, 6] : [10, 6]}
+                    listening={false}
+                  />
+                </Group>
               ));
             })}
           {view?.links.map((l) => (
@@ -223,15 +210,13 @@ export function Canvas() {
               selected={selectedLink === l.id}
               showLabels={showLabels}
               colorblind={colorblind}
-              lineColor={colors.line}
-              selColor={colors.sel}
-              textColor={colors.text}
+              colors={colors}
             />
           ))}
-          <Envelopes posOf={posOf} />
+          <Envelopes posOf={posOf} colors={colors} colorblind={colorblind} />
           {view?.devices.map((d) => {
             const pos = posOf(d.id);
-            const color = DEVICE_COLORS[d.type] ?? '#6e7781';
+            const color = deviceColor(d.type, theme);
             const active = cableStart?.deviceId === d.id || pduSource === d.id;
             return (
               <Group
@@ -271,7 +256,7 @@ export function Canvas() {
                   height={60}
                   cornerRadius={10}
                   fill={colors.card}
-                  stroke={selectedDevice === d.id ? colors.sel : active ? '#f59e0b' : color}
+                  stroke={selectedDevice === d.id ? colors.sel : active ? colors.active : color}
                   strokeWidth={selectedDevice === d.id || active ? 3 : 1.5}
                   shadowBlur={4}
                   shadowOpacity={0.15}
@@ -290,8 +275,8 @@ export function Canvas() {
                   fontSize={13}
                   fill={colors.text}
                 />
-                {!d.powered && <Text x={-6} y={-8} text="⏻" fontSize={16} fill={DOWN} />}
-                {d.crashed && <Text x={14} y={-30} text="⚠" fontSize={18} fill={DOWN} />}
+                {!d.powered && <Text x={-6} y={-8} text="⏻" fontSize={16} fill={colors.down} />}
+                {d.crashed && <Text x={14} y={-30} text="⚠" fontSize={18} fill={colors.down} />}
               </Group>
             );
           })}
@@ -310,11 +295,9 @@ function LinkShape(props: {
   selected: boolean;
   showLabels: boolean;
   colorblind: boolean;
-  lineColor: string;
-  selColor: string;
-  textColor: string;
+  colors: CanvasColors;
 }) {
-  const { link, posOf, devices, now, selected, showLabels, colorblind } = props;
+  const { link, posOf, devices, now, selected, showLabels, colorblind, colors } = props;
   const a = posOf(link.a.deviceId);
   const b = posOf(link.b.deviceId);
   const dx = b.x - a.x;
@@ -336,9 +319,16 @@ function LinkShape(props: {
   };
 
   const light = (x: number, y: number) => {
-    const fill = blinking ? BLINK : link.stpBlocked ? '#f08c00' : link.operUp ? UP : DOWN;
-    // Farbenblind-Modus: Form statt nur Farbe (Kreis = up, Raute = down)
-    return colorblind && !link.operUp ? (
+    const fill = blinking
+      ? colors.blink
+      : link.stpBlocked
+        ? colors.stp
+        : link.operUp
+          ? colors.up
+          : colors.down;
+    // Farbenblind-Modus: Form statt nur Farbe (Kreis = up, Raute = down, Quadrat = STP blockiert)
+    const shape = linkLightShape(colorblind, link.operUp, !!link.stpBlocked);
+    return shape !== 'circle' ? (
       <Rect
         x={x}
         y={y}
@@ -346,9 +336,9 @@ function LinkShape(props: {
         height={9}
         offsetX={4.5}
         offsetY={4.5}
-        rotation={45}
+        rotation={shape === 'diamond' ? 45 : 0}
         fill={fill}
-        stroke="#fff"
+        stroke={colors.ring}
         strokeWidth={1.5}
         listening={false}
       />
@@ -358,7 +348,7 @@ function LinkShape(props: {
         y={y}
         radius={blinking ? 6 : 5}
         fill={fill}
-        stroke="#fff"
+        stroke={colors.ring}
         strokeWidth={1.5}
         listening={false}
       />
@@ -372,7 +362,7 @@ function LinkShape(props: {
       <Group>
         <Line
           points={[a.x, a.y, b.x, b.y]}
-          stroke={selected ? props.selColor : '#1c7ed6'}
+          stroke={selected ? colors.sel : colors.wifi24}
           strokeWidth={selected ? 3 : 2}
           hitStrokeWidth={14}
           dash={[7, 6]}
@@ -384,7 +374,7 @@ function LinkShape(props: {
           y={my - 10}
           text="((·))"
           fontSize={15}
-          fill={blinking ? BLINK : '#1c7ed6'}
+          fill={blinking ? colors.blink : colors.wifi24}
           listening={false}
         />
       </Group>
@@ -394,10 +384,10 @@ function LinkShape(props: {
     <Group>
       <Line
         points={[a.x, a.y, b.x, b.y]}
-        stroke={selected ? props.selColor : props.lineColor}
+        stroke={selected ? colors.sel : colors.line}
         strokeWidth={selected ? 3.5 : 2.5}
         hitStrokeWidth={14}
-        dash={link.operUp ? cableDash : [3, 5]}
+        dash={link.operUp ? (link.stpBlocked ? [8, 4] : cableDash) : [3, 5]}
         onClick={select}
         onTap={select}
       />
@@ -410,7 +400,7 @@ function LinkShape(props: {
             y={a.y + uy * (off + 8) - 14 - 6 * Math.abs(uy)}
             text={portName(link.a)}
             fontSize={10}
-            fill={props.textColor}
+            fill={colors.text}
             listening={false}
           />
           <Text
@@ -418,7 +408,7 @@ function LinkShape(props: {
             y={b.y - uy * (off + 8) - 14 - 6 * Math.abs(uy)}
             text={portName(link.b)}
             fontSize={10}
-            fill={props.textColor}
+            fill={colors.text}
             listening={false}
           />
         </>
@@ -457,15 +447,18 @@ function Tooltip({ hover, wrap }: { hover: Hover; wrap: HTMLDivElement | null })
 }
 
 const ANIM_MS = 700;
-const PROTO_COLOR: Record<string, string> = {
-  ARP: '#8957e5',
-  ICMP: '#1a7f37',
-  CSMA: '#bf3989',
-  ETH: '#2f6fed',
-};
+const PROTO_LETTER: Record<string, string> = { ARP: 'A', ICMP: 'I', CSMA: 'C', ETH: 'E' };
 
 /** Umschläge, die entlang der Links zum Empfänger wandern (Simulationsmodus). */
-function Envelopes({ posOf }: { posOf: (id: string) => { x: number; y: number } }) {
+function Envelopes({
+  posOf,
+  colors,
+  colorblind,
+}: {
+  posOf: (id: string) => { x: number; y: number };
+  colors: CanvasColors;
+  colorblind: boolean;
+}) {
   const anims = useStore((s) => s.animations);
   const selectLog = useStore((s) => s.selectLog);
   const [, setTick] = useState(0);
@@ -497,7 +490,7 @@ function Envelopes({ posOf }: { posOf: (id: string) => { x: number; y: number } 
         const to = posOf(a.toId);
         const x = from.x + (to.x - from.x) * p;
         const y = from.y + (to.y - from.y) * p;
-        const color = a.ok ? (PROTO_COLOR[a.proto] ?? '#1f6feb') : '#e5484d';
+        const color = a.ok ? (colors.proto[a.proto] ?? colors.protoDefault) : colors.down;
         return (
           <Group
             key={a.id}
@@ -516,16 +509,33 @@ function Envelopes({ posOf }: { posOf: (id: string) => { x: number; y: number } 
               height={16}
               cornerRadius={2}
               fill={color}
-              stroke="#fff"
+              stroke={colors.ring}
               strokeWidth={1.5}
             />
-            <Line
-              points={[-11, -8, 0, 1, 11, -8]}
-              stroke="#fff"
-              strokeWidth={1.5}
-              listening={false}
-            />
-            {!a.ok && <Text x={-5} y={-8} text="✗" fontSize={16} fill="#fff" listening={false} />}
+            {/* Farbenblind-Modus: Buchstabe des Protokolls statt reiner Farbcodierung */}
+            {colorblind && a.ok ? (
+              <Text
+                x={-11}
+                y={-6}
+                width={22}
+                align="center"
+                text={PROTO_LETTER[a.proto] ?? '•'}
+                fontSize={12}
+                fontStyle="bold"
+                fill={colors.card}
+                listening={false}
+              />
+            ) : (
+              <Line
+                points={[-11, -8, 0, 1, 11, -8]}
+                stroke={colors.card}
+                strokeWidth={1.5}
+                listening={false}
+              />
+            )}
+            {!a.ok && (
+              <Text x={-5} y={-8} text="✗" fontSize={16} fill={colors.card} listening={false} />
+            )}
           </Group>
         );
       })}
