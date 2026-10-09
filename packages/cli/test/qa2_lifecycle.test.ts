@@ -59,6 +59,21 @@ describe('QA2: BGP-/TCP-Sitzungen bei Lebenszyklus-Ereignissen', () => {
     expect(established(r1.run('show ip bgp summary'), '10.0.12.2')).toBe(true);
   });
 
+  it('Neustart des direkt verbundenen Nachbarn: Sitzung ist nach 20 s wieder aufgebaut', () => {
+    const { e, r1, r2 } = lab();
+    e.setPower(r2.id, false);
+    sec(e, 2);
+    e.setPower(r2.id, true);
+    sec(e, 20); // deutlich vor dem nächsten Keepalive (60 s) bzw. Hold-Timer (180 s)
+    const s2 = new CliSession(e, r2.id);
+    s2.input('enable');
+    // der neu gestartete Router hat die Sitzung wieder aufgebaut und die Route gelernt
+    expect(established(s2.input('show ip bgp summary'), '10.0.12.1')).toBe(true);
+    expect(s2.input('show ip route')).toMatch(/B\s+10\.1\.0\.0\/24/);
+    expect(established(r1.run('show ip bgp summary'), '10.0.12.2')).toBe(true);
+    expect(r1.run('show tcp brief').match(/ESTAB/g)?.length).toBe(1);
+  });
+
   it('Löschen des Nachbarn: die verbleibende Seite räumt Sitzung und TCP-Verbindung ab', () => {
     const { e, r1, r2 } = lab();
     e.removeDevice(r2.id);

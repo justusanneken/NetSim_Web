@@ -62,4 +62,26 @@ describe('QA2: lokale Client-Ports bleiben im dynamischen Bereich', () => {
       .flatMap((p) => (p?.kind === 'ipv4' && p.payload.kind === 'udp' ? [p.payload.srcPort] : []));
     expect(udp).toContain(49152);
   });
+
+  it('neuer SYN auf dem Port einer verwaisten Serververbindung baut eine neue Verbindung auf', () => {
+    const { e, pc, r1 } = lab();
+    const core = appcOf(e.getDevice(pc)?.config as HostConfig);
+    core.nextPort = 60000;
+    const a = must(e.p5.open(pc, '10.0.0.1', 'telnet'));
+    run(e);
+    e.p5.send(pc, a, 'login', { user: '', pass: 'pw' });
+    run(e);
+    expect(e.p5.connState(pc, a)?.reply?.op).toBe('login-ok');
+    // Client „vergisst“ die Verbindung ohne FIN (Absturz); der Router hält seine Seite noch
+    delete core.conns[a];
+    const rc = appcOf(e.getDevice(r1)?.config as RouterConfig);
+    expect(Object.keys(rc.conns).length).toBe(1);
+    core.nextPort = 60000; // derselbe lokale Port wird nach dem Umlauf wiederverwendet
+    const b = must(e.p5.open(pc, '10.0.0.1', 'telnet'));
+    run(e, 5);
+    expect(e.p5.connState(pc, b)?.state).toBe('open');
+    e.p5.send(pc, b, 'login', { user: '', pass: 'pw' });
+    run(e);
+    expect(e.p5.connState(pc, b)?.reply?.op).toBe('login-ok');
+  });
 });

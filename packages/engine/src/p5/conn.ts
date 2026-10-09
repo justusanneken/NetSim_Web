@@ -390,7 +390,7 @@ export function tcpRxSvc(
 ): boolean {
   const core = appcOf(node.cfg);
   const key = keyOf(t.dstPort, ip.src, t.srcPort);
-  const c = core.conns[key];
+  let c: AppConn | undefined = core.conns[key];
   const dev = ctx.device;
   const app = t.app?.kind === 'svc' ? t.app : undefined;
   const log = (
@@ -402,6 +402,15 @@ export function tcpRxSvc(
   const self = ip.dst;
   const me = { lport: t.dstPort, rport: t.srcPort };
   if (c && t.flags.ack && !t.flags.syn && !t.flags.rst) ackIn(ctx, c, t.ack);
+  // Neuer SYN (andere Sequenznummer) auf dem Tupel einer verwaisten Serververbindung (Gegenstelle ohne FIN
+  // verschwunden, lokaler Port nach dem Umlauf wiederverwendet): alte Verbindung verwerfen, neu annehmen
+  if (c?.role === 's' && t.flags.syn && !t.flags.ack && t.seq + 1 !== c.ack) {
+    servers[c.proto]?.closed?.(ctx, dev, c);
+    dropTimers(ctx, c);
+    delete core.conns[key];
+    log('tcp.closed', 'info', { peer: ip.src });
+    c = undefined;
+  }
 
   // --- Client-Verbindung
   if (c?.role === 'c') {
