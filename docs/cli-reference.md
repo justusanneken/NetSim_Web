@@ -176,3 +176,14 @@ Anzeige/Betrieb: `show pppoe session`, `show ip interface brief` (Dialer/Virtual
 **IPsec (Crypto Map):** `crypto isakmp policy N` (`encryption des|3des|aes [128|192|256]`, `hash md5|sha`, `authentication pre-share|rsa-sig`, `group 1|2|5|14|15|16|19|20|21|24`, `lifetime S`; `no …` ohne Wert setzt den Standard), `crypto isakmp key K address A [MASK]`,
 `crypto ipsec transform-set NAME esp-… [esp-…]` (IOS-Transforms, `esp-aes 128|192|256`) (`mode tunnel|transport`), `crypto map NAME SEQ ipsec-isakmp` (`set peer A`, `set transform-set T`, `match address ACL`, `set pfs groupN`,
 `set security-association lifetime seconds S`), an der Schnittstelle `crypto map NAME`; `show crypto isakmp sa|policy`, `show crypto ipsec sa|transform-set`, `show crypto map`, `clear crypto sa|isakmp`.
+
+## Scripting-API (Extras → Skript-Konsole)
+
+JavaScript-Teilmenge im Sandbox-Interpreter. Zeiten in ms virtueller Zeit.
+
+- `network.addDevice(type, name, x, y)` → Gerät (Typen wie in der Palette: `pc`, `router`, `switch-l2`, `switch-l3`, `server`, `hub` …); `network.connect(a, portA, b, portB, cable?)` → `{ok, id, error}` (Geräte als Objekt oder Name,
+  Ports als Name `Gi0/0`, Id oder Index, `cable` Default automatisch); `network.getDevice(name)` (`null`, wenn unbekannt), `network.devices()`, `network.links()`, `network.removeDevice(d)`.
+- Gerät: `name`, `id`, `type`; `device.cli.run(line)` → Ausgabe (mehrere Zeilen mit `\n`; Modus bleibt erhalten, Start im privilegierten Modus), `device.ping(ip, count?)` → `{ok, sent, received, lost, rttMs, status, from}`,
+  `device.setIp(ip, mask, gw?)`, `device.ip()`, `device.ports()`, `device.routes()`, `device.setPower(on)`.
+- `engine.step()` (ein Ereignis; `false`, wenn die Queue leer ist), `engine.runFor(ms)`, `engine.runUntil(fn, maxMs)` → `true`, wenn die Bedingung erfüllt wurde, `engine.now()` (ms seit Skriptstart).
+- `onPacket(fn)` – `fn({t, from, at, port, proto, dropped, summary, src, dst})`; `onLinkChange(fn)` – `fn({t, device, port, up})`; `log(...)` / `print(...)` (Objekte als JSON).

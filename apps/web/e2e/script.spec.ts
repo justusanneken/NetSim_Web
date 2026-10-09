@@ -72,8 +72,8 @@ test('PCAP-Export: Datei beginnt mit libpcap-Magic, Hex-Ansicht im Inspektor', a
   expect(bytes.readUInt32LE(20)).toBe(1); // LINKTYPE_ETHERNET
   expect(bytes.length).toBeGreaterThan(24 + 16 + 60);
 
-  // Hex-Ansicht eines ARP-/ICMP-Ereignisses
-  await page.locator('.event', { hasText: 'ICMP' }).first().click();
+  // Hex-Ansicht eines ICMP-Echo-Ereignisses
+  await page.locator('.event', { hasText: 'echo-request' }).first().click();
   await page.getByRole('button', { name: 'Hex', exact: true }).click();
   const hex = page.getByLabel('Frame-Bytes (Hexdump)');
   await expect(hex).toContainText('0000  ');
