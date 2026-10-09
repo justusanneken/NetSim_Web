@@ -89,6 +89,7 @@ test('IoT: Programm auf dem SBC läuft, Konsole zeigt die Ausgabe', async ({ pag
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await place(page, 'IoT', 'Einplatinenrechner', 200, 200);
+  await page.waitForTimeout(400);
   await click(page, 200, 200, 2);
   const dlg = page.getByRole('dialog');
   await dlg.getByRole('tab', { name: 'Programmierung' }).click();
