@@ -732,6 +732,8 @@ export interface InterpLimits {
   maxSteps: number;
   maxDepth: number;
   maxString: number;
+  /** Optional: wird alle 1024 Schritte aufgerufen und darf einen `ScriptError` werfen (z. B. Zeitlimit des Skript-Hosts). */
+  check?: () => void;
 }
 
 export class Interp {
@@ -826,6 +828,18 @@ export class Interp {
     const json = newObj();
     json.stringify = nat((a) => jsonOf(a[0], 0, { left: this.limits.maxString }));
     def('JSON', json);
+    const objectApi = newObj();
+    const own = (o: Value): Obj => {
+      if (!isObj(o)) throw new ScriptError('Object.keys needs an object');
+      return o;
+    };
+    objectApi.keys = nat((a) => Object.keys(own(a[0])));
+    objectApi.values = nat((a) => Object.values(own(a[0])));
+    objectApi.entries = nat((a) => Object.entries(own(a[0])).map(([k, v]) => [k, v]));
+    def('Object', objectApi);
+    const arrayApi = newObj();
+    arrayApi.isArray = nat((a) => Array.isArray(a[0]));
+    def('Array', arrayApi);
     for (const [k, v] of Object.entries(host)) def(k, v);
   }
 
@@ -833,6 +847,7 @@ export class Interp {
 
   private tick(line: number): void {
     if (++this.steps > this.limits.maxSteps) throw new ScriptError('step limit exceeded', line);
+    if (this.limits.check && (this.steps & 1023) === 0) this.limits.check();
   }
 
   private hoist(list: Node[], env: Env): void {
@@ -1204,6 +1219,37 @@ export class Interp {
         case 'padStart':
           if (num(args[0]) > this.limits.maxString) throw new ScriptError('string too long', line);
           return s.padStart(num(args[0]), args[1] === undefined ? ' ' : toStr(args[1]));
+        case 'padEnd':
+          if (num(args[0]) > this.limits.maxString) throw new ScriptError('string too long', line);
+          return s.padEnd(num(args[0]), args[1] === undefined ? ' ' : toStr(args[1]));
+        case 'trimStart':
+          return s.trimStart();
+        case 'trimEnd':
+          return s.trimEnd();
+        case 'substring':
+          return s.substring(
+            args[0] === undefined ? 0 : num(args[0]),
+            args[1] === undefined ? undefined : num(args[1]),
+          );
+        case 'charAt':
+          return s.charAt(args[0] === undefined ? 0 : num(args[0]));
+        case 'lastIndexOf':
+          return s.lastIndexOf(toStr(args[0]));
+        case 'replace':
+          return this.str(
+            s.replace(toStr(args[0]), () => toStr(args[1])),
+            line,
+          );
+        case 'replaceAll':
+          return this.str(s.split(toStr(args[0])).join(toStr(args[1])), line);
+        case 'repeat': {
+          const n = num(args[0]);
+          if (!(n >= 0) || n * s.length > this.limits.maxString)
+            throw new ScriptError('string too long', line);
+          return s.repeat(n);
+        }
+        case 'toString':
+          return s;
       }
     } else if (typeof recv === 'number') {
       if (name === 'toFixed')
@@ -1238,6 +1284,29 @@ export class Interp {
           );
         case 'reverse':
           return recv.reverse();
+        case 'lastIndexOf':
+          return recv.lastIndexOf(args[0]);
+        case 'concat': {
+          const out = recv.slice();
+          for (const a of args) Array.isArray(a) ? out.push(...a) : out.push(a);
+          if (out.length > MAX_ITEMS) throw new ScriptError('array too large', line);
+          return out;
+        }
+        case 'find':
+          return recv.find((x, i) => truthy(this.invoke(args[0], [x, i], line)));
+        case 'findIndex':
+          return recv.findIndex((x, i) => truthy(this.invoke(args[0], [x, i], line)));
+        case 'some':
+          return recv.some((x, i) => truthy(this.invoke(args[0], [x, i], line)));
+        case 'every':
+          return recv.every((x, i) => truthy(this.invoke(args[0], [x, i], line)));
+        case 'sort':
+          return recv.sort((x, y) => {
+            if (args[0] !== undefined) return num(this.invoke(args[0], [x, y], line));
+            const a = toStr(x);
+            const b = toStr(y);
+            return a < b ? -1 : a > b ? 1 : 0;
+          });
         case 'map':
           return recv.map((x, i) => this.invoke(args[0], [x, i], line));
         case 'filter':

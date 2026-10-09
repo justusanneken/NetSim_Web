@@ -56,3 +56,14 @@ export * from './p5types';
 export { EngineService5 } from './service5';
 export * from './ipsecTypes';
 export * from './pppTypes';
+export { pcapRecords, logToPcap } from './pcap';
+export {
+  Interp,
+  Native,
+  ScriptError,
+  toStr,
+  jsonOf,
+  type Value,
+  type Obj,
+  type InterpLimits,
+} from './p5/script/interp';

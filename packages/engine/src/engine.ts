@@ -1487,6 +1487,7 @@ export class Engine {
     port.counters.inBytes += sizeOf(p.frame);
     const fromId = from?.id ?? '';
     const cfg = dev.config;
+    const firstLog = this.logLength;
     this.withCtx(dev, (ctx) => {
       switch (cfg.kind) {
         case 'host':
@@ -1508,6 +1509,18 @@ export class Engine {
           break;
       }
     });
+    this.attachFrame(firstLog, p.frame);
+  }
+
+  /**
+   * Für den PCAP-Export: jeder angekommene Frame soll im Log mit seinem PDU auftauchen. Routing-Protokolle
+   * (OSPF, EIGRP …) loggen ohne Frame – hier wird der Frame am ersten `rx`-Eintrag dieser Verarbeitung nachgetragen.
+   */
+  private attachFrame(firstLog: number, frame: Frame): void {
+    const entries = this.logSlice(firstLog, 64);
+    if (entries.some((e) => e.frame === frame)) return;
+    const e = entries.find((x) => x.kind === 'rx' && !x.frame);
+    if (e) e.frame = frame;
   }
 
   private onTimer(dev: Device, p: TimerPayload): void {
