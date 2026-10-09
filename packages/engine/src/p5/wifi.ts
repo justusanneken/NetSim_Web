@@ -66,10 +66,16 @@ export const eapKey = (client: Device, ssid: string, band: WifiBand): string =>
   `${wifiMac(client)}|${ssid}|${band}`;
 const eapSig = (p: WifiProfile): string => `${p.username ?? ''}\u0000${p.password ?? ''}`;
 
-function eapStateOf(client: Device, ac: HostConfig, b: Bss, p: WifiProfile): EapState {
+/** Wartezeit nach einem RADIUS-Timeout bis zum nächsten Versuch (802.1X held period). */
+export const EAP_HELD_US = 60_000_000;
+
+function eapStateOf(client: Device, ac: HostConfig, b: Bss, p: WifiProfile, now: number): EapState {
   if (!p.username) return 'nocred';
   const e = ac.ap?.eap?.[eapKey(client, b.ssid, b.band)];
-  return !e || e.sig !== eapSig(p) ? 'new' : e.state;
+  if (!e || e.sig !== eapSig(p)) return 'new';
+  // Timeout (Server nicht erreichbar): nach der Wartezeit erneut versuchen; eine Ablehnung bleibt bestehen
+  if (e.state === 'fail' && e.retryAt !== undefined && now >= e.retryAt) return 'new';
+  return e.state;
 }
 
 const authOk = (b: Bss, p: WifiProfile, eap?: EapState): boolean =>
@@ -92,7 +98,9 @@ function candidates(eng: Engine, client: Device, cfg: HostConfig): Cand[] {
       for (const profile of w.profiles) {
         if (profile.ssid !== bss.ssid) continue;
         const eap =
-          bss.security === 'wpa2-enterprise' ? eapStateOf(client, ac, bss, profile) : undefined;
+          bss.security === 'wpa2-enterprise'
+            ? eapStateOf(client, ac, bss, profile, eng.state.now)
+            : undefined;
         out.push({ ap, bss, dist, authOk: authOk(bss, profile, eap), profile, eap });
       }
     }
@@ -297,7 +305,8 @@ function startEap(eng: Engine, client: Device, c: Cand): void {
           })
         : undefined;
     if (!node || !sent?.ok) {
-      setEap(c.ap, key, base);
+      setEap(c.ap, key, { ...base, retryAt: ctx.now + EAP_HELD_US });
+      ctx.setTimer('bg:svc:eapretry', EAP_HELD_US);
       ctx.log({
         kind: 'error',
         proto: 'WIFI',
@@ -333,6 +342,10 @@ export function eapDecision(
   if (!ap || !e) return true;
   e.state = accepted === true ? 'ok' : 'fail';
   e.rid = undefined;
+  if (accepted === undefined) {
+    e.retryAt = ctx.now + EAP_HELD_US;
+    ctx.setTimer('bg:svc:eapretry', EAP_HELD_US);
+  }
   const ssid = key.split('|')[1] ?? '';
   ctx.log({
     kind: 'info',
