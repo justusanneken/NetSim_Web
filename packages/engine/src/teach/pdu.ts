@@ -1,7 +1,7 @@
 import { isValidIpv4, type Frame, type Ipv4Pdu } from '@netsim/protocols';
 import { z } from 'zod';
 import type { Engine } from '../engine';
-import { hostHttp, hostPing, hostResolve } from '../devices/host';
+import { hostPing, hostResolve } from '../devices/host';
 import { l3Ping, type L3Dev } from '../devices/l3dev';
 import { sendUdp } from '../l3';
 import { connClose, connOpen, TCP_PORT } from '../p5/conn';
@@ -75,6 +75,24 @@ export interface Attempt {
   reachOnly?: boolean;
   /** Sofort entschieden (z. B. Fehler beim Start). */
   decided?: PduOutcome;
+}
+
+/** Ursachen aus Ping-Ergebnissen (mit IP-Parametern) auf parameterlose Hinweise abbilden. */
+const PING_NOTE: Record<string, string> = {
+  'ping.ttlExpired': 'pdu.err.ttlExpired',
+  'ping.adminProhibited': 'ping.adminProhibited',
+  'ping.netUnreachable': 'pdu.err.netUnreachable',
+  'ping.hostUnreachable': 'pdu.err.hostUnreachable',
+  'ping.fragNeeded': 'pdu.err.fragNeeded',
+  'ping.unreachableOther': 'pdu.err.unreachable',
+};
+
+/** Verwerfungsgrund aus dem Log auf einen parameterlosen Hinweis abbilden. */
+function dropNote(key: string): string {
+  if (key === 'ip.noService') return 'pdu.err.noService';
+  if (key === 'acl.deny') return 'pdu.err.aclDeny';
+  if (key === 'router.noRoute') return 'pdu.err.netUnreachable';
+  return 'pdu.err.dropped';
 }
 
 /** Verstreichende virtuelle Zeit, nach der ein unentschiedener Versuch als gescheitert gilt. */
@@ -254,7 +272,11 @@ export function attemptOutcome(e: Engine, a: Attempt): PduOutcome {
     if (r.status === 'pending') return pend();
     return {
       status: 'failed',
-      note: r.note ?? (r.status === 'timeout' ? 'ping.timeout' : r.status),
+      note: r.note
+        ? (PING_NOTE[r.note] ?? 'pdu.err.unreachable')
+        : r.status === 'timeout'
+          ? 'conn.timeout'
+          : 'pdu.err.unreachable',
     };
   }
   if (a.protocol === 'dns') {
@@ -275,7 +297,7 @@ export function attemptOutcome(e: Engine, a: Attempt): PduOutcome {
     if (!r) return { status: 'failed', note: 'pdu.err.noResult' };
     if (r.status === 'done') {
       if (a.reachOnly || (r.code !== undefined && r.code < 400)) return { status: 'ok' };
-      return { status: 'failed', note: `http.status.${r.code ?? 0}` };
+      return { status: 'failed', note: r.code === 404 ? 'pdu.err.http404' : 'pdu.err.httpError' };
     }
     if (r.status === 'failed') return { status: 'failed', note: r.error ?? 'conn.timeout' };
     return pend();
@@ -333,7 +355,7 @@ function udpOutcome(e: Engine, a: Attempt, timedOut: boolean): PduOutcome {
       l.status === 'drop' &&
       l.atDeviceId !== a.deviceId
     )
-      return { status: 'failed', note: l.msg.key };
+      return { status: 'failed', note: dropNote(l.msg.key) };
   }
   // zugestellt und keine ICMP-Fehlermeldung binnen 1 s: erfolgreich
   if (delivered && e.state.now - a.startedAt > 1 * US) return { status: 'ok' };

@@ -14,6 +14,10 @@ import { SimPanel } from './components/SimPanel';
 import { Toolbar } from './components/Toolbar';
 import { sim, useStore } from './store';
 import { translateMsg } from './format';
+import { ActivityPanel } from './teach/ActivityPanel';
+import { AuthorDialog } from './teach/AuthorDialog';
+import { PduDialog } from './teach/PduDialog';
+import { PduPanel } from './teach/PduPanel';
 
 function useShortcuts(): void {
   useEffect(() => {
@@ -74,6 +78,8 @@ export function App() {
         )}
         <PortPicker />
         <DeviceDialog />
+        <PduDialog />
+        <AuthorDialog />
         {toast && (
           <div className={`toast ${toast.kind}`} role="alert">
             {translateMsg(t, toast)}
@@ -88,6 +94,14 @@ export function App() {
         <details open>
           <summary>{t('panel.title')}</summary>
           <DevicePanel />
+        </details>
+        <details>
+          <summary>{t('scenario.title')}</summary>
+          <PduPanel />
+        </details>
+        <details id="activity-details">
+          <summary>{t('activity.title')}</summary>
+          <ActivityPanel />
         </details>
         <details open>
           <summary>{t('inspector.title')}</summary>

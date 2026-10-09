@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import type { Device, L3Cfg } from '../types';
+import type { L3Cfg } from '../types';
 import { CheckSchema, evaluateChecks, SETTLE_US, type Check, type CheckInput } from './checks';
 import { cloneEngine } from './clone';
 import { deviceIp } from './pdu';
@@ -11,10 +11,6 @@ import { deviceIp } from './pdu';
  */
 
 const MAX_PING_PAIRS = 24;
-
-function l3(d: Device): L3Cfg | undefined {
-  return d.config.kind === 'router' || d.config.kind === 'switch' ? (d.config as L3Cfg) : undefined;
-}
 
 function candidates(answer: Engine): CheckInput[] {
   const out: CheckInput[] = [];

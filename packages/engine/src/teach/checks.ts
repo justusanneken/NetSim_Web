@@ -229,7 +229,65 @@ export interface EvalSummary {
 export const SETTLE_US = 60_000_000;
 
 const ok: Msg | undefined = undefined;
-const bad = (key: string, params?: Msg['params']): Msg => ({ key: `check.fail.${key}`, params });
+/** Alle Fehlergruende (`check.fail.<key>`); die Uebersetzungen werden dagegen geprueft. */
+const FAIL = {
+  aclEntry: 1,
+  defaultGateway: 1,
+  description: 1,
+  deviceType: 1,
+  dhcpLease: 1,
+  dhcpPool: 1,
+  dhcpPoolDns: 1,
+  dhcpPoolRouter: 1,
+  domainName: 1,
+  enableSecret: 1,
+  helper: 1,
+  hostGateway: 1,
+  hostIp: 1,
+  hostMask: 1,
+  hostname: 1,
+  ifaceAcl: 1,
+  ifaceDown: 1,
+  ifaceIp: 1,
+  ifaceMask: 1,
+  ifaceUp: 1,
+  natOverload: 1,
+  natRole: 1,
+  natStatic: 1,
+  natTranslations: 1,
+  noAcl: 1,
+  noDevice: 1,
+  noIface: 1,
+  noOspf: 1,
+  noPort: 1,
+  noVlan: 1,
+  notCliDevice: 1,
+  notHost: 1,
+  notL3: 1,
+  notSwitch: 1,
+  ntpServer: 1,
+  ospfNeighbors: 1,
+  ospfNetwork: 1,
+  pingFails: 1,
+  pingShouldFail: 1,
+  portSecurity: 1,
+  portfast: 1,
+  route: 1,
+  serviceFails: 1,
+  serviceShouldFail: 1,
+  ssh: 1,
+  stpMode: 1,
+  trunk: 1,
+  trunkAllowed: 1,
+  trunkNative: 1,
+  username: 1,
+  vlanMember: 1,
+  vlanName: 1,
+  vtp: 1,
+} as const;
+export type FailKey = keyof typeof FAIL;
+export const CHECK_FAIL_KEYS = Object.keys(FAIL) as FailKey[];
+const bad = (key: FailKey, params?: Msg['params']): Msg => ({ key: `check.fail.${key}`, params });
 
 function addrCovers(m: AddrMatch, spec: string | undefined): boolean {
   if (spec === undefined || spec === '') return true;
@@ -254,7 +312,7 @@ function checkConfigItem(d: Device, e: Engine, it: ConfigItem): Msg | undefined 
   const isCli = c.kind === 'router' || c.kind === 'switch';
   if (!isCli) return bad('notCliDevice', { device: d.name });
   const cfg = c as RouterConfig | SwitchConfig;
-  const need = (cond: boolean, key: string, params?: Msg['params']): Msg | undefined =>
+  const need = (cond: boolean, key: FailKey, params?: Msg['params']): Msg | undefined =>
     cond ? ok : bad(key, params);
   switch (it.item) {
     case 'hostname':

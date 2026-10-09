@@ -64,7 +64,7 @@ describe('PDU-Versuche', () => {
       lab.e,
       spec({ protocol: 'udp', src: lab.pc0, dst: '10.0.2.10', dport: 9999 }),
     );
-    expect(o).toEqual({ status: 'failed', note: 'ip.noService' });
+    expect(o).toEqual({ status: 'failed', note: 'pdu.err.noService' });
   });
 
   it('UDP ohne Route scheitert sofort', () => {

@@ -17,6 +17,7 @@ import {
 } from './PanelServices5';
 import { WifiClient } from './PanelWireless';
 import { ProgramTab } from './PanelProgram';
+import { lockApps, lockTabs, useTeach } from '../teach/teachStore';
 
 /** Geräte-Dialog mit Tabs: Config, CLI (Router/Switch), Desktop (Hosts). */
 export function DeviceDialog() {
@@ -39,12 +40,14 @@ export function DeviceDialog() {
 
   if (!dialog || !dev) return null;
   const end = isEndDevice(dev);
-  const tabs = end
+  const locks = useTeach.getState().activity?.locks;
+  const tabs0 = end
     ? ['desktop', 'config', ...(dev.p5?.iot ? ['program'] : []), 'physical']
     : hasCli(dev)
       ? ['config', 'cli', 'physical']
       : ['config', 'physical'];
-  const apps: { id: string; label: string }[] = [
+  const tabs = lockTabs(tabs0, locks);
+  const apps0: { id: string; label: string }[] = [
     { id: 'ip', label: 'desktop.ip' },
     { id: 'cmd', label: 'desktop.cmd' },
     { id: 'browser', label: 'desktop.browser' },
@@ -55,6 +58,7 @@ export function DeviceDialog() {
     { id: 'files', label: 'desktop.files' },
     { id: 'firewall', label: 'desktop.firewall' },
   ];
+  const apps = lockApps(apps0, locks);
   const tab = tabs.includes(dialog.tab) ? dialog.tab : (tabs[0] as string);
   const sub = dialog.tab.startsWith('desktop:') ? dialog.tab.slice(8) : 'ip';
 

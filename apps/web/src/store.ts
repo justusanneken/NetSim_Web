@@ -11,6 +11,7 @@ import type {
 import { api, proxy } from './engine/client';
 import { isEndDevice } from './deviceKinds';
 import { syncLogWindow } from './logSync';
+import { useTeach } from './teach/teachStore';
 
 export type Tool = 'select' | 'hand' | 'cable' | 'delete' | 'pdu';
 export type CableChoice = CableType | 'auto';
@@ -256,6 +257,11 @@ export const useStore = create<UiState>((set, get) => ({
   },
 
   async addDevice(type, x, y) {
+    if (useTeach.getState().activity?.locks.noAddDevices) {
+      get().showToast('activity.locked.add');
+      set({ placing: null });
+      return;
+    }
     const id = await api.addDevice(type, { x, y });
     set({ placing: null, selectedDevice: id, selectedLink: null });
   },
@@ -279,7 +285,8 @@ export const useStore = create<UiState>((set, get) => ({
         get().showToast('toast.noTargetIp');
         return;
       }
-      await get().ping(src, dst.ip);
+      // Simple PDU: ICMP-Echo, erscheint mit Status in der PDU-Liste des aktiven Szenarios
+      await useTeach.getState().addPdu({ protocol: 'icmp', src, dst: dst.ip });
       return;
     }
     if (s.tool === 'cable') {

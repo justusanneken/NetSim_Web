@@ -275,7 +275,7 @@ export class TeachService extends EngineService5 {
   }
 
   /** Baut `.nsact`-Bytes aus Entwurf + festgehaltenen Netzen (Startnetz: festgehaltenes, sonst aktuelles). */
-  authorExport(draft: ActivityDraft): Result<Uint8Array> {
+  authorExport(draft: ActivityDraft | unknown): Result<Uint8Array> {
     const d = DraftSchema.safeParse(draft);
     if (!d.success) {
       const issue = d.error.issues[0];
