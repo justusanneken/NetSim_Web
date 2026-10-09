@@ -141,6 +141,22 @@ function ntpReply(ctx: DeviceCtx, dev: Device, server: string, msg: SvcPdu): voi
   const stratum = Number(msg.args.stratum);
   const clock = clockOf(dev);
   if (!clock || !Number.isFinite(epoch)) return;
+  // Stratum 16 = unsynchronisiert: ein Server mit Stratum ≥ 15 ist keine gültige Quelle. Mit `ntp master N`
+  // bleibt die eigene Uhr maßgeblich, solange der Server kein besseres Stratum liefert (verhindert
+  // Zählschleifen bei gegenseitig konfigurierten Servern).
+  const c = dev.config;
+  const master = c.kind === 'router' || c.kind === 'switch' ? mgmtOf(c.sys).ntp.master : undefined;
+  if (
+    !Number.isFinite(stratum) ||
+    stratum + 1 > 15 ||
+    (master !== undefined && stratum + 1 >= master)
+  ) {
+    if (clock.syncedTo === server) {
+      clock.syncedTo = undefined;
+      clock.stratum = 16;
+    }
+    return;
+  }
   // Mit dem bereits gewählten Server bleiben (nur wechseln, wenn noch keiner gewählt ist)
   if (clock.syncedTo !== undefined && clock.syncedTo !== server && clock.stratum <= stratum + 1)
     return;

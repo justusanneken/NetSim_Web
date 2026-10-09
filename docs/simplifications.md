@@ -152,7 +152,8 @@
   Abfrage 2 s nach Konfiguration, dann alle 64 s. **Verlust:** nach 4 aufeinanderfolgenden unbeantworteten Abfragen (≈ 4 min; IOS wertet ein 8-Bit-Reach-Register,
   hier zur schnelleren Rückmeldung 4) wird der Client unsynchronisiert (Stratum 16, `show ntp status`: „Clock is unsynchronized“, Log `svc.ntp.lost`); `no ntp server`
   hebt die Synchronisation sofort auf. **Server:** wie bei IOS bedient ein synchronisierter Router/Switch auch ohne `ntp master` andere Clients (mit seinem eigenen Stratum);
-  `ntp master N` gilt als Rückfall, solange das Gerät nicht synchronisiert ist (ein synchronisiertes Gerät bevorzugt seinen Zeitgeber). Hosts bedienen nur mit aktivem NTP-Dienst (Stratum 1). Gerätezeit = Epoch-Basis + virtuelle Zeit; Router starten am 1.3.1993,
+  `ntp master N` gilt als Rückfall, solange das Gerät nicht synchronisiert ist; ein Server wird dabei nur gewählt, wenn er ein besseres Stratum als die eigene
+  Uhr liefert (Stratum + 1 < N), und Server mit Stratum ≥ 15 werden ignoriert – gegenseitig konfigurierte Server bilden so keine Zählschleife. Hosts bedienen nur mit aktivem NTP-Dienst (Stratum 1). Gerätezeit = Epoch-Basis + virtuelle Zeit; Router starten am 1.3.1993,
   Hosts am 1.1.2026 12:00 UTC (deterministisch statt Wanduhr). Keine Zeitzonen/Sommerzeit (immer UTC).
 - **Syslog:** Meldungen für Link-/Leitungsstatus, Konfigurationsänderung (`%SYS-5-CONFIG_I`) und Logins; Schweregrad-Filter
   (`logging trap`), Puffer 100 Zeilen. Keine Facility-Auswahl, kein `logging source-interface`.
