@@ -178,3 +178,15 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Skript-Sandbox: Speichergrenzen, Prototyp-Ausbrüche                                                                                                              | fertig | `engine › qa2_script`                                                                                                       |
 | Begrenztes Log mit Step Back und debug-Cursor; Determinismus und Chaos (Störungen + Heilung)                                                                     | fertig | `cli › qa2_debuglog`, `cli › qa2_determinism`, `cli › qa2_chaos`                                                            |
 | Befehlsfuzzing: jede Definition (Router/Switch/Firewall) ohne interne Fehler, running-config-Replay stabil, `no`-Formen, IOS-Rückfall aus Untermodi              | fertig | `cli › qa2_cmdfuzz`, `cli › qa2_negfuzz`, `cli › qa2_replay`, `cli › qa2_submode`, `cli › qa2_ipseccli`, `cli › qa2_iosfmt` |
+
+## Persistenz und Vorlagen (Phase 6, persist)
+
+| Anforderung                                                                                                                                     | Stand  | Tests                                              |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------- |
+| `.nsim`: zlib-JSON, Round-Trip, Determinismus, Szenarien/Extras durchgereicht                                                                   | fertig | `engine › nsim`                                    |
+| Migrationskette, neuere Schemas, Zip-Bombe, Größenlimit, Prototype-Pollution, Strukturverletzungen                                              | fertig | `engine › nsim`                                    |
+| Kopieren/Einfügen (Namen, MACs, IPs, Kabel)                                                                                                     | fertig | `engine › clone`, `web › persist`, `e2e › persist` |
+| Undo/Redo (Topologie, GUI-Konfiguration, CLI), Speicherlimit, Schritt-zurück unabhängig                                                         | fertig | `web › persist`, `e2e › persist`                   |
+| Datei → Neu/Öffnen/Speichern (Strg+S/O), Zuletzt, Fehlermeldungen                                                                               | fertig | `e2e › persist`                                    |
+| Autosave und Wiederherstellung nach Absturz                                                                                                     | fertig | `e2e › persist`                                    |
+| 14 Vorlagen (SOHO, VLAN+Trunk, Router-on-a-Stick, OSPF, NAT/PAT, DHCP-Relay, STP-Ring, EtherChannel, ACL, WLAN, HSRP, IPv6/OSPFv3, eBGP, IPsec) | fertig | `cli › templates`                                  |

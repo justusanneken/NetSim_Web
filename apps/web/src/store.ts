@@ -11,6 +11,7 @@ import type {
 import { api, proxy } from './engine/client';
 import { isEndDevice } from './deviceKinds';
 import { syncLogWindow } from './logSync';
+import { resetDocExtras } from './persist/actions';
 
 export type Tool = 'select' | 'hand' | 'cable' | 'delete' | 'pdu';
 export type CableChoice = CableType | 'auto';
@@ -332,7 +333,8 @@ export const useStore = create<UiState>((set, get) => ({
   },
 
   async newTopology() {
-    await api.clear();
+    await api.newTopology();
+    resetDocExtras();
     set({ selectedDevice: null, selectedLink: null, selectedLog: null });
   },
 }));

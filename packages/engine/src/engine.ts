@@ -197,7 +197,6 @@ export class Engine {
 
   /** Laufzeitzustand eines einzelnen Geräts zurücksetzen (Konfiguration bleibt). */
   resetDeviceRuntime(dev: Device): void {
-    const s = this.state;
     delete dev.crashed;
     const cfg = dev.config;
     if (cfg.kind === 'host' || cfg.kind === 'router' || cfg.kind === 'switch') {

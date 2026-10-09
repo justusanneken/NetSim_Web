@@ -11,7 +11,7 @@ import { Unzlib, zlibSync } from 'fflate';
 import { z } from 'zod';
 import { CATALOG } from './catalog';
 import { validateCable } from './cabling';
-import { DEFAULT_CONFIG, Engine } from './engine';
+import { DEFAULT_CONFIG, type Engine } from './engine';
 import type { Device, DeviceType, EngineConfig, EngineState, Link, Port, Result } from './types';
 import type { PhysicalTree } from './p5types';
 
@@ -86,7 +86,8 @@ export interface NsimDoc {
 // ------------------------------------------------------------------ Zod-Schemas
 
 const ID = z.string().regex(/^[A-Za-z0-9_.-]{1,40}$/);
-const noCtl = (s: string): boolean => !/[\u0000-\u001f\u007f]/.test(s);
+const noCtl = (s: string): boolean =>
+  ![...s].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127);
 const label = (max: number) => z.string().min(1).max(max).refine(noCtl);
 const coord = z.number().finite().min(-1e6).max(1e6);
 const MAC = z.string().regex(/^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/i);

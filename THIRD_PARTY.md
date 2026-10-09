@@ -17,4 +17,8 @@ Geräte-Icons sind eigene Vektorgrafiken (`apps/web/src/icons.ts`).
 | typescript                                                     | Apache-2.0  | Sprache               |
 | eslint, typescript-eslint, eslint-plugin-react-hooks, prettier | MIT / BSD-2 | Qualität              |
 
-Geplant in späteren Phasen: CodeMirror 6 (MIT), idb (ISC), zod (MIT), pako/fflate (MIT).
+| zod | MIT | `.nsim`-Validierung |
+| fflate | MIT | zlib für `.nsim` |
+| idb | ISC | Autosave in IndexedDB |
+
+Geplant in späteren Phasen: CodeMirror 6 (MIT).

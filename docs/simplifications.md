@@ -301,3 +301,12 @@ supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolg
   IKEv2, keine Transport-Mode-Wirkung (wird gespeichert), kein DPD, **keine VTI** (`tunnel mode ipsec`) und keine IPsec-Profile; Crypto Maps sind an physischen/Sub-Schnittstellen und am Dialer
   einer PPPoE-Einwahl möglich, nicht am Virtual-Template. Nach einem Neustart der Gegenstelle bleibt die alte SA der anderen Seite bestehen (kein DPD, keine
   Lebensdauer): erst ein von der neu gestarteten Seite aufgebautes IKE oder `clear crypto sa` stellt das VPN wieder her. Entschlüsselte Pakete laufen danach durch die normale Eingangsverarbeitung der Schnittstelle (ACL-in, Weiterleitung).
+
+## Persistenz (Phase 6, persist)
+
+- `.nsim` speichert den Entwurf, nicht den Laufzeitzustand: Nach dem Öffnen (und nach Undo) beginnt die virtuelle Zeit bei 0, Log, ARP-/MAC-Tabellen, DHCP-Leases und Routing-Nachbarschaften werden neu aufgebaut (Konvergenzzeit wie nach einem Neustart).
+- Undo setzt die Laufzeit zurück (siehe oben) und verwirft den Simulations-Schritt-zurück-Verlauf. Es gibt keine Gruppierung mehrerer Aktionen zu einem Schritt außer innerhalb einer Dienstmethode.
+- Terminal-Eingaben in Host-Shells (z. B. `ipconfig`) sind nicht rückgängig machbar; für Router/Switch zählt die `running-config`-Änderung.
+- Kopieren/Einfügen arbeitet mit der Auswahl der Oberfläche (aktuell ein Gerät; Mehrfachauswahl über `setSelectionProvider`), nicht mit der System-Zwischenablage. HSRP-Virtuell-IPs und statische NAT-Adressen kopierter Router werden nicht umgeschrieben.
+- Importvalidierung der Gerätekonfiguration prüft Struktur und Grundtypen gegen die Standardkonfiguration, nicht jeden Wertebereich; inhaltlich unsinnige Werte fängt der Gerätefehlerschutz der Engine ab (Gerät „crashed“).
+- Autosave und zuletzt verwendete Dateien liegen im Browser (IndexedDB); ohne Speicherzugriff (privates Fenster) entfallen sie ohne Fehlermeldung.
