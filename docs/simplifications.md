@@ -225,7 +225,8 @@
   (nur die erwartete Sequenznummer wird angenommen), Retransmission mit RTO 1 s (verdoppelt bis 8 s) und 5 Wiederholungen (≈ 31 s) bis zum Abbruch
   (`conn.timeout`), Abbau per FIN bzw. RST (Daten auf unbekannter Verbindung zu/von einem Dienst-Port werden mit RST beantwortet). Kein
   Fenster/Slow Start, keine Segmentierung großer Nachrichten (IP-Fragmentierung übernimmt), keine TIME_WAIT/Half-Close-Zustände, keine
-  Selective-ACKs. Der HTTP-Pfad der Hosts (`svc/tcp.ts`) bleibt das einfache Modell. Ports: FTP 21, SSH 22, Telnet 23, SMTP 25, POP3 110, BGP 179.
+  Selective-ACKs. Lokale Client-Ports laufen im Bereich 49152–65535 um; ein neuer SYN (andere Sequenznummer) auf dem Tupel einer noch bestehenden
+  Serververbindung ersetzt diese (Gegenstelle ohne FIN neu gestartet). Der HTTP-Pfad der Hosts (`svc/tcp.ts`) bleibt das einfache Modell. Ports: FTP 21, SSH 22, Telnet 23, SMTP 25, POP3 110, BGP 179.
 - **Segmente laufen durch den IP-Stack:** ausgehende ACL, NAT, Firewall (Zustandsverfolgung) sehen sie. Die **eingehende ACL** gilt wie bei IOS auch
   für Unicast an das Gerät selbst (BGP/Telnet/SSH/TACACS+-Antworten, IKE, ESP, Ping, TFTP …), nicht nur für Durchgangsverkehr; Broadcast und
   Multicast (Routing-Protokoll-Hellos, DHCP, HSRP) bleiben – abweichend von IOS – ungefiltert.
