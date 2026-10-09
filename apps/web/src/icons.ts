@@ -86,24 +86,55 @@ ICON_PATHS.sbc = [
 
 export const ICON_FALLBACK = ['M6 6h36v36H6z', 'M6 6l36 36M42 6L6 42'];
 
-export const DEVICE_COLORS: Partial<Record<DeviceType, string>> = {
-  pc: '#2f6fed',
-  'switch-l2': '#1a8f6f',
-  'switch-l3': '#0b7285',
-  hub: '#b7791f',
-  router: '#d9480f',
-  laptop: '#2f6fed',
-  server: '#7048e8',
-  tablet: '#2f6fed',
-  smartphone: '#2f6fed',
-  printer: '#5c6b7a',
-  ap: '#0c8599',
-  wlc: '#1864ab',
-  firewall: '#c92a2a',
-  cloud: '#4c6ef5',
-  'dsl-modem': '#868e96',
-  'cable-modem': '#868e96',
-  'iot-sensor': '#2b8a3e',
-  'iot-actuator': '#e67700',
-  sbc: '#5f3dc4',
+type IconTheme = 'light' | 'dark';
+
+/** Symbolfarben je Design; alle mindestens 3:1 gegen Panel-, Karten- und Auswahlflächen (WCAG 1.4.11). */
+const DEVICE_COLORS: Record<IconTheme, Partial<Record<DeviceType, string>>> = {
+  light: {
+    pc: '#2f6fed',
+    'switch-l2': '#1a8f6f',
+    'switch-l3': '#0b7285',
+    hub: '#a86a12',
+    router: '#d9480f',
+    laptop: '#2f6fed',
+    server: '#7048e8',
+    tablet: '#2f6fed',
+    smartphone: '#2f6fed',
+    printer: '#5c6b7a',
+    ap: '#0c8599',
+    wlc: '#1864ab',
+    firewall: '#c92a2a',
+    cloud: '#4c6ef5',
+    'dsl-modem': '#6b737b',
+    'cable-modem': '#6b737b',
+    'iot-sensor': '#2b8a3e',
+    'iot-actuator': '#b85c00',
+    sbc: '#5f3dc4',
+  },
+  dark: {
+    pc: '#6b9bff',
+    'switch-l2': '#2fbf94',
+    'switch-l3': '#2fb5cc',
+    hub: '#d9a441',
+    router: '#ff7a3d',
+    laptop: '#6b9bff',
+    server: '#a68bff',
+    tablet: '#6b9bff',
+    smartphone: '#6b9bff',
+    printer: '#8fa1b3',
+    ap: '#3cc3d9',
+    wlc: '#5aa3f0',
+    firewall: '#ff6b6b',
+    cloud: '#8ea2ff',
+    'dsl-modem': '#a0a8b0',
+    'cable-modem': '#a0a8b0',
+    'iot-sensor': '#4cc46a',
+    'iot-actuator': '#ffa63d',
+    sbc: '#a58cff',
+  },
 };
+
+export const deviceColor = (type: DeviceType, theme: IconTheme): string =>
+  DEVICE_COLORS[theme][type] ?? (theme === 'dark' ? '#8b949e' : '#6e7781');
+
+export const ALL_DEVICE_COLORS = DEVICE_COLORS;

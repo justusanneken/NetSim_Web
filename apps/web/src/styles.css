@@ -5,12 +5,39 @@
   --border: #d0d7de;
   --text: #1f2328;
   --muted: #656d76;
-  --accent: #1f6feb;
+  --accent: #1a5fd0;
   --accent-text: #ffffff;
-  --ok: #1a7f37;
+  --accent-bg: #1f6feb;
+  --ok: #176f31;
   --bad: #cf222e;
-  --warn: #9a6700;
+  --warn: #7d4e00;
+  --on-status: #ffffff;
   --row-sel: #ddf4ff;
+  --term-bg: #0b0f14;
+  --term-fg: #d6e2ee;
+  --term-cursor: #9be9a8;
+  --backdrop: rgba(0, 0, 0, 0.45);
+  /* Canvas (Konva liest diese Tokens über theme.ts) */
+  --cv-grid: #e1e6eb;
+  --cv-line: #6e7781;
+  --cv-sel: #1f6feb;
+  --cv-active: #b35900;
+  --link-up: #22a35a;
+  --link-down: #e5484d;
+  --link-stp: #f08c00;
+  --link-blink: #9be9a8;
+  /* Protokoll-/Ereignisfarben (mind. 3:1 gegen Panel, Farbe nie alleiniges Merkmal) */
+  --c-purple: #8250df;
+  --c-green: #1a7f37;
+  --c-grey: #6e7781;
+  --c-magenta: #bf3989;
+  --c-red: #cf222e;
+  --c-blue: #0969da;
+  --c-orange: #bc4c00;
+  --c-teal: #0a7e8c;
+  --c-gold: #7d4e00;
+  --c-forest: #116329;
+  --c-amber: #b35900;
   font-family:
     system-ui,
     -apple-system,
@@ -26,12 +53,30 @@
   --panel-2: #1c2128;
   --border: #30363d;
   --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #388bfd;
+  --muted: #99a3ae;
+  --accent: #58a6ff;
+  --accent-bg: #1f6feb;
   --ok: #3fb950;
-  --bad: #f85149;
+  --bad: #ff7b72;
   --warn: #d29922;
+  --on-status: #0d1117;
   --row-sel: #12304d;
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --cv-grid: #21262d;
+  --cv-line: #8b949e;
+  --cv-sel: #58a6ff;
+  --cv-active: #e3b341;
+  --c-purple: #a371f7;
+  --c-green: #3fb950;
+  --c-grey: #8b949e;
+  --c-magenta: #db61a2;
+  --c-red: #ff7b72;
+  --c-blue: #58a6ff;
+  --c-orange: #f0883e;
+  --c-teal: #39c5cf;
+  --c-gold: #d29922;
+  --c-forest: #56d364;
+  --c-amber: #ffa657;
   color-scheme: dark;
 }
 * {
@@ -189,9 +234,9 @@ select {
   justify-content: center;
 }
 .tool.active {
-  background: var(--accent);
+  background: var(--accent-bg);
   color: var(--accent-text);
-  border-color: var(--accent);
+  border-color: var(--accent-bg);
 }
 .tool-label {
   font-size: 12px;
@@ -251,7 +296,7 @@ select {
   left: 50%;
   transform: translateX(-50%);
   background: var(--bad);
-  color: #fff;
+  color: var(--on-status);
   padding: 8px 16px;
   border-radius: 8px;
   z-index: 40;
@@ -548,9 +593,9 @@ table.osi tr.has td {
   border-radius: 0 6px 6px 0;
 }
 .seg button.active {
-  background: var(--accent);
+  background: var(--accent-bg);
   color: var(--accent-text);
-  border-color: var(--accent);
+  border-color: var(--accent-bg);
 }
 .speed {
   flex-direction: row;
@@ -619,22 +664,22 @@ button.link {
   background: var(--row-sel) !important;
 }
 .event.proto-ARP {
-  border-left-color: #8957e5;
-  background: color-mix(in srgb, #8957e5 8%, transparent);
+  border-left-color: var(--c-purple);
+  background: color-mix(in srgb, var(--c-purple) 8%, transparent);
 }
 .event.proto-ICMP {
-  border-left-color: #1a7f37;
-  background: color-mix(in srgb, #1a7f37 8%, transparent);
+  border-left-color: var(--c-green);
+  background: color-mix(in srgb, var(--c-green) 8%, transparent);
 }
 .event.proto-LINK {
-  border-left-color: #6e7781;
+  border-left-color: var(--c-grey);
 }
 .event.proto-CSMA {
-  border-left-color: #bf3989;
-  background: color-mix(in srgb, #bf3989 10%, transparent);
+  border-left-color: var(--c-magenta);
+  background: color-mix(in srgb, var(--c-magenta) 10%, transparent);
 }
 .event.proto-SYS {
-  border-left-color: #cf222e;
+  border-left-color: var(--c-red);
 }
 .event.st-drop .info {
   color: var(--bad);
@@ -654,13 +699,14 @@ button.link {
 
 .toast.ok {
   background: var(--ok);
+  color: var(--on-status);
 }
 
 /* Geräte-Dialog + Terminal */
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--backdrop);
   z-index: 60;
   display: flex;
   align-items: center;
@@ -704,7 +750,7 @@ button.link {
 .term {
   flex: 1;
   min-height: 0;
-  background: #0b0f14;
+  background: var(--term-bg);
   padding: 6px 8px;
 }
 .desktop {
@@ -720,9 +766,9 @@ button.link {
   border-bottom: 1px solid var(--border);
 }
 .desktop-apps button.active {
-  background: var(--accent);
+  background: var(--accent-bg);
   color: var(--accent-text);
-  border-color: var(--accent);
+  border-color: var(--accent-bg);
 }
 .iface-row {
   border: 1px solid var(--border);
@@ -750,45 +796,45 @@ button.link {
 }
 
 .event.proto-UDP {
-  border-left-color: #6e7781;
-  background: color-mix(in srgb, #6e7781 8%, transparent);
+  border-left-color: var(--c-grey);
+  background: color-mix(in srgb, var(--c-grey) 8%, transparent);
 }
 .event.proto-TCP {
-  border-left-color: #0969da;
-  background: color-mix(in srgb, #0969da 8%, transparent);
+  border-left-color: var(--c-blue);
+  background: color-mix(in srgb, var(--c-blue) 8%, transparent);
 }
 .event.proto-DHCP {
-  border-left-color: #bc4c00;
-  background: color-mix(in srgb, #bc4c00 8%, transparent);
+  border-left-color: var(--c-orange);
+  background: color-mix(in srgb, var(--c-orange) 8%, transparent);
 }
 .event.proto-DNS {
-  border-left-color: #0a7e8c;
-  background: color-mix(in srgb, #0a7e8c 8%, transparent);
+  border-left-color: var(--c-teal);
+  background: color-mix(in srgb, var(--c-teal) 8%, transparent);
 }
 .event.proto-HTTP {
-  border-left-color: #8250df;
-  background: color-mix(in srgb, #8250df 8%, transparent);
+  border-left-color: var(--c-purple);
+  background: color-mix(in srgb, var(--c-purple) 8%, transparent);
 }
 .event.proto-STP {
-  border-left-color: #e16f00;
-  background: color-mix(in srgb, #e16f00 8%, transparent);
+  border-left-color: var(--c-amber);
+  background: color-mix(in srgb, var(--c-amber) 8%, transparent);
 }
 .event.proto-VTP {
-  border-left-color: #9a6700;
-  background: color-mix(in srgb, #9a6700 8%, transparent);
+  border-left-color: var(--c-gold);
+  background: color-mix(in srgb, var(--c-gold) 8%, transparent);
 }
 .event.proto-NAT {
-  border-left-color: #116329;
-  background: color-mix(in srgb, #116329 8%, transparent);
+  border-left-color: var(--c-forest);
+  background: color-mix(in srgb, var(--c-forest) 8%, transparent);
 }
 .event.proto-ACL {
-  border-left-color: #cf222e;
-  background: color-mix(in srgb, #cf222e 8%, transparent);
+  border-left-color: var(--c-red);
+  background: color-mix(in srgb, var(--c-red) 8%, transparent);
 }
 
 .browser-view {
   margin-top: 8px;
-  border: 1px solid var(--border, #d0d7de);
+  border: 1px solid var(--border);
   min-height: 160px;
   padding: 8px;
   overflow: auto;
@@ -799,34 +845,34 @@ button.link {
 }
 
 .event.proto-RIP {
-  border-left-color: #8250df;
-  background: color-mix(in srgb, #8250df 8%, transparent);
+  border-left-color: var(--c-purple);
+  background: color-mix(in srgb, var(--c-purple) 8%, transparent);
 }
 .event.proto-OSPF {
-  border-left-color: #1a7f37;
-  background: color-mix(in srgb, #1a7f37 8%, transparent);
+  border-left-color: var(--c-green);
+  background: color-mix(in srgb, var(--c-green) 8%, transparent);
 }
 .event.proto-EIGRP {
-  border-left-color: #bf3989;
-  background: color-mix(in srgb, #bf3989 8%, transparent);
+  border-left-color: var(--c-magenta);
+  background: color-mix(in srgb, var(--c-magenta) 8%, transparent);
 }
 .event.proto-BGP {
-  border-left-color: #cf222e;
-  background: color-mix(in srgb, #cf222e 8%, transparent);
+  border-left-color: var(--c-red);
+  background: color-mix(in srgb, var(--c-red) 8%, transparent);
 }
 .event.proto-HSRP {
-  border-left-color: #bc4c00;
-  background: color-mix(in srgb, #bc4c00 8%, transparent);
+  border-left-color: var(--c-orange);
+  background: color-mix(in srgb, var(--c-orange) 8%, transparent);
 }
 .event.proto-GRE {
-  border-left-color: #0969da;
-  background: color-mix(in srgb, #0969da 8%, transparent);
+  border-left-color: var(--c-blue);
+  background: color-mix(in srgb, var(--c-blue) 8%, transparent);
 }
 .event.proto-ICMP6 {
-  border-left-color: #1a7f37;
-  background: color-mix(in srgb, #1a7f37 8%, transparent);
+  border-left-color: var(--c-green);
+  background: color-mix(in srgb, var(--c-green) 8%, transparent);
 }
 .event.proto-ND {
-  border-left-color: #0a7e8c;
-  background: color-mix(in srgb, #0a7e8c 8%, transparent);
+  border-left-color: var(--c-teal);
+  background: color-mix(in srgb, var(--c-teal) 8%, transparent);
 }
