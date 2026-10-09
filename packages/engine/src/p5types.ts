@@ -195,6 +195,20 @@ export interface IotCfg {
   server?: Ipv4Addr;
   registered: boolean;
   reportSec: number;
+  /** Programm (sandboxed JavaScript-Teilmenge) des Geräts. */
+  script?: IotScript;
+}
+
+/** Programm eines IoT-/SBC-Geräts; alles JSON (Snapshots, `.nsim`). */
+export interface IotScript {
+  code: string;
+  running: boolean;
+  /** Variablen des Hauptteils zwischen den Aktivierungen. */
+  vars: Record<string, unknown>;
+  /** Konsolenausgabe (letzte 200 Zeilen). */
+  out: string[];
+  error?: string;
+  startedAt?: number;
 }
 
 export interface HostMailCfg {

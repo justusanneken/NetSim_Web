@@ -21,6 +21,7 @@ import { clockOf, deviceTimeMs, setDeviceTime } from './clock';
 import { connClose, connOpen, connPush, connSend } from './conn';
 import { svcTimer } from './dispatch';
 import { iotTick } from './iot';
+import { newScript, scriptResume, scriptStart, scriptStop, scriptTimer } from './script/iotscript';
 import { appcOf, ipNodeOf } from './node';
 import {
   ensureLocation,
@@ -81,6 +82,8 @@ export class Phase5 {
       if (dev.config.iot?.server) wants.push(['bg:svc:iot', 2_000_000]);
     }
     if (ntpServersOf(dev).length > 0) wants.push(['bg:svc:ntp', 2_000_000]);
+    if (dev.config.kind === 'host' && dev.config.iot?.script?.running)
+      this.eng.withCtx(dev, (ctx) => scriptResume(ctx, dev));
     if (wants.length === 0) return;
     this.eng.withCtx(dev, (ctx) => {
       for (const [name, delay] of wants) ctx.setTimer(name, delay);
@@ -127,6 +130,7 @@ export class Phase5 {
 
   timer(ctx: DeviceCtx, dev: Device, name: string): void {
     if (name === 'capwap') return capwapTick(ctx, dev);
+    if (name.startsWith('script:')) return scriptTimer(ctx, dev, name);
     if (name === 'ntp') {
       ntpPoll(ctx, dev);
       if (ntpServersOf(dev).length > 0) ctx.setTimer('bg:svc:ntp', NTP_INTERVAL_US);
@@ -512,6 +516,28 @@ export class Phase5 {
     if (serverChanged) iot.registered = false;
     this.startTimers(h);
     if (h.powered && iot.server) this.eng.withCtx(h, (ctx) => iotTick(ctx, h));
+    return ok(true);
+  }
+
+  /** Programmtext eines IoT-/SBC-Geräts setzen (ein laufendes Programm wird angehalten). */
+  setIotScript(id: string, code: string): Result<true> {
+    const h = this.host(id);
+    if (!h?.config.iot) return err('iot.notIot');
+    if (code.length > 20_000) return err('iot.script.tooLong');
+    const iot = h.config.iot;
+    iot.script ??= newScript();
+    if (iot.script.running) this.runIotScript(id, false);
+    iot.script.code = code;
+    return ok(true);
+  }
+
+  /** Programm starten bzw. anhalten (Run/Stop). */
+  runIotScript(id: string, run: boolean): Result<true> {
+    const h = this.host(id);
+    if (!h?.config.iot) return err('iot.notIot');
+    if (!h.powered) return err('dev.off');
+    h.config.iot.script ??= newScript();
+    this.eng.withCtx(h, (ctx) => (run ? scriptStart(ctx, h) : scriptStop(ctx, h)));
     return ok(true);
   }
 

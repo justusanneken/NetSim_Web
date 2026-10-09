@@ -16,6 +16,7 @@ import {
   MibBrowser,
 } from './PanelServices5';
 import { WifiClient } from './PanelWireless';
+import { ProgramTab } from './PanelProgram';
 
 /** Geräte-Dialog mit Tabs: Config, CLI (Router/Switch), Desktop (Hosts). */
 export function DeviceDialog() {
@@ -39,7 +40,7 @@ export function DeviceDialog() {
   if (!dialog || !dev) return null;
   const end = isEndDevice(dev);
   const tabs = end
-    ? ['desktop', 'config', 'physical']
+    ? ['desktop', 'config', ...(dev.p5?.iot ? ['program'] : []), 'physical']
     : hasCli(dev)
       ? ['config', 'cli', 'physical']
       : ['config', 'physical'];
@@ -89,6 +90,8 @@ export function DeviceDialog() {
             </div>
           ) : tab === 'physical' ? (
             <PhysicalTab dev={dev} />
+          ) : tab === 'program' ? (
+            <ProgramTab dev={dev} />
           ) : tab === 'cli' ? (
             <TerminalView key={dev.id} deviceId={dev.id} label={t('dialog.tab.cli')} />
           ) : (

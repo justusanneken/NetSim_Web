@@ -123,6 +123,14 @@ export class EngineService5 extends EngineService {
   }
 
   // ---- IoT, Cloud, Module, Physical View
+  setIotScript(id: string, code: string): Result<true> {
+    return this.done(this.engine.p5.setIotScript(id, code));
+  }
+
+  runIotScript(id: string, run: boolean): Result<true> {
+    return this.done(this.engine.p5.runIotScript(id, run));
+  }
+
   setIot(id: string, patch: Partial<IotCfg>): Result<true> {
     return this.done(this.engine.p5.setIot(id, patch));
   }

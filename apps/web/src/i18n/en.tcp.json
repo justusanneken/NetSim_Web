@@ -1,4 +1,17 @@
 {
   "tcp.retransmit": "TCP: retransmitting segment to {{peer}}:{{port}} (attempt {{n}}).",
-  "tcp.abort": "TCP: connection to {{peer}}:{{port}} aborted after unsuccessful retransmissions (timeout)."
+  "tcp.abort": "TCP: connection to {{peer}}:{{port}} aborted after unsuccessful retransmissions (timeout).",
+  "iot.script.error": "IoT program: error – {{error}}",
+  "iot.script.tooLong": "The program is too long (20000 characters maximum).",
+  "dialog.tab.program": "Programming",
+  "prog.run": "Run",
+  "prog.stop": "Stop",
+  "prog.example": "Example",
+  "prog.editor": "Program text",
+  "prog.console": "Console",
+  "prog.placeholder": "JavaScript, e.g. every(1000, () => log(readSensor('self')));",
+  "prog.api": "API: readSensor(name), setActuator(name, on), log(...), every(ms, fn), onReport(fn). No network, DOM or global access; step limit per call.",
+  "prog.status.running": "running",
+  "prog.status.stopped": "stopped",
+  "prog.status.error": "error (device halted)"
 }
