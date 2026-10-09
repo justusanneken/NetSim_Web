@@ -860,6 +860,8 @@ export interface EngineConfig {
   processingUs: number;
   /** Kupferkabel länger als dieses Maß → Link down. 0 = Prüfung aus. */
   maxCopperLengthM: number;
+  /** Obergrenze für das Event-Log (älteste Einträge fallen weg, Ids bleiben monoton). 0 = unbegrenzt. */
+  maxLogEntries?: number;
 }
 
 export interface EngineState {
@@ -884,6 +886,7 @@ export interface EngineState {
 
 export interface EngineSnapshot {
   state: EngineState;
+  /** Absolute Log-Länge (= nächste Log-Id), unabhängig vom Trimmen. */
   logLength: number;
 }
 

@@ -93,26 +93,29 @@ export class CliSession implements Shell {
     /** Liefert `true`, wenn nicht bis zum Ende simuliert werden soll (Simulationsmodus). */
     readonly deferred: () => boolean = () => false,
   ) {
-    this.debugCursor = engine.log.length;
+    this.debugCursor = engine.logLength;
   }
 
   /** `debug`-Meldungen dieses Geräts seit dem letzten Aufruf (IOS-Zeitstempel). */
   poll(): string {
     if (this.remoteGone()) return '';
-    const log = this.engine.log;
-    if (this.debugCursor > log.length) this.debugCursor = 0;
+    const eng = this.engine;
+    const log = eng.log;
+    // Cursor = absolute Log-Id; nach Step Back/Trimmen auf den vorhandenen Bereich begrenzen
+    if (this.debugCursor > eng.logLength) this.debugCursor = 0;
+    if (this.debugCursor < eng.logOffset) this.debugCursor = eng.logOffset;
     const cfg = this.device.config;
     const flags = cfg.routing.debug;
     const lines: string[] = [];
     // Debug-Ausgabe: Console immer, vty nur mit `terminal monitor`
     if (flags.length > 0 && (!this.remote || this.monitor)) {
-      for (let i = this.debugCursor; i < log.length; i++) {
+      for (let i = this.debugCursor - eng.logOffset; i < log.length; i++) {
         const e = log[i];
         if (!e?.debug || e.atDeviceId !== this.deviceId || !flags.includes(e.debug.tag)) continue;
         lines.push(`${debugStamp(this.sys, e.t)}: ${e.debug.text}`);
       }
     }
-    this.debugCursor = log.length;
+    this.debugCursor = eng.logLength;
     return lines.length ? lines.join('\n') + '\n' : '';
   }
 

@@ -35,8 +35,9 @@ export class EngineService {
   getView(): ViewModel {
     return this.ctl.view();
   }
+  /** Einträge ab absoluter Id `from` (bereits getrimmte Ids werden übersprungen). */
   getLog(from: number, limit = 5000): LogEntry[] {
-    return this.ctl.engine.log.slice(from, from + limit);
+    return this.ctl.engine.logSlice(from, limit);
   }
 
   addDevice(type: DeviceType, pos: Point): string {
