@@ -108,7 +108,7 @@
 ## Phase 4
 
 - **Routing-Protokolle nutzen eigene PDU-Typen** (`RoutingPdu`); IP-Protokollnummern 89 (OSPF) und 88 (EIGRP) sind echt,
-  **BGP läuft ohne TCP** direkt in IP-Paketen (Protokoll 6/Port 179 nur zur Anzeige) mit Keepalive/Hold-Timer und Retry alle 5 s.
+  **BGP läuft über das gemeinsame TCP** (Port 179, siehe „TCP/BGP/Telnet/IoT-Skripte“ unten) mit Keepalive/Hold-Timer und Connect-Retry alle 5 s.
 - **Hintergrund-Timer:** Hello/Update/Keepalive laufen als `bg:`-Timer. Ohne Zeitfortschritt konvergiert nichts; die CLI wartet nur auf Vordergrundereignisse.
 - **RIP:** nur v2, Metrik der Redistribution Default 1 (IOS: unendlich), Hold-down wird nicht erzwungen (nur Invalid/Flush).
 - **OSPF:** DBD in einem Paket je Richtung; DR/BDR werden über Router-IDs statt Schnittstellenadressen angezeigt; Network-LSA-ID = DR-Schnittstellenadresse; LSA-Alterung mit 30-min-Refresh; kein ECMP, keine Stub/NSSA-Areas, keine Authentifizierung. SPF-Verzögerung ≈ 1 ms.
@@ -136,11 +136,11 @@
   zwischen APs ohne Controller-Koordination. Kein Lightweight-Tunneling der Nutzerdaten (der AP bridged lokal).
 - **Dienst-Transport:** Anwendungen (FTP, SMTP, POP3, Telnet, SSH) laufen über vereinfachte TCP-Verbindungen mit
   strukturierten `svc`-Nachrichten (SYN/SYN-ACK mit Banner, Anfrage/Antwort mit PSH/ACK, FIN); keine Fenster,
-  Retransmission nur für das SYN (3 Versuche à 1 s) und ein 8-s-Anfrage-Timeout. TFTP, NTP, Syslog, SNMP, RADIUS, IoT und
+  Retransmission: siehe „Gemeinsames TCP“ unten (SYN 3 Versuche à 1 s; Daten mit RTO 1 s, verdoppelnd, 5 Wiederholungen). TFTP, NTP, Syslog, SNMP, RADIUS, IoT und
   CAPWAP sind UDP-Anfrage/Antwort (5 s Timeout, keine Wiederholung). Inhalte (Dateien, Mails) sind Textzeichenketten.
 - **Telnet/SSH:** Erreichbarkeit, Port (23/22), `transport input`, Login (Passwort/lokal/AAA) laufen über das simulierte Netz
   und damit durch ACLs/Firewalls/NAT. Die Sitzung selbst (Tastatur/Ausgabe) wird nicht paketiert, sondern als CLI-Sitzung des
-  Zielgeräts im Worker an das Terminal gehängt; bricht der Pfad während der Sitzung ab, läuft sie weiter. SSH-Schlüssel sind
+  Zielgeräts im Worker an das Terminal gehängt; die Zeilen/Ausgaben selbst laufen als TCP-Segmente (siehe unten). SSH-Schlüssel sind
   simuliert (Modulgröße wird gespeichert; Voraussetzung: `ip domain-name` + `crypto key generate rsa`). Maximal `line vty 0 N`
   Sitzungen (Standard 5); alle vty-Leitungen teilen sich eine Konfiguration (`transport`, `login`, Passwort).
 - **Benutzer-Geheimnisse:** `username X secret Y` wird im Konfigurationsbaum im Klartext gehalten und als `secret 5 <Typ-7>`
@@ -173,7 +173,7 @@
 - **Host-Firewall:** ein Schalter, blockiert eingehendes Echo (Ping); keine Regeln je Port.
 - **IoT:** Registrierung/Bericht per UDP 5683 an den IoT-Server (Berichtsintervall 10 s, Hintergrund-Timer), Regelauswertung
   beim Eintreffen eines Berichts, Schaltbefehl per UDP; Wertverlauf manuell, Welle oder Rampe (deterministisch aus der virtuellen
-  Zeit). Kein JS-/Python-Scripting (spätere Phase).
+  Zeit). Scripting: siehe „IoT-Skripte“ unten (JavaScript-Teilmenge, kein Python).
 - **Cloud/Modem:** transparente lernende Bridge je Portgruppe; keine PPPoE-/DSL-Synchronisation, kein Frame-Relay/WAN-Emulation,
   keine Bandbreitenprofile über die Port-Geschwindigkeit hinaus (DSL 24 Mbit/s, Koax 100 Mbit/s).
 - **Module:** Modul-Steckplätze nur bei Routern (HWIC-2T, HWIC-1GE) und Hosts (NIC-FE/-GE/-WIFI), Einsetzen/Entfernen nur
@@ -215,6 +215,43 @@
   stellt den Zustand wieder her und lässt das Log leer (Ids setzen bei der Snapshot-Länge fort). Der Web-Store hält nur das noch vorhandene Fenster (`logBase`).
 - **OSPF `no area N`:** entfernt alle Einstellungen des Bereichs (stub/nssa/`default-cost`/`authentication`, `area N range …`, Virtual Links mit Transit-Area N); `network … area N` und
   `ip ospf … area` bleiben bestehen (wie bei IOS, wo die Zuordnung der Schnittstellen eigene Konfiguration ist). Kein Fehler bei unbekannter Area.
+
+## TCP, BGP über TCP, Telnet/SSH über TCP, IoT-Skripte
+
+- **Gemeinsames TCP** (`engine/src/p5/conn.ts`, Verbindungstabelle `appc.conns` je Host/Router/Switch/Firewall): Dreiwege-Handshake mit echten
+  Sequenz-/Bestätigungsnummern (Anwendungsnachricht = ein Segment, Länge = Nachrichtengröße), kumulative ACKs, Duplikat-/Lückenerkennung
+  (nur die erwartete Sequenznummer wird angenommen), Retransmission mit RTO 1 s (verdoppelt bis 8 s) und 5 Wiederholungen (≈ 31 s) bis zum Abbruch
+  (`conn.timeout`), Abbau per FIN bzw. RST (Daten auf unbekannter Verbindung zu/von einem Dienst-Port werden mit RST beantwortet). Kein
+  Fenster/Slow Start, keine Segmentierung großer Nachrichten (IP-Fragmentierung übernimmt), keine TIME_WAIT/Half-Close-Zustände, keine
+  Selective-ACKs. Der HTTP-Pfad der Hosts (`svc/tcp.ts`) bleibt das einfache Modell. Ports: FTP 21, SSH 22, Telnet 23, SMTP 25, POP3 110, BGP 179.
+- **Segmente laufen durch den IP-Stack:** ausgehende ACL, NAT, Firewall (Zustandsverfolgung) sehen sie. Neu: die **eingehende ACL** gilt jetzt auch
+  für TCP, das an das Gerät selbst gerichtet ist (BGP/Telnet/SSH zum Router), nicht nur für Durchgangsverkehr.
+- **BGP über TCP:** Zustände Idle → Connect (SYN in Arbeit) → Active (Verbindung gescheitert/passiv wartend) → OpenSent → OpenConfirm → Established.
+  Der Aufbau läuft alle 5 s (Tick) nach Konfiguration; die Gegenseite nimmt nur Verbindungen von konfigurierten, nicht abgeschalteten Nachbarn an
+  (sonst RST). **Collision-Detection vereinfacht:** baut ein Router gleichzeitig auf, gewinnt die Verbindung der Seite mit der höheren Quelladresse
+  (statt Router-ID aus dem OPEN); eine Sitzung in OpenConfirm/Established wird nie ersetzt. Pfadverlust endet per TCP-Abbruch (≈ 31 s nach der
+  ersten unbestätigten Nachricht), RST/FIN oder Hold-Timer (180 s). TTL ist 64/255-ähnlich wie bisher (kein TTL-Security), eBGP ohne Multihop
+  bleibt auf direkt verbundene Nachbarn beschränkt. Timer der BGP-Verbindung sind Hintergrund-Timer.
+- **Cease:** `no neighbor X` (und `no router bgp`, `neighbor X shutdown`) senden eine NOTIFICATION (Cease); die Gegenstelle verwirft Sitzung und
+  Routen sofort. `clear ip bgp *` wirkt beim nächsten Tick (≤ 5 s) mit „Administrative Reset“.
+- **`show ip route`:** BGP-Routen zeigen den BGP-Next-Hop (`via 3.3.3.3`, ohne Schnittstelle, wie IOS); die Weiterleitung nutzt unverändert die rekursive
+  IGP-Auflösung (`DynRoute.bgpNextHop` nur Anzeige).
+- **Telnet/SSH-Sitzung:** nach der Anmeldung wird jede Eingabezeile als ein TCP-Segment (`line`) zum Zielgerät gesendet, die Ausgabe der Ziel-CLI als ein Segment
+  (`out`) zurück. SSH-Segmente sind im Inspektor als verschlüsselt markiert (`SvcPdu.encrypted`). Die Ziel-CLI wird nach der Bestätigung der Zeile lokal im
+  Worker ausgeführt (die Ausgabe entsteht dort, wird aber erst als Segment dem Anwender gezeigt). Fällt der Pfad aus, steht die Sitzung still
+  (Terminal blockiert in virtueller Zeit), bis TCP aufgibt: `% Connection timed out; remote host not responding` und
+  `[Connection to X closed by foreign host]`; die vty-Leitung des Ziels wird dann freigegeben (vereinfachter exec-timeout). `debug`-/`terminal monitor`-Meldungen
+  der Sitzung werden nicht paketiert. Passwörter (Login) laufen weiter als `login`-Nachricht.
+- **IoT-Skripte:** JavaScript-Teilmenge mit eigenem Interpreter (`engine/src/p5/script/interp.ts`): var/let/const, Funktionen/Pfeilfunktionen/Closures,
+  if/while/for/for…of, Zahlen/Strings/Template-Strings/Arrays/Objekte, `Math`, `Number`, `String`, `parseFloat`, `parseInt`, `JSON.stringify`, einfache
+  String-/Array-Methoden. Kein `eval`, `new`, `this`, Klassen, Getter, `try/catch`, Promises, Module, Regex, Datum; kein Zugriff auf Globals, Prototypen
+  oder `constructor`. API: `readSensor(name)` (`'self'`/eigene Sensorart/ dem IoT-Server bekannte Geräte, sonst `null`), `setActuator(name, on)` (eigener
+  Aktor oder per `set` an ein registriertes Gerät), `log(…)`, `every(ms, fn)` (min. 100 ms, max. 16 Handler), `onReport(fn)` (`fn(name, value)` bei eigenem Bericht
+  oder wenn ein Bericht am IoT-Server eintrifft). Grenzen: 100 000 Schritte und Tiefe 40 je Aktivierung, Strings ≤ 20 000 Zeichen. **Zustand:** nur Text,
+  `running`, Konsole (200 Zeilen) und die JSON-fähigen Variablen des Hauptteils sind Teil der Konfiguration; bei jeder Aktivierung wird der Hauptteil still neu
+  ausgewertet und die gespeicherten Variablen eingesetzt (Funktionswerte werden nicht gespeichert; Variablen, die Funktionen halten, und Closure-Zustand
+  außerhalb des Hauptteils gehen zwischen Aktivierungen verloren). Ein Fehler (Syntax, Laufzeit, Schrittgrenze) hält nur dieses Gerät an (`crashed`) und
+  schreibt einen Log-Eintrag; Run startet es neu. Kein Python.
 
 ## Erweiterungen proto
 

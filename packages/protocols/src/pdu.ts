@@ -110,6 +110,8 @@ function appSize(p: UdpPdu['app'] | TcpPdu['app']): number {
     case 'http':
       return (p.body?.length ?? 0) + 60 + (p.path?.length ?? 0);
     case 'svc':
+      if (p.bgp)
+        return routingSize({ kind: 'routing', proto: 'bgp', sport: 0, dport: 0, msg: p.bgp });
       return 24 + (p.body?.length ?? 0) + Object.keys(p.args).length * 12;
   }
 }
@@ -213,6 +215,7 @@ const SVC_TAG: Record<SvcPdu['proto'], ProtoTag> = {
   ssh: 'SSH',
   iot: 'IOT',
   capwap: 'CAPWAP',
+  bgp: 'BGP',
 };
 
 const hex = (n: number, w = 4): string => '0x' + n.toString(16).padStart(w, '0');
@@ -413,7 +416,10 @@ function describeSvc(p: SvcPdu): HeaderField[] {
     ...Object.entries(p.args).map(([k, v]) =>
       f(k, /pass|secret|key/i.test(k) ? '********' : String(v)),
     ),
-    ...(p.body !== undefined ? [f('Data', `${p.body.length} bytes`)] : []),
+    ...(p.bgp ? [f('BGP message', p.bgp.type)] : []),
+    ...(p.body !== undefined
+      ? [f('Data', p.encrypted ? `${p.body.length} bytes (encrypted)` : `${p.body.length} bytes`)]
+      : []),
   ];
 }
 

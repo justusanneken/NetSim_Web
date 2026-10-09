@@ -151,6 +151,13 @@ Schnittstelle `ipv6 rip NAME enable`; `redistribute connected|static|rip|ospf|bg
 
 **Uhr:** `clock set HH:MM:SS DAY MONTH YEAR` (auch `MONTH DAY`) im privilegierten Modus; `show clock` und `debug`-Zeitstempel folgen der gesetzten Uhr.
 
+## TCP-Anzeige und BGP-Änderungen
+
+**Show (Router/Switch/Firewall):** `show tcp brief` (TCB, lokale/entfernte Adresse.Port, Zustand `ESTAB`/`SYNSENT`/`CLOSEWAIT`/`CLOSED`; Telnet 23, SSH 22, BGP 179 …).
+**BGP:** `no neighbor A` und `neighbor A shutdown` senden eine Cease-NOTIFICATION; `show ip bgp summary` zeigt `Idle`, `Active` (TCP-Verbindung scheitert/wartet) oder `Connect`.
+`show ip route` zeigt BGP-Routen mit dem BGP-Next-Hop (`B 10.4.0.0/24 [200/0] via 3.3.3.3, 00:02:19`).
+Telnet/SSH: fällt der Pfad während der Sitzung aus, endet sie nach ≈ 31 s mit `% Connection timed out; remote host not responding`.
+
 ## Erweiterungen proto
 
 **EIGRP für IPv6:** `ipv6 router eigrp ASN` (Modus `(config-rtr)#`: `eigrp router-id A.B.C.D`, `[no] shutdown`, `passive-interface IF|default`, `variance N`, `maximum-paths N`,

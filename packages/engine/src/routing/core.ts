@@ -187,7 +187,7 @@ export function installRoutes(
   v6 = false,
 ): boolean {
   const key = (r: Omit<DynRoute, 'src'>): string =>
-    `${r.proto}${r.sub ?? ''}|${r.prefix}/${r.plen}|${r.nextHop ?? ''}|${r.ifaceId}|${r.metric}|${r.ad}|${r.share ?? ''}`;
+    `${r.proto}${r.sub ?? ''}|${r.prefix}/${r.plen}|${r.nextHop ?? ''}|${r.ifaceId}|${r.metric}|${r.ad}|${r.share ?? ''}|${r.bgpNextHop ?? ''}`;
   const list = v6 ? rt.cfg.dynRoutes6 : rt.cfg.dynRoutes;
   const old = list.filter((r) => r.src === src);
   const same =

@@ -86,7 +86,7 @@ export function tacacsAuth(
 
 /** Antwort bzw. Fehler einer TACACS+-Client-Verbindung → Entscheidung für den wartenden Login. */
 export const tacacsClientHook: ClientHook = (ctx: DeviceCtx, node: IpNode, c: AppConn, event) => {
-  if (c.purpose !== 'tacacs-auth') return;
+  if (c.purpose !== 'tacacs-auth' || event === 'open') return;
   const cfg = ctx.device.config;
   if (cfg.kind !== 'router' && cfg.kind !== 'switch') return;
   const host = (mgmtOf(cfg.sys).aaa.tacacs ?? []).find((h) => h.host === c.raddr);

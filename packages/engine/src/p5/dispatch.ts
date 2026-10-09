@@ -3,6 +3,7 @@ import type { DeviceCtx } from '../ctx';
 import type { Iface } from '../ifaces';
 import type { Base, IpNode } from '../l3';
 import { capwapHandler, capwapReply } from './capwap';
+import { bgpClientHook, bgpServer } from '../routing/bgp';
 import { connTimer, tcpRxSvc, type ClientHook, type TcpServer } from './conn';
 import { ftpServer } from './ftp';
 import { iotHandler } from './iot';
@@ -28,12 +29,14 @@ const SERVERS: Partial<Record<SvcProto, TcpServer>> = {
   telnet: remoteServer('telnet'),
   ssh: remoteServer('ssh'),
   tacacs: tacacsServer,
+  bgp: bgpServer,
 };
 
-/** Abschluss-Hooks der TCP-Client-Verbindungen (Mail, TACACS+). */
+/** Client-Hook je Protokoll (BGP-Sitzung, TACACS+, Mail-Abschluss). */
 const clientHook: ClientHook = (ctx, node, c, event) => {
-  mailClientHook(ctx, node, c, event);
-  tacacsClientHook(ctx, node, c, event);
+  if (c.proto === 'bgp') bgpClientHook(ctx, node, c, event);
+  else if (c.proto === 'tacacs') tacacsClientHook(ctx, node, c, event);
+  else mailClientHook(ctx, node, c, event);
 };
 
 /** UDP-Dienstnachricht (`app.kind === 'svc'`) verarbeiten; `true` = verbraucht. */
@@ -112,5 +115,5 @@ export function svcTimer(ctx: DeviceCtx, node: IpNode, name: string): void {
       aaaDecision(ctx, node, ctx.device, id, undefined);
     return;
   }
-  connTimer(ctx, node, name, clientHook);
+  connTimer(ctx, node, name, clientHook, SERVERS);
 }

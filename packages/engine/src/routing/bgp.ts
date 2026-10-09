@@ -1,4 +1,4 @@
-import type { BgpAttrs, BgpMsg, Ipv4Pdu } from '@netsim/protocols';
+import type { BgpAttrs, BgpMsg } from '@netsim/protocols';
 import { parseIpv4 } from '@netsim/protocols';
 import {
   AD,
@@ -9,7 +9,7 @@ import {
   redistSource,
   ribOf,
   rlog,
-  sendRouted,
+  rtOf,
   setBg,
   type Rt,
 } from './core';
@@ -22,12 +22,24 @@ import {
   type RouteInfo,
   type RouteMapSet,
 } from './routemap';
-import type { Iface } from '../ifaces';
+import {
+  connClose,
+  connKey,
+  connOpen,
+  connPush,
+  type TcpServer,
+  type ClientHook,
+} from '../p5/conn';
+import { appcOf } from '../p5/node';
+import type { AppConn } from '../p5types';
+import type { IpNode } from '../l3';
+import type { L3Dev } from '../devices/l3dev';
+import type { DeviceCtx } from '../ctx';
 import { maxPathsOf, type BgpCfg, type BgpNbrCfg, type BgpPath } from './types';
 
 const HOLD = 180;
 const KEEPALIVE = 60;
-const CONNECT_RETRY = 5 * SEC;
+const CONNECT_RETRY = 5_000_000; // nicht von SEC abgeleitet: Importzyklus (p5/dispatch → bgp → core)
 
 export const newBgp = (asn: number): BgpCfg => ({
   asn,
@@ -147,20 +159,26 @@ function policyOut(
   return applySet(attrs, res.set);
 }
 
-function send(rt: Rt, c: BgpCfg, n: BgpNbrCfg, msg: BgpMsg): boolean {
-  const src = sourceFor(rt, n);
-  if (!src) return false;
-  const ttl = isEbgp(c, n) ? (n.ebgpMultihop ?? 1) : 255;
-  const ok = sendRouted(
-    rt,
-    src,
-    n.ip,
-    { kind: 'routing', proto: 'bgp', sport: 40000 + (ipNum(n.ip) & 0xff), dport: 179, msg },
-    ttl,
-  );
+/** Live-TCP-Verbindung (Port 179) des Nachbarn. */
+function connOf(rt: Rt, n: BgpNbrCfg): AppConn | undefined {
+  const c = n.connKey ? appcOf(rt.node.cfg).conns[n.connKey] : undefined;
+  return c?.state === 'open' ? c : undefined;
+}
+
+/** BGP-Nachricht als TCP-Segment auf der Sitzungsverbindung senden. */
+function send(rt: Rt, _c: BgpCfg, n: BgpNbrCfg, msg: BgpMsg): boolean {
+  const conn = connOf(rt, n);
+  if (!conn) return false;
+  const ok = connPush(rt.ctx, rt.node, conn, { op: msg.type, bgp: msg });
   if (ok) n.lastTx = rt.ctx.now;
   dbg(rt, 'BGP', 'bgp', () => `BGP: ${n.ip} send ${msg.type.toUpperCase()}`);
   return ok;
+}
+
+/** Sitzungsverbindung verwerfen (ohne Rückmeldung an die Anwendung). */
+function dropConn(rt: Rt, n: BgpNbrCfg): void {
+  if (n.connKey) connClose(rt.ctx, rt.node, n.connKey);
+  n.connKey = undefined;
 }
 
 /** Ist der Nachbar erreichbar (direkt verbunden bei eBGP ohne Multihop; sonst irgendeine Route)? */
@@ -188,10 +206,31 @@ export function bgpSync(rt: Rt): void {
     else if (n.state !== 'idle' && !reachable(rt, c, n))
       resetSession(rt, c, n, 'neighbor unreachable', false);
   }
+  sweepConns(rt, c);
+}
+
+/**
+ * TCP-Verbindungen ohne zugehörigen Nachbarn (`no neighbor X`, `no router bgp`) werden mit einer
+ * Cease-NOTIFICATION beendet, damit die Gegenstelle die Sitzung und ihre Routen sofort verwirft.
+ */
+function sweepConns(rt: Rt, c: BgpCfg | undefined): void {
+  const core = appcOf(rt.node.cfg);
+  for (const [key, conn] of Object.entries(core.conns)) {
+    if (conn.proto !== 'bgp') continue;
+    const n = c?.neighbors[conn.raddr];
+    if (n && n.connKey === key) continue;
+    if (conn.state === 'open')
+      connPush(rt.ctx, rt.node, conn, {
+        op: 'notification',
+        bgp: { type: 'notification', code: 6, text: 'Cease' },
+      });
+    connClose(rt.ctx, rt.node, key);
+  }
 }
 
 export function bgpStop(rt: Rt): void {
   cancelBg(rt, 'rt:bgp:tick');
+  sweepConns(rt, undefined);
 }
 
 export function bgpReset(c: BgpCfg): void {
@@ -200,6 +239,7 @@ export function bgpReset(c: BgpCfg): void {
   c.timersArmed = false;
   for (const n of Object.values(c.neighbors)) {
     n.state = 'idle';
+    n.connKey = undefined;
     n.ribIn = {};
     n.advertised = {};
     n.prefixesRx = 0;
@@ -213,7 +253,9 @@ export function bgpReset(c: BgpCfg): void {
 
 function resetSession(rt: Rt, c: BgpCfg, n: BgpNbrCfg, why: string, notify: boolean): void {
   const was = n.state;
-  if (notify && was !== 'idle') send(rt, c, n, { type: 'notification', code: 6, text: why });
+  if (notify && was !== 'idle')
+    send(rt, c, n, { type: 'notification', code: 6, text: why === 'shutdown' ? 'Cease' : why });
+  dropConn(rt, n);
   n.state = 'idle';
   n.ribIn = {};
   n.advertised = {};
@@ -246,23 +288,37 @@ export function bgpTimer(rt: Rt, name: string): boolean {
   if (!c) return true;
   for (const n of Object.values(c.neighbors)) {
     if (n.shutdown) continue;
-    if (n.state === 'established' || n.state === 'openconfirm') {
+    if (n.state === 'established' || n.state === 'openconfirm' || n.state === 'opensent') {
       if (rt.ctx.now - n.lastRx > n.holdSec * SEC) {
         resetSession(rt, c, n, 'hold timer expired', true);
         continue;
       }
-      if (rt.ctx.now - n.lastTx >= KEEPALIVE * SEC) send(rt, c, n, { type: 'keepalive' });
+      if (n.state !== 'opensent' && rt.ctx.now - n.lastTx >= KEEPALIVE * SEC)
+        send(rt, c, n, { type: 'keepalive' });
       continue;
     }
     if (!reachable(rt, c, n)) continue;
-    // Verbindungsaufbau: OPEN senden
-    n.state = n.state === 'idle' ? 'connect' : n.state;
-    if (send(rt, c, n, { type: 'open', asn: c.asn, holdSec: HOLD, routerId: bgpRid(rt, c) })) {
-      setState(rt, c, n, 'opensent');
-      n.lastRx = rt.ctx.now;
-    }
+    // Verbindungsaufbau: TCP-Verbindung zu Port 179 öffnen (Connect); schlägt sie fehl, folgt Active
+    const live = n.connKey ? appcOf(rt.node.cfg).conns[n.connKey] : undefined;
+    if (n.state !== 'idle' && live && (live.state === 'syn-sent' || live.state === 'open'))
+      continue;
+    // Idle mit bestehender Verbindung (z. B. nach `clear ip bgp`): Gegenseite per Cease informieren
+    if (live?.state === 'open')
+      send(rt, c, n, { type: 'notification', code: 6, text: 'Administrative Reset' });
+    openTcp(rt, c, n);
   }
   return true;
+}
+
+function openTcp(rt: Rt, c: BgpCfg, n: BgpNbrCfg): void {
+  dropConn(rt, n);
+  const src = sourceFor(rt, n);
+  if (!src) return;
+  const r = connOpen(rt.ctx, rt.node, { dst: n.ip, proto: 'bgp', src, bg: true });
+  if (r.ok) {
+    n.connKey = r.key;
+    setState(rt, c, n, 'connect');
+  } else setState(rt, c, n, 'active');
 }
 
 function setState(rt: Rt, c: BgpCfg, n: BgpNbrCfg, to: BgpNbrCfg['state']): void {
@@ -286,20 +342,20 @@ function setState(rt: Rt, c: BgpCfg, n: BgpNbrCfg, to: BgpNbrCfg['state']): void
 
 // ------------------------------------------------------------------ Empfang
 
-export function bgpRx(rt: Rt, _iface: Iface, ip: Ipv4Pdu, msg: BgpMsg): void {
-  void _iface;
+/** Empfangene BGP-Nachricht einer TCP-Verbindung. */
+export function bgpMessage(rt: Rt, conn: AppConn, msg: BgpMsg): void {
   const c = rt.r.bgp;
   if (!c) return;
-  const n = c.neighbors[ip.src];
-  if (!n || n.shutdown) return;
+  const n = c.neighbors[conn.raddr];
+  if (!n || n.shutdown || n.state === 'idle' || n.connKey !== connKey(conn)) return;
   rlog(
     rt,
     'BGP',
-    { key: 'bgp.rx', params: { type: msg.type, src: ip.src } },
+    { key: 'bgp.rx', params: { type: msg.type, src: n.ip } },
     {
       kind: 'rx',
       status: 'ok',
-      debug: { tag: 'bgp', text: () => `BGP: ${ip.src} rcv ${msg.type.toUpperCase()}` },
+      debug: { tag: 'bgp', text: () => `BGP: ${n.ip} rcv ${msg.type.toUpperCase()}` },
     },
   );
   n.lastRx = rt.ctx.now;
@@ -318,7 +374,7 @@ export function bgpRx(rt: Rt, _iface: Iface, ip: Ipv4Pdu, msg: BgpMsg): void {
       }
       n.routerId = msg.routerId;
       n.holdSec = Math.min(HOLD, msg.holdSec);
-      if (n.state === 'idle' || n.state === 'connect') {
+      if (n.state !== 'opensent') {
         send(rt, c, n, { type: 'open', asn: c.asn, holdSec: HOLD, routerId: bgpRid(rt, c) });
       }
       send(rt, c, n, { type: 'keepalive' });
@@ -342,6 +398,80 @@ export function bgpRx(rt: Rt, _iface: Iface, ip: Ipv4Pdu, msg: BgpMsg): void {
       break;
   }
 }
+
+/** Die TCP-Verbindung der Sitzung ist weg (FIN, RST, Retransmission-Abbruch, Verbindungsaufbau gescheitert). */
+function connLost(rt: Rt, conn: AppConn): void {
+  const c = rt.r.bgp;
+  const n = c?.neighbors[conn.raddr];
+  if (!c || !n || n.connKey !== connKey(conn)) return;
+  n.connKey = undefined;
+  if (n.state === 'connect' || n.state === 'active' || n.state === 'idle') {
+    setState(rt, c, n, 'active');
+    return;
+  }
+  resetSession(rt, c, n, conn.err === 'conn.timeout' ? 'TCP timeout' : 'connection closed', false);
+}
+
+const rtFor = (ctx: DeviceCtx): Rt | undefined =>
+  ctx.device.config.kind === 'router' || ctx.device.config.kind === 'switch'
+    ? rtOf(ctx, ctx.device as L3Dev)
+    : undefined;
+
+/** TCP-Dienst Port 179 (passive Seite der Sitzung, inkl. einfacher Collision Detection). */
+export const bgpServer: TcpServer = {
+  accept(ctx, _dev, _node, conn) {
+    const rt = rtFor(ctx);
+    const c = rt?.r.bgp;
+    const n = c?.neighbors[conn.raddr];
+    if (!rt || !c || !n || n.shutdown) return 'refuse';
+    const cur = n.connKey ? appcOf(rt.node.cfg).conns[n.connKey] : undefined;
+    if (cur) {
+      // Kollision: beide Seiten bauen gleichzeitig auf. Gewinner ist die Verbindung der Seite mit der
+      // höheren Quelladresse; eine bestehende Sitzung (OpenConfirm/Established) bleibt unberührt.
+      const src = sourceFor(rt, n);
+      const keepOurs =
+        n.state === 'openconfirm' ||
+        n.state === 'established' ||
+        (cur.role === 'c' && ipNum(src ?? '0.0.0.0') > ipNum(n.ip));
+      if (keepOurs) return 'refuse';
+      dropConn(rt, n);
+    }
+    n.connKey = connKey(conn);
+    if (n.state === 'idle' || n.state === 'connect') setState(rt, c, n, 'active');
+    n.lastRx = rt.ctx.now;
+    return { op: '' };
+  },
+  handle(ctx, _dev, _node, conn, msg) {
+    const rt = rtFor(ctx);
+    if (rt && msg.bgp) bgpMessage(rt, conn, msg.bgp);
+    return undefined;
+  },
+  closed(ctx, _dev, conn) {
+    const rt = rtFor(ctx);
+    if (rt) connLost(rt, conn);
+  },
+};
+
+/** Client-Seite (aktiver Verbindungsaufbau) der BGP-Sitzung. */
+export const bgpClientHook: ClientHook = (ctx: DeviceCtx, _node: IpNode, conn: AppConn, event) => {
+  const rt = rtFor(ctx);
+  const c = rt?.r.bgp;
+  if (!rt || !c) return;
+  if (event === 'fail') {
+    connLost(rt, conn);
+    // Eintrag der gescheiterten Verbindung entfernen
+    connClose(ctx, rt.node, connKey(conn));
+    return;
+  }
+  const n = c.neighbors[conn.raddr];
+  if (!n || n.connKey !== connKey(conn)) return;
+  if (event === 'open') {
+    if (send(rt, c, n, { type: 'open', asn: c.asn, holdSec: HOLD, routerId: bgpRid(rt, c) })) {
+      setState(rt, c, n, 'opensent');
+      n.lastRx = rt.ctx.now;
+    }
+  } else if (conn.reply?.bgp) bgpMessage(rt, conn, conn.reply.bgp);
+};
 
 function rxUpdate(rt: Rt, c: BgpCfg, n: BgpNbrCfg, m: Extract<BgpMsg, { type: 'update' }>): void {
   for (const w of m.withdrawn) delete n.ribIn[pkey(w.prefix, w.plen)];
@@ -509,6 +639,7 @@ export function bgpRecompute(rt: Rt): boolean {
         ad: p.ebgp ? AD.ebgp : AD.ibgp,
         metric: p.attrs.med ?? 0,
         nextHop: e.type === 'C' ? p.attrs.nextHop : (e.nextHop ?? p.attrs.nextHop),
+        bgpNextHop: p.attrs.nextHop,
         ifaceId: e.ifaceId,
       });
     }

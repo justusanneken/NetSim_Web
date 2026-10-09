@@ -435,6 +435,8 @@ function ipRx(
     return;
   }
   if (isLocalIp(node, ip.dst) || bcast) {
+    // TCP zum Gerät selbst (BGP, Telnet, SSH …) unterliegt der eingehenden ACL wie Durchgangsverkehr
+    if (!bcast && ip.payload.kind === 'tcp' && !aclInPermits(ctx, node, iface, base, ip)) return;
     deliverLocal(ctx, node, iface, base, ip, frame, bcast && !isLocalIp(node, ip.dst));
     return;
   }
@@ -450,27 +452,37 @@ function ipRx(
   forward(ctx, node, iface, base, ip);
 }
 
+/** Eingehende ACL der Schnittstelle (Durchgangs- und an das Gerät gerichteter TCP-Verkehr); `false` = verworfen. */
+function aclInPermits(
+  ctx: DeviceCtx,
+  node: IpNode,
+  ifaceIn: Iface,
+  base: Base,
+  ip: Ipv4Pdu,
+): boolean {
+  const l3 = node.l3;
+  if (!l3 || !ifaceIn.cfg.aclIn) return true;
+  const r = aclEval(l3.acls[ifaceIn.cfg.aclIn], ip);
+  if (r.action !== 'deny') return true;
+  ctx.log({
+    ...base,
+    kind: 'drop',
+    proto: 'ACL',
+    status: 'drop',
+    msg: {
+      key: 'acl.deny',
+      params: { acl: ifaceIn.cfg.aclIn, dir: 'in', src: ip.src, dst: ip.dst },
+    },
+  });
+  sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.admin, ip, ifaceIn.ip);
+  return false;
+}
+
 function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn: Ipv4Pdu): void {
   const l3 = node.l3;
   let ip = ipIn;
   // 1) Eingehende ACL
-  if (l3 && ifaceIn.cfg.aclIn) {
-    const r = aclEval(l3.acls[ifaceIn.cfg.aclIn], ip);
-    if (r.action === 'deny') {
-      ctx.log({
-        ...base,
-        kind: 'drop',
-        proto: 'ACL',
-        status: 'drop',
-        msg: {
-          key: 'acl.deny',
-          params: { acl: ifaceIn.cfg.aclIn, dir: 'in', src: ip.src, dst: ip.dst },
-        },
-      });
-      sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.admin, ip, ifaceIn.ip);
-      return;
-    }
-  }
+  if (!aclInPermits(ctx, node, ifaceIn, base, ip)) return;
   // 2) NAT outside → inside (vor dem Routing)
   if (
     l3 &&

@@ -626,6 +626,8 @@ export interface DynRoute {
   since?: number;
   /** Ungleiche Lastverteilung (EIGRP-Variance): relatives Gewicht. */
   share?: number;
+  /** BGP: Next Hop des Pfads (Anzeige in `show ip route`); `nextHop` ist die rekursiv aufgelöste IGP-Adresse. */
+  bgpNextHop?: Ipv4Addr;
 }
 
 /** Gemeinsamer L3-Zustand von Router und L3-fähigen Switches. */

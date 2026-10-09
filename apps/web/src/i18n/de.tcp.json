@@ -1,0 +1,17 @@
+{
+  "tcp.retransmit": "TCP: Segment an {{peer}}:{{port}} wiederholt (Versuch {{n}}).",
+  "tcp.abort": "TCP: Verbindung zu {{peer}}:{{port}} nach erfolglosen Wiederholungen abgebrochen (Timeout).",
+  "iot.script.error": "IoT-Programm: Fehler – {{error}}",
+  "iot.script.tooLong": "Das Programm ist zu lang (maximal 20000 Zeichen).",
+  "dialog.tab.program": "Programmierung",
+  "prog.run": "Run",
+  "prog.stop": "Stop",
+  "prog.example": "Beispiel",
+  "prog.editor": "Programmtext",
+  "prog.console": "Konsole",
+  "prog.placeholder": "JavaScript, z. B. every(1000, () => log(readSensor('self')));",
+  "prog.api": "API: readSensor(name), setActuator(name, on), log(...), every(ms, fn), onReport(fn). Kein Netzwerk-, DOM- oder Globalzugriff; Schrittgrenze pro Aufruf.",
+  "prog.status.running": "läuft",
+  "prog.status.stopped": "gestoppt",
+  "prog.status.error": "Fehler (Gerät angehalten)"
+}
