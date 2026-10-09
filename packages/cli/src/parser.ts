@@ -263,7 +263,7 @@ export class Registry<C> {
           const slot = pos.def.slots[j] as Slot;
           if (slot.kind === 'kw') {
             for (const a of slot.alts) {
-              if (a.word.startsWith(low)) kwHits.push({ pos, j, word: a.word });
+              if (a.word.toLowerCase().startsWith(low)) kwHits.push({ pos, j, word: a.word });
             }
           } else if (slot.kind === 'rest' || validParam(slot, tok.text, env)) {
             other.push({ pos, j });
@@ -272,7 +272,7 @@ export class Registry<C> {
       }
       let chosen: { pos: Pos<C>; j: number; word?: string }[] = kwHits;
       if (kwHits.length > 0) {
-        const exact = kwHits.filter((h) => h.word === low);
+        const exact = kwHits.filter((h) => h.word.toLowerCase() === low);
         if (exact.length > 0) chosen = exact;
         const words = new Set(chosen.map((h) => (h as { word: string }).word));
         if (words.size > 1) {
@@ -337,7 +337,7 @@ export class Registry<C> {
         const s = pos.def.slots[j] as Slot;
         if (s.kind === 'kw') {
           for (const a of s.alts) {
-            if (a.word.startsWith(partial.toLowerCase()) && !items.has(a.word))
+            if (a.word.toLowerCase().startsWith(partial.toLowerCase()) && !items.has(a.word))
               items.set(a.word, a.help);
           }
         } else if (partial === '' && !items.has(s.label)) items.set(s.label, s.help);
@@ -372,7 +372,8 @@ export class Registry<C> {
       for (const j of reachable(pos.def.slots, pos.idx)) {
         const s = pos.def.slots[j] as Slot;
         if (s.kind === 'kw') {
-          for (const a of s.alts) if (a.word.startsWith(last.text.toLowerCase())) words.add(a.word);
+          for (const a of s.alts)
+            if (a.word.toLowerCase().startsWith(last.text.toLowerCase())) words.add(a.word);
         }
       }
     }
