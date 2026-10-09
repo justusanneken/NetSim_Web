@@ -19,9 +19,20 @@ export function cloneEngine(src: Engine): Engine {
   return e;
 }
 
-/** Engine aus einem gespeicherten Zustand (JSON) erzeugen; der Zustand wird kopiert. */
+/**
+ * Ersetzt den Zustand einer Engine durch einen gespeicherten (Aufgabe laden): Laufzeitzustand wird neu
+ * aufgebaut (Zeit 0, leere Tabellen, Hintergrund-Timer). Entspricht `Engine.loadState` der Persistenz.
+ */
+export function loadStateInto(e: Engine, state: Engine['state']): void {
+  e.state = structuredClone(state);
+  (e as unknown as SigHolder).switchSig.clear();
+  e.resetRuntime();
+  e.p5.wirelessSync();
+}
+
+/** Frische Engine aus einem gespeicherten Zustand (JSON); der Zustand wird kopiert. */
 export function engineFromState(state: Engine['state']): Engine {
   const e = new Engine({ seed: state.seed, config: state.config });
-  e.state = structuredClone(state);
+  loadStateInto(e, state);
   return e;
 }
