@@ -13,6 +13,7 @@ import { ipSend, newIpPacket, type Base, type IpNode } from '../l3';
 import type { AppConn } from '../p5types';
 import type { Device } from '../types';
 import { appcOf } from './node';
+import { nextEphemeral } from '../ports';
 
 /**
  * Gemeinsames, wiederverwendbares simuliertes TCP für Geräte mit IP-Stack (Host, Router, Switch, Firewall).
@@ -209,7 +210,7 @@ export function connOpen(
   const hop = node.lookup(o.dst);
   if (!hop) return { ok: false, error: 'conn.unreachable' };
   const rport = o.port ?? TCP_PORT[o.proto] ?? 0;
-  const lport = core.nextPort++;
+  const lport = nextEphemeral(core, (p) => Object.values(core.conns).some((x) => x.lport === p));
   const c: AppConn = {
     id: core.nextConn++,
     role: 'c',
