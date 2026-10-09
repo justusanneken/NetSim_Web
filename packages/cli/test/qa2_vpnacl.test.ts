@@ -193,3 +193,18 @@ describe('QA2: IPsec mit NAT und Schnittstellen-ACLs', () => {
     expect(out).toMatch(/Success rate is 0 percent/);
   });
 });
+
+describe('QA2: IPsec nach Neustart der Gegenstelle', () => {
+  it('alte SA bleibt (kein DPD); IKE von der neu gestarteten Seite stellt das VPN wieder her', () => {
+    const { e, r3, pc1, pc3 } = vpnLab();
+    sec(e, 2);
+    expect(up(e, pc1, '10.2.0.10')).toBe(true);
+    e.setPower(r3.id, false);
+    sec(e, 2);
+    e.setPower(r3.id, true);
+    sec(e, 5);
+    expect(up(e, pc1, '10.2.0.10')).toBe(false);
+    expect(up(e, pc3, '10.1.0.10')).toBe(true);
+    expect(up(e, pc1, '10.2.0.10')).toBe(true);
+  });
+});
