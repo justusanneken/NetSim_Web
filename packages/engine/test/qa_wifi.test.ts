@@ -102,14 +102,30 @@ describe('QA WLAN roaming', () => {
     expect(pingOk(e, srv, ip)).toBe(true);
     e.moveDevice(lap, { x: 560, y: 0 });
     expect(host(e, lap).wifi?.assoc?.apId).toBe(ap2);
-    const t0 = e.state.now;
-    while (host(e, lap).ip !== ip && e.state.now - t0 < 30_000_000) sec(e, 0.1);
-    // DHCP läuft nach dem Roaming neu (DORA); dieselbe Adresse kommt zurück
+    // Lease bleibt erhalten: keine Adresslücke, kein neues DISCOVER (INIT-REBOOT-Request genügt)
     expect(host(e, lap).ip).toBe(ip);
-    expect(e.state.now - t0).toBeLessThan(5_000_000);
+    const logFrom = e.log.length;
+    sec(e, 1);
+    expect(host(e, lap).ip).toBe(ip);
+    expect(host(e, lap).dhcpClient.state).toBe('bound');
+    expect(e.log.slice(logFrom - 5).some((l) => l.msg.key === 'dhcp.discover')).toBe(false);
     // the wired side must reach the laptop on its new AP without the laptop sending first
     expect(pingOk(e, srv, ip)).toBe(true);
     expect(pingOk(e, lap, '10.0.0.10')).toBe(true);
+  });
+
+  it('keeps pinging across a roam without losing the address', () => {
+    const { e, ap2, lap } = lab();
+    const ip = host(e, lap).ip as string;
+    const id = must(e.ping(lap, '10.0.0.10', { count: 6, intervalUs: 500_000 }));
+    sec(e, 1);
+    e.moveDevice(lap, { x: 560, y: 0 });
+    expect(host(e, lap).wifi?.assoc?.apId).toBe(ap2);
+    expect(host(e, lap).ip).toBe(ip);
+    sec(e, 8);
+    const replies = host(e, lap).pings.filter((p) => p.id === id && p.status === 'reply').length;
+    expect(replies).toBeGreaterThanOrEqual(4);
+    expect(host(e, lap).ip).toBe(ip);
   });
 
   it('snapshot/restore with associated clients; state JSON-serializable', () => {

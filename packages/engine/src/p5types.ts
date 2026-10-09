@@ -15,6 +15,9 @@ export interface ClockCfg {
   lastSyncUs?: number;
   /** Stratum (16 = unsynchronisiert). */
   stratum: number;
+  /** NTP: Zeitpunkt der letzten Abfrage und Zahl aufeinanderfolgender Abfragen ohne Antwort des Servers. */
+  lastPollUs?: number;
+  missedPolls?: number;
 }
 
 // ---------------------------------------------------------------- WLAN

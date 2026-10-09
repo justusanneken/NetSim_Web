@@ -298,9 +298,19 @@ export type NatRule =
       proto?: 'tcp' | 'udp';
       lport?: number;
       gport?: number;
+      /** Firewall-Objekt-NAT: gilt nur für das Paar (reale Schnittstelle, gemappte Schnittstelle). */
+      fromIf?: string;
+      toIf?: string;
     }
-  | { kind: 'dynamic'; acl: string; pool: string; overload: boolean }
-  | { kind: 'interface'; acl: string; ifaceId: string };
+  | {
+      kind: 'dynamic';
+      acl: string;
+      pool: string;
+      overload: boolean;
+      fromIf?: string;
+      toIf?: string;
+    }
+  | { kind: 'interface'; acl: string; ifaceId: string; fromIf?: string; toIf?: string };
 
 export interface NatEndpoint {
   ip: Ipv4Addr;
@@ -314,6 +324,9 @@ export interface NatEntry {
   outside: NatEndpoint;
   kind: 'static' | 'dynamic';
   expiresAt: number;
+  /** Firewall: Schnittstellenpaar der erzeugenden Regel (Rückverkehr wird nur dort zurückübersetzt). */
+  fromIf?: string;
+  toIf?: string;
 }
 
 export interface NatCfg {
@@ -405,7 +418,8 @@ export interface HttpRequest {
 
 export interface DhcpClient {
   enabled: boolean;
-  state: 'off' | 'init' | 'selecting' | 'requesting' | 'probing' | 'bound' | 'renewing';
+  state:
+    'off' | 'init' | 'selecting' | 'requesting' | 'probing' | 'bound' | 'renewing' | 'rebooting';
   xid: number;
   server?: Ipv4Addr;
   offered?: { ip: Ipv4Addr; mask: string; router?: Ipv4Addr; dns?: Ipv4Addr[]; leaseSec: number };
@@ -848,6 +862,8 @@ export interface EngineConfig {
   processingUs: number;
   /** Kupferkabel länger als dieses Maß → Link down. 0 = Prüfung aus. */
   maxCopperLengthM: number;
+  /** Obergrenze für das Event-Log (älteste Einträge fallen weg, Ids bleiben monoton). 0 = unbegrenzt. */
+  maxLogEntries?: number;
 }
 
 export interface EngineState {
@@ -872,6 +888,7 @@ export interface EngineState {
 
 export interface EngineSnapshot {
   state: EngineState;
+  /** Absolute Log-Länge (= nächste Log-Id), unabhängig vom Trimmen. */
   logLength: number;
 }
 

@@ -36,6 +36,7 @@
   "svc.tftp.read": "TFTP-Server: Datei {{file}} an {{src}} gesendet.",
   "svc.tftp.notFound": "TFTP-Server: Datei {{file}} nicht gefunden ({{src}}).",
   "svc.ntp.request": "NTP-Server: Zeitanfrage von {{src}}.",
+  "svc.ntp.lost": "NTP-Server {{server}} antwortet nicht mehr – die Uhr ist nicht mehr synchronisiert.",
   "svc.ntp.synced": "Uhr mit NTP-Server {{server}} synchronisiert (Stratum {{stratum}}).",
   "svc.syslog.rx": "Syslog empfangen von {{src}}: {{text}}",
   "svc.snmp.request": "SNMP-Agent: {{op}} {{oid}} von {{src}}.",

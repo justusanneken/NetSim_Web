@@ -72,11 +72,21 @@ export function tftpServer(r: SvcRx): boolean {
 
 // ---------------------------------------------------------------- NTP
 
-/** Stratum, mit dem dieses Gerät als NTP-Server auftritt (`undefined` = kein Server). */
+/** Anzahl aufeinanderfolgender unbeantworteter Abfragen (à 64 s), nach denen die Uhr als unsynchronisiert gilt. */
+export const NTP_MAX_MISSED = 4;
+
+/**
+ * Stratum, mit dem dieses Gerät als NTP-Server auftritt (`undefined` = kein Server).
+ * Wie bei IOS bedient auch ein synchronisierter Router/Switch ohne `ntp master` andere Clients (eigenes Stratum);
+ * `ntp master N` gilt als Rückfall, solange das Gerät mit keinem Server synchronisiert ist.
+ */
 export function ntpServerStratum(dev: Device): number | undefined {
   const c = dev.config;
   if (c.kind === 'host') return c.services.ntp?.enabled ? 1 : undefined;
-  if (c.kind === 'router' || c.kind === 'switch') return mgmtOf(c.sys).ntp.master;
+  if (c.kind === 'router' || c.kind === 'switch') {
+    const m = mgmtOf(c.sys);
+    return m.clock.syncedTo !== undefined ? m.clock.stratum : m.ntp.master;
+  }
   return undefined;
 }
 
@@ -104,6 +114,24 @@ export function ntpServersOf(dev: Device): string[] {
 export function ntpPoll(ctx: DeviceCtx, dev: Device): void {
   const node = ipNodeOf(ctx, dev);
   if (!node) return;
+  const clock = clockOf(dev);
+  if (clock?.syncedTo !== undefined) {
+    // Keine Antwort seit der letzten Abfrage ⇒ verpasste Abfrage; nach NTP_MAX_MISSED verliert die Uhr die Synchronisation
+    const answered = clock.lastPollUs === undefined || (clock.lastSyncUs ?? -1) >= clock.lastPollUs;
+    clock.missedPolls = answered ? 0 : (clock.missedPolls ?? 0) + 1;
+    if (clock.missedPolls >= NTP_MAX_MISSED || !ntpServersOf(dev).includes(clock.syncedTo)) {
+      ctx.log({
+        kind: 'info',
+        proto: 'NTP',
+        status: 'drop',
+        msg: { key: 'svc.ntp.lost', params: { server: clock.syncedTo } },
+      });
+      clock.syncedTo = undefined;
+      clock.stratum = 16;
+      clock.missedPolls = 0;
+    }
+  }
+  if (clock) clock.lastPollUs = ctx.now;
   for (const s of ntpServersOf(dev)) udpRequest(ctx, node, { dst: s, proto: 'ntp', op: 'request' });
 }
 
@@ -119,6 +147,7 @@ function ntpReply(ctx: DeviceCtx, dev: Device, server: string, msg: SvcPdu): voi
   clock.syncedTo = server;
   clock.stratum = stratum + 1;
   clock.lastSyncUs = ctx.now;
+  clock.missedPolls = 0;
   ctx.log({
     kind: 'info',
     proto: 'NTP',

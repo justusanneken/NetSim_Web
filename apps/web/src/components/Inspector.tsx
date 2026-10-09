@@ -8,7 +8,9 @@ const OSI = [7, 6, 5, 4, 3, 2, 1];
 /** PDU-Inspektor (Phase 1: Schichtenansicht des ausgewählten Ereignisses). */
 export function Inspector() {
   const { t } = useTranslation();
-  const entry = useStore((s) => (s.selectedLog === null ? undefined : s.log[s.selectedLog]));
+  const entry = useStore((s) =>
+    s.selectedLog === null ? undefined : s.log[s.selectedLog - s.logBase],
+  );
   if (!entry) return <p className="muted pad">{t('inspector.none')}</p>;
   const layers = entry.frame ? describeFrame(entry.frame) : [];
   return (
