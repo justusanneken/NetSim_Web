@@ -79,8 +79,9 @@ describe('QA BGP route reflector + communities', () => {
     const { e, r1, r3, r4, pc1, pc4 } = lab();
     sec(e, 120);
     const t3 = r3.run('show ip route');
-    // Anzeige: aufgelöster IGP-Next-Hop (IOS zeigt hier den BGP-Next-Hop 10.0.12.2)
-    expect(t3).toMatch(/B\s+10\.4\.0\.0\/24 \[200\/0\] via 10\.0\.13\.1/);
+    // Anzeige wie IOS: der BGP-Next-Hop (10.0.12.2), nicht der rekursiv aufgelöste IGP-Hop; die Weiterleitung
+    // nutzt weiter die rekursive Auflösung (Ping unten)
+    expect(t3).toMatch(/B\s+10\.4\.0\.0\/24 \[200\/0\] via 10\.0\.12\.2/);
     const d = r3.run('show ip bgp 10.4.0.0');
     expect(d).toContain('65100');
     expect(d).toMatch(/[Ll]ocal(pref|_pref|-pref)\S* 250|localpref 250/);
@@ -108,8 +109,8 @@ describe('QA BGP route reflector + communities', () => {
     sec(e, 60);
     expect(r3.run('show ip route')).not.toContain('10.4.0.0');
     r1.run('configure terminal', 'router bgp 65000', 'no neighbor 10.0.13.3', 'end');
-    // ohne Cease-Notification räumt R3 die Sitzung erst nach Ablauf der Hold-Time (180 s) ab
-    sec(e, 200);
+    // R1 sendet beim Entfernen eine Cease-NOTIFICATION: R3 verwirft die Sitzung sofort (nicht erst nach 180 s)
+    sec(e, 2);
     expect(r3.run('show ip bgp summary')).not.toMatch(/10\.0\.13\.1\s+4\s+65000.*\s\d+$/m);
   });
 });

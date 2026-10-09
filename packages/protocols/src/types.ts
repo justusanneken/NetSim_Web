@@ -154,7 +154,8 @@ export type SvcProto =
   | 'telnet'
   | 'ssh'
   | 'iot'
-  | 'capwap';
+  | 'capwap'
+  | 'bgp';
 
 /**
  * Generische Anwendungsnachricht (Phase 5): `op` benennt die Operation, `args` die Felder,
@@ -166,6 +167,10 @@ export interface SvcPdu {
   op: string;
   args: Record<string, string | number | boolean>;
   body?: string;
+  /** BGP-Nachricht (Port 179), wenn `proto === 'bgp'`. */
+  bgp?: BgpMsg;
+  /** Nutzdaten sind verschlüsselt (SSH): der Inspektor zeigt keinen Klartext. */
+  encrypted?: boolean;
 }
 
 export type DhcpOp = 'discover' | 'offer' | 'request' | 'ack' | 'nak' | 'decline' | 'release';

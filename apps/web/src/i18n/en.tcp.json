@@ -1,0 +1,4 @@
+{
+  "tcp.retransmit": "TCP: retransmitting segment to {{peer}}:{{port}} (attempt {{n}}).",
+  "tcp.abort": "TCP: connection to {{peer}}:{{port}} aborted after unsuccessful retransmissions (timeout)."
+}

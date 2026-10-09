@@ -6,7 +6,7 @@ import type { Base, IpNode } from '../l3';
 import type { Ip6Host, Iface6 } from '../l3v6';
 import type { L3Cfg } from '../types';
 import { rtOf, setBg, type Rt } from './core';
-import { bgpRecompute, bgpReset, bgpRx, bgpStop, bgpSync, bgpTimer } from './bgp';
+import { bgpRecompute, bgpReset, bgpStop, bgpSync, bgpTimer } from './bgp';
 import { eigrpRecompute, eigrpReset, eigrpRx, eigrpStop, eigrpSync, eigrpTimer } from './eigrp';
 import { dadScan, syncRa } from '../l3v6';
 import { greRx } from './gre';
@@ -110,7 +110,6 @@ export function routingRx(
   else if (l4.kind === 'gre') greRx(rt, base, ip, l4);
   else if (l4.kind === 'routing' && l4.proto === 'ospf') ospfRx(rt, iface, base, ip, l4.msg);
   else if (l4.kind === 'routing' && l4.proto === 'eigrp') eigrpRx(rt, iface, base, ip, l4.msg);
-  else if (l4.kind === 'routing' && l4.proto === 'bgp') bgpRx(rt, iface, ip, l4.msg);
 }
 
 /** Setzt den flüchtigen Zustand zurück (Ausschalten/Reload) – Konfiguration bleibt erhalten. */

@@ -1,0 +1,4 @@
+{
+  "tcp.retransmit": "TCP: Segment an {{peer}}:{{port}} wiederholt (Versuch {{n}}).",
+  "tcp.abort": "TCP: Verbindung zu {{peer}}:{{port}} nach erfolglosen Wiederholungen abgebrochen (Timeout)."
+}

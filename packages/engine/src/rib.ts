@@ -19,6 +19,8 @@ export interface RibEntry {
   since?: number;
   /** Ungleiche Lastverteilung (EIGRP-Variance): relatives Gewicht dieses Pfads. */
   share?: number;
+  /** BGP: Next Hop des Pfads laut Update (Anzeige); `nextHop` ist der rekursiv aufgelöste Forwarding-Hop. */
+  bgpNextHop?: Ipv4Addr;
 }
 
 export const prefixMask = (plen: number): string => {
@@ -80,6 +82,7 @@ export function buildRib(cfg: L3Cfg, ifaces: Iface[]): RibEntry[] {
       ifaceId: d.ifaceId,
       since: d.since,
       share: d.share,
+      bgpNextHop: d.bgpNextHop,
     });
   }
   return rib;

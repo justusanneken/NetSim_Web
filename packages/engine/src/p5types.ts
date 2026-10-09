@@ -236,6 +236,25 @@ export interface AppConn {
   purpose?: string;
   /** Client: Zusatzdaten zum Zweck (Empfänger, Betreff …). */
   data?: Record<string, string | number>;
+  /** Lokale Adresse der Verbindung (BGP: `update-source`; Server: Zieladresse des SYN). */
+  laddr?: Ipv4Addr;
+  /** Timer der Verbindung sind Hintergrund-Timer (BGP). */
+  bg?: boolean;
+  /** Noch nicht bestätigte Segmente (Retransmission-Warteschlange). */
+  rtx?: RtxSeg[];
+  /** Aktuelle Retransmission-Zeit (µs) und Anzahl aufeinanderfolgender Timeouts. */
+  rto?: number;
+  tries?: number;
+  /** Zuletzt gesendete Bestätigungsnummer (vermeidet doppelte reine ACKs). */
+  sentAck?: number;
+}
+
+/** Ein gesendetes, noch unbestätigtes TCP-Segment mit Anwendungsnachricht. */
+export interface RtxSeg {
+  seq: number;
+  len: number;
+  fin?: boolean;
+  msg?: SvcPdu;
 }
 
 export interface UdpReq {
