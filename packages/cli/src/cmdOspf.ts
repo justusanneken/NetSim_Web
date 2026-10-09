@@ -156,6 +156,24 @@ export function addOspfAreas(r: Registry<CliSession>): void {
     },
   });
 
+  // IOS: `no area N` entfernt alle Einstellungen des Bereichs (stub/nssa/default-cost/authentication, Ranges und
+  // Virtual Links über diese Transit-Area). `network … area N` und Schnittstellen-Zuordnungen bleiben bestehen.
+  r.add({
+    modes: [...OSPF],
+    only: 'l3',
+    slots: [K('no', 'Negate a command or set its defaults'), ...AREA],
+    run: (s, a) => {
+      const c = proc(s);
+      const id = normArea(a.area as string);
+      delete c.areas?.[id];
+      c.ranges = c.ranges.filter((g) => g.area !== id);
+      c.vlinks = c.vlinks?.filter((v) => v.area !== id);
+      if (c.vlinks?.length === 0) c.vlinks = undefined;
+      c.dirty = true;
+      touch(s);
+    },
+  });
+
   // ------------------------------------------------------------ Schnittstellen: Authentifizierung
   const ifo = (s: CliSession, f: (o: NonNullable<IfaceCfg['ospf']>) => void): void => {
     for (const id of targets(s)) {

@@ -1,5 +1,6 @@
 import type { Engine } from '../engine';
-import { announce, hostDhcp, resetIpRuntime } from '../devices/host';
+import { announce, hostDhcp, hostNode, resetIpRuntime } from '../devices/host';
+import { dhcpReboot } from '../svc/dhcpclient';
 import type { DeviceCtx } from '../ctx';
 import type { IpNode } from '../l3';
 import type { Bss, EapEntry, WifiBand, WifiProfile, WifiStatus } from '../p5types';
@@ -102,7 +103,13 @@ function candidates(eng: Engine, client: Device, cfg: HostConfig): Cand[] {
 /** 5 GHz wird bei gleicher Eignung bevorzugt (kleinerer Wert = besser). */
 const score = (c: Cand): number => c.dist - (c.bss.band === '5' ? 50 : 0);
 
-function disassociate(eng: Engine, client: Device, cfg: HostConfig, reason: string): void {
+function disassociate(
+  eng: Engine,
+  client: Device,
+  cfg: HostConfig,
+  reason: string,
+  keepIp = false,
+): void {
   const w = cfg.wifi;
   const a = w?.assoc;
   if (!w || !a) return;
@@ -130,7 +137,7 @@ function disassociate(eng: Engine, client: Device, cfg: HostConfig, reason: stri
     }),
   );
   if (linkId) eng.disconnect(linkId);
-  resetIpRuntime(cfg);
+  if (!keepIp) resetIpRuntime(cfg);
 }
 
 function logAp(
@@ -169,7 +176,8 @@ function setStatus(
   }
 }
 
-function associate(eng: Engine, client: Device, cfg: HostConfig, c: Cand): boolean {
+/** `roamed`: Wechsel auf einen anderen AP derselben SSID – IP-Konfiguration/Lease bleiben erhalten. */
+function associate(eng: Engine, client: Device, cfg: HostConfig, c: Cand, roamed = false): boolean {
   const w = cfg.wifi;
   const ac = hostOf(c.ap);
   const cport = client.ports.find((p) => p.kind === 'wifi');
@@ -198,7 +206,7 @@ function associate(eng: Engine, client: Device, cfg: HostConfig, c: Cand): boole
     channel: c.bss.channel,
     since: eng.state.now,
   };
-  resetIpRuntime(cfg);
+  if (!roamed) resetIpRuntime(cfg);
   eng.withCtx(client, (ctx) => {
     ctx.log({
       kind: 'info',
@@ -228,7 +236,12 @@ function associate(eng: Engine, client: Device, cfg: HostConfig, c: Cand): boole
         },
       },
     });
-    if (cfg.dhcpClient.enabled) hostDhcp(ctx, cfg, true);
+    if (roamed && cfg.ip) {
+      // Gratuitous ARP lässt den Switch den neuen Pfad lernen; DHCP bestätigt das Lease nur (INIT-REBOOT)
+      announce(ctx, cfg);
+      if (cfg.dhcpClient.enabled && !dhcpReboot(ctx, hostNode(ctx, cfg), cfg))
+        hostDhcp(ctx, cfg, true);
+    } else if (cfg.dhcpClient.enabled) hostDhcp(ctx, cfg, true);
     else announce(ctx, cfg);
   });
   return true;
@@ -376,6 +389,7 @@ export function wirelessSync(eng: Engine): void {
     const pending = cands.filter((c) => c.eap === 'pending');
     const best = good[0];
     const cur = w.assoc;
+    let roamed = false;
     if (cur) {
       const curCand = good.find(
         (c) => c.ap.id === cur.apId && c.bss.ssid === cur.ssid && c.bss.band === cur.band,
@@ -388,9 +402,10 @@ export function wirelessSync(eng: Engine): void {
         w.status = 'connected';
         continue;
       }
-      disassociate(eng, client, cfg, curCand ? 'wifi.reason.roam' : 'wifi.reason.range');
+      roamed = best !== undefined && best.bss.ssid === cur.ssid;
+      disassociate(eng, client, cfg, curCand ? 'wifi.reason.roam' : 'wifi.reason.range', roamed);
     }
-    if (best && associate(eng, client, cfg, best)) {
+    if (best && associate(eng, client, cfg, best, roamed)) {
       w.status = 'connected';
     } else if (fresh[0] && !pending.length) {
       startEap(eng, client, fresh[0]);

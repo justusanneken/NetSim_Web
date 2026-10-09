@@ -177,7 +177,10 @@ export interface ViewModel {
   autoCapture: boolean;
   devices: DeviceView[];
   links: LinkView[];
+  /** Absolute Zahl bisher vergebener Log-Ids (nächste Id). */
   logLength: number;
+  /** Id des ältesten noch vorhandenen Eintrags (davor wurde getrimmt). */
+  logStart: number;
   logEpoch: number;
   queueLength: number;
   canStepBack: boolean;

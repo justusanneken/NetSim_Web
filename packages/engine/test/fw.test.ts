@@ -131,6 +131,70 @@ describe('Firewall', () => {
     expect(hcfg(e, out).requests[0]?.status).toBe('done');
   });
 
+  it('Objekt-NAT mit drei Schnittstellen: Regeln gelten je Paar (real, gemappt), inkl. Rückverkehr', () => {
+    const { e, inn, out, dmz, cfg } = lab();
+    const fwc = cfg.fw as NonNullable<typeof cfg.fw>;
+    // dmz ist Quelle (dmz,outside) und Ziel (inside,dmz); inside ist Quelle zweier Regeln
+    fwc.objects.LAN = {
+      name: 'LAN',
+      net: { ip: '10.0.0.0', mask: '255.255.255.0' },
+      nat: { from: 'inside', to: 'outside', kind: 'dynamic-interface' },
+    };
+    fwc.objects.LAN2 = {
+      name: 'LAN2',
+      net: { ip: '10.0.0.0', mask: '255.255.255.0' },
+      nat: { from: 'inside', to: 'dmz', kind: 'dynamic-interface' },
+    };
+    fwc.objects.WEB = {
+      name: 'WEB',
+      net: { ip: '192.168.10.10', mask: '255.255.255.255' },
+      nat: { from: 'dmz', to: 'outside', kind: 'static', mapped: '203.0.113.50' },
+    };
+    fwApplyNat(cfg);
+    cfg.acls.OUT = {
+      name: 'OUT',
+      type: 'extended',
+      entries: [
+        {
+          seq: 10,
+          action: 'permit',
+          proto: 'tcp',
+          src: { any: true },
+          dst: { ip: '192.168.10.10', wildcard: '0.0.0.0' },
+          dstPort: { op: 'eq', a: 80 },
+          matches: 0,
+        },
+      ],
+    };
+    fwc.accessGroups.p1 = 'OUT';
+    must(e.setService(dmz, { http: { enabled: true } }));
+    // inside → outside: Quelle = Outside-Schnittstelle
+    expect(ping(e, inn, '203.0.113.10')).toBe(true);
+    const toOut = cfg.nat.table.find((x) => x.outside.ip === '203.0.113.10');
+    expect(toOut?.insideGlobal.ip).toBe('203.0.113.1');
+    // inside → dmz: Quelle = DMZ-Schnittstelle (nicht die Outside-Adresse)
+    expect(ping(e, inn, '192.168.10.10')).toBe(true);
+    const toDmz = cfg.nat.table.find((x) => x.outside.ip === '192.168.10.10');
+    expect(toDmz?.insideGlobal.ip).toBe('192.168.10.1');
+    // outside → dmz-Web über die statische Adresse, Antwort wird zurückübersetzt
+    e.httpGet(out, 'http://203.0.113.50/');
+    run(e, 6);
+    expect(hcfg(e, out).requests[0]?.status).toBe('done');
+    // dmz → outside: statische Übersetzung der Quelle, Rückverkehr kommt an
+    expect(ping(e, dmz, '203.0.113.10')).toBe(true);
+    expect(
+      cfg.nat.table.some(
+        (x) =>
+          x.insideLocal.ip === '192.168.10.10' &&
+          x.outside.ip === '203.0.113.10' &&
+          x.insideGlobal.ip === '203.0.113.50',
+      ),
+    ).toBe(true);
+    // zweiter Durchlauf (vorhandene Einträge) funktioniert in allen Richtungen
+    expect(ping(e, inn, '203.0.113.10')).toBe(true);
+    expect(ping(e, inn, '192.168.10.10')).toBe(true);
+  });
+
   it('Schnittstelle ohne nameif lässt nichts durch; same-security-traffic', () => {
     const { e, inn, cfg, dmz } = lab();
     const fwc = cfg.fw as NonNullable<typeof cfg.fw>;

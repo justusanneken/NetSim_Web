@@ -107,6 +107,31 @@ describe('CLI Phase 4: OSPF', () => {
     expect(r1.run('show debugging')).not.toContain('OSPF');
   });
 
+  it('debug-Cursor überlebt das Trimmen des Engine-Logs (absolute Ids)', () => {
+    const { e, r1, r2, r3 } = lab();
+    r1.run('enable', 'debug ip ospf adj');
+    e.state.config.maxLogEntries = 40;
+    for (const r of [r1, r2, r3])
+      r.run(
+        'configure terminal',
+        'router ospf 1',
+        'network 10.0.0.0 0.255.255.255 area 0',
+        'exit',
+        'end',
+      );
+    const seen: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      sec(e, 2);
+      for (const line of r1.s.poll().split('\n').filter(Boolean)) seen.push(line);
+    }
+    expect(e.logOffset).toBeGreaterThan(0);
+    expect(e.log.length).toBeLessThanOrEqual(40);
+    expect(seen.some((l) => /OSPF-1 ADJ/.test(l))).toBe(true);
+    // keine Wiederholungen trotz Trimmen (Zeitstempel + Text sind je Ereignis eindeutig genug)
+    expect(new Set(seen).size).toBe(seen.length);
+    expect(r1.s.poll()).toBe('');
+  });
+
   it('running-config enthält Router-Blöcke und wird per Replay identisch wiederhergestellt', () => {
     const { e, r1, r2, r3 } = lab();
     r1.run(

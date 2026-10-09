@@ -124,7 +124,10 @@
   und der Canvas-Abstand die Reichweite nicht überschreitet (2,4 GHz 260 px, 5 GHz 170 px; 5 GHz wird bevorzugt). Je Radio
   ein SSID; Kanäle beeinflussen sich nicht. Assoziation = ein dynamisch gelegter Link (`wireless`, 54 Mbit/s) zwischen
   einem Funk-Steckplatz des AP (8 Stück) und der WLAN-Karte; Authentifizierung/Assoziation erscheinen als Log-Einträge
-  (keine 802.11-Frames/Beacons). Roaming: Wechsel erst, wenn der neue AP deutlich näher ist (< 70 % der Entfernung).
+  (keine 802.11-Frames/Beacons). Roaming: Wechsel erst, wenn der neue AP deutlich näher ist (< 70 % der Entfernung). Beim Wechsel auf einen anderen AP derselben SSID
+  behält der Client IP, ARP-Cache und laufende Pings: er sendet ein Gratuitous ARP und – bei DHCP – einen INIT-REBOOT-REQUEST (Broadcast ohne Server-ID,
+  Zustand `rebooting`); ACK ⇒ sofort `bound`, NAK oder 4 s ohne Antwort ⇒ voller DORA. Verloren gehen nur Frames, die während des Wechsels unterwegs sind.
+  Ein Wechsel auf eine andere SSID (oder nach vollständigem Verbindungsverlust) startet weiterhin mit frischem Zustand und DORA.
   WPA2-Enterprise/802.1X siehe „Erweiterungen proto“.
 - **Physical View:** Entfernung für die Funkreichweite = Canvas-Abstand; liegen beide Geräte in der Physical View, gilt:
   anderes Gebäude/andere Stadt = außer Reichweite, anderer Raum = + 120 px „Wandabschlag“. Keine Kabellängen/Dämpfung,
@@ -145,7 +148,10 @@
 - **AAA:** nur Anmeldung an den vty-Leitungen (kein Console-/Enable-/Accounting-AAA, TACACS+ siehe „Erweiterungen proto“). Methodenliste
   `group radius`/`local`; bei RADIUS-Timeout (3 s) wird die nächste Methode genutzt, bei explizitem Reject nicht.
 - **NTP:** Anfrage/Antwort mit Zeitstempel (kein Offset-/Delay-Algorithmus, kein Stratum-Auswahlverfahren, keine Authentifizierung);
-  Abfrage 2 s nach Konfiguration, dann alle 64 s. Gerätezeit = Epoch-Basis + virtuelle Zeit; Router starten am 1.3.1993,
+  Abfrage 2 s nach Konfiguration, dann alle 64 s. **Verlust:** nach 4 aufeinanderfolgenden unbeantworteten Abfragen (≈ 4 min; IOS wertet ein 8-Bit-Reach-Register,
+  hier zur schnelleren Rückmeldung 4) wird der Client unsynchronisiert (Stratum 16, `show ntp status`: „Clock is unsynchronized“, Log `svc.ntp.lost`); `no ntp server`
+  hebt die Synchronisation sofort auf. **Server:** wie bei IOS bedient ein synchronisierter Router/Switch auch ohne `ntp master` andere Clients (mit seinem eigenen Stratum);
+  `ntp master N` gilt als Rückfall, solange das Gerät nicht synchronisiert ist (ein synchronisiertes Gerät bevorzugt seinen Zeitgeber). Hosts bedienen nur mit aktivem NTP-Dienst (Stratum 1). Gerätezeit = Epoch-Basis + virtuelle Zeit; Router starten am 1.3.1993,
   Hosts am 1.1.2026 12:00 UTC (deterministisch statt Wanduhr). Keine Zeitzonen/Sommerzeit (immer UTC).
 - **Syslog:** Meldungen für Link-/Leitungsstatus, Konfigurationsänderung (`%SYS-5-CONFIG_I`) und Logins; Schweregrad-Filter
   (`logging trap`), Puffer 100 Zeilen. Keine Facility-Auswahl, kein `logging source-interface`.
@@ -160,7 +166,8 @@
   von höherem zu niedrigerem Security-Level (`same-security-traffic permit inter-interface` für gleiche Level). TCP nur mit SYN
   eröffnet; ICMP-Echo mit Typ-Unterscheidung; ICMP-Fehler nur zu bestehenden Verbindungen; Timeouts TCP 1 h, UDP 2 min, ICMP 1 min.
   Verworfene Pakete erzeugen keine ICMP-Antwort. Objekt-NAT (`object network` + `nat (a,b) dynamic interface|static IP`) wird
-  auf den Router-NAT abgebildet; Proxy-ARP für statische globale Adressen. Rückverkehr einer von außen aufgebauten Verbindung wird
+  auf den Router-NAT abgebildet, und zwar je Regel mit dem Paar (reale, gemappte Schnittstelle): Eine Schnittstelle darf in einer Regel Quelle und in einer anderen Ziel
+  sein (`nat (inside,outside)`, `nat (dmz,outside)`, `nat (inside,dmz)` …); Übersetzungseinträge merken sich das Paar, Rückverkehr wird nur auf der gemappten Schnittstelle zurückübersetzt; Proxy-ARP für statische globale Adressen. Rückverkehr einer von außen aufgebauten Verbindung wird
   nicht dynamisch übersetzt. Verkehr **zur** Firewall (Ping auf eine Schnittstelle) ist nicht gefiltert; kein Failover, kein `inspect`,
   keine Zonen/Class-Maps, kein `object-group`, kein Twice-NAT.
 - **Host-Firewall:** ein Schalter, blockiert eingehendes Echo (Ping); keine Regeln je Port.
@@ -203,6 +210,11 @@
   (connected/static/andere IPv6-Protokolle). Keine Fragmentierung (zu große Pakete werden verworfen); EIGRP für IPv6 siehe „Erweiterungen proto“. OSPFv3 nutzt dieselbe LSDB-Struktur wie v2 (Präfixe in Router-LSAs).
 - **Uhr:** `clock set` setzt die Gerätezeit; `show clock` und `debug`-Zeitstempel folgen ihr (ohne gesetzte Uhr `*Mar  1 1993` wie bei IOS). Zeitangaben in `show ip dhcp binding` nutzen weiterhin eine feste Basis.
 - **Debug-Ausgabe:** Zeitstempel aus virtueller Zeit; Meldungstexte sind englisch, nicht übersetzt.
+- **Event-Log:** auf `EngineConfig.maxLogEntries` (Default 50 000, 0 = unbegrenzt) begrenzt; beim Überlauf fallen die ältesten ≈ 10 % weg. Log-Ids bleiben monoton (`Engine.logOffset` = Id des ersten
+  Eintrags); `getLog(from)`, `ViewModel.logLength`/`logStart`, Snapshots (`logLength`) und der CLI-Debug-Cursor rechnen mit absoluten Ids. Ein Step-Back-Snapshot, dessen Einträge bereits getrimmt wurden,
+  stellt den Zustand wieder her und lässt das Log leer (Ids setzen bei der Snapshot-Länge fort). Der Web-Store hält nur das noch vorhandene Fenster (`logBase`).
+- **OSPF `no area N`:** entfernt alle Einstellungen des Bereichs (stub/nssa/`default-cost`/`authentication`, `area N range …`, Virtual Links mit Transit-Area N); `network … area N` und
+  `ip ospf … area` bleiben bestehen (wie bei IOS, wo die Zuordnung der Schnittstellen eigene Konfiguration ist). Kein Fehler bei unbekannter Area.
 
 ## Erweiterungen proto
 

@@ -182,8 +182,8 @@ export function fwApplyNat(cfg: RouterConfig): void {
     if (!from || !to) continue;
     cfg.ifaces[from] ??= { kind: 'phys', portId: from };
     cfg.ifaces[to] ??= { kind: 'phys', portId: to };
-    (cfg.ifaces[from] as { natSide?: string }).natSide = 'inside';
-    (cfg.ifaces[to] as { natSide?: string }).natSide = 'outside';
+    // Kein globales natSide: Die Firewall wertet jede Regel mit ihrem Paar (real, gemappt) aus.
+    const pair = { fromIf: from, toIf: to };
     if (o.nat.kind === 'dynamic-interface') {
       const acl = FW_NAT_ACL(o.name);
       cfg.acls[acl] = {
@@ -200,9 +200,9 @@ export function fwApplyNat(cfg: RouterConfig): void {
           },
         ],
       };
-      cfg.nat.rules.push({ kind: 'interface', acl, ifaceId: to });
+      cfg.nat.rules.push({ kind: 'interface', acl, ifaceId: to, ...pair });
     } else if (o.nat.mapped) {
-      cfg.nat.rules.push({ kind: 'static', local: o.net.ip, global: o.nat.mapped });
+      cfg.nat.rules.push({ kind: 'static', local: o.net.ip, global: o.nat.mapped, ...pair });
     }
   }
 }
