@@ -63,3 +63,13 @@ export {
   platformText,
   iosVersionText,
 } from './devices/discovery';
+export {
+  snoopOf,
+  daiOf,
+  daiStats,
+  liveBindings,
+  defaultSnoop,
+  defaultDai,
+  DAI_DEFAULT_RATE,
+} from './devices/swsec';
+export { isPortfast, isBpduguard, recoveryOn } from './devices/switch';

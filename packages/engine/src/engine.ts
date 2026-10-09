@@ -1178,7 +1178,12 @@ export class Engine {
             peer?.dev.config.kind === 'switch'
               ? peer.dev.config.ports[peer.port.id]?.mode
               : undefined;
-          if (pm) {
+          const peerNoNeg =
+            peer?.dev.config.kind === 'switch' &&
+            peer.dev.config.ports[peer.port.id]?.nonegotiate === true;
+          if (peerNoNeg)
+            t = false; // kein DTP vom Nachbarn: bleibt Access
+          else if (pm) {
             t =
               pc.mode === 'dynamic-desirable'
                 ? pm === 'trunk' || pm === 'dynamic-desirable' || pm === 'dynamic-auto'
@@ -1223,6 +1228,8 @@ export class Engine {
           q.accessVlan,
           q.allowed,
           q.portfast,
+          q.portfastOff,
+          cfg.portfastDefault,
           q.routed,
           q.nativeVlan,
         ]),

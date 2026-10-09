@@ -236,6 +236,8 @@ export interface DhcpPdu {
     serverId?: Ipv4Addr;
     requestedIp?: Ipv4Addr;
     tftp?: string;
+    /** Option 82 (Relay Agent Information), vom DHCP-Snooping-Switch eingefügt. */
+    opt82?: { circuitId: string; remoteId: string };
   };
 }
 

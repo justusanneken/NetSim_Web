@@ -112,6 +112,8 @@ export interface Port {
   mtu: number;
   /** Gesetzt, wenn der Port durch err-disable abgeschaltet wurde (z. B. `psecure-violation`). */
   errdisabled?: string;
+  /** Zeitpunkt (µs), zu dem der Port err-disabled wurde. */
+  errdisabledAt?: number;
 }
 
 export interface PortRef {
@@ -389,6 +391,8 @@ export interface DhcpServerCfg {
   excluded: { from: Ipv4Addr; to: Ipv4Addr }[];
   bindings: Record<Ipv4Addr, DhcpBinding>;
   conflicts: Ipv4Addr[];
+  /** `ip dhcp relay information trust-all`: Option 82 ohne giaddr akzeptieren. */
+  trustAll?: boolean;
 }
 
 // ---------------------------------------------------------------- Hosts
@@ -544,6 +548,8 @@ export interface IfaceCfg {
   aclOut?: string;
   natSide?: 'inside' | 'outside';
   helpers?: Ipv4Addr[];
+  /** `ip dhcp relay information trusted`. */
+  relayTrusted?: boolean;
   /** IPv6-Konfiguration der Schnittstelle. */
   v6?: V6IfCfg;
   /** Bandbreite (kbit/s) für OSPF-Kosten/EIGRP; sonst aus der Linkgeschwindigkeit. */
@@ -716,6 +722,9 @@ export interface SwitchPortCfg {
   channelMode?: 'on' | 'active' | 'passive' | 'desirable' | 'auto';
   /** `switchport voice vlan N|dot1p|untagged`. */
   voiceVlan?: number | 'dot1p' | 'untagged';
+  /** `spanning-tree portfast disable` / `bpduguard disable` (überstimmt die globalen Defaults). */
+  portfastOff?: boolean;
+  bpduguardOff?: boolean;
   /** `switchport nonegotiate`: kein DTP. */
   nonegotiate?: boolean;
   /** `storm-control`: Schwellen in Prozent der Leitungsrate und Aktion. */
@@ -733,17 +742,24 @@ export interface SwitchPortCfg {
     win: number;
     dhcp: number;
     arp: number;
-    bc: number;
-    mc: number;
-    uc: number;
-    storm?: string;
+    /** [Bytes, Pakete] je Klasse im 1-s-Fenster. */
+    bc: [number, number];
+    mc: [number, number];
+    uc: [number, number];
+    stormLogged?: boolean;
   };
 }
 
+export interface StormThresh {
+  unit: 'pct' | 'pps' | 'bps';
+  rising: number;
+  falling?: number;
+}
+
 export interface StormCfg {
-  broadcast?: number;
-  multicast?: number;
-  unicast?: number;
+  broadcast?: StormThresh;
+  multicast?: StormThresh;
+  unicast?: StormThresh;
   action: 'filter' | 'shutdown' | 'trap';
 }
 
