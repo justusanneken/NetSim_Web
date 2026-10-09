@@ -8,6 +8,7 @@ import { Inspector } from './components/Inspector';
 import { MenuBar } from './components/MenuBar';
 import { Palette } from './components/Palette';
 import { PhysicalView } from './components/PanelPhysical';
+import { applyTheme } from './theme';
 import { PortPicker } from './components/PortPicker';
 import { SimPanel } from './components/SimPanel';
 import { Toolbar } from './components/Toolbar';
@@ -56,8 +57,7 @@ export function App() {
   useShortcuts();
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.dataset.colorblind = colorblind ? '1' : '0';
+    applyTheme(theme, colorblind);
   }, [theme, colorblind]);
 
   return (

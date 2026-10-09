@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_TYPES, type DeviceType } from '@netsim/engine';
-import { DEVICE_COLORS, ICON_PATHS } from '../icons';
+import { deviceColor, ICON_PATHS } from '../icons';
 import { useStore, type CableChoice } from '../store';
 
 const CATEGORIES: { id: string; devices: DeviceType[] }[] = [
@@ -14,7 +14,10 @@ const CATEGORIES: { id: string; devices: DeviceType[] }[] = [
 const CABLES: CableChoice[] = ['auto', 'straight', 'crossover', 'phone', 'coax'];
 
 export function DeviceIcon({ type, size = 40 }: { type: DeviceType; size?: number }) {
-  const color = DEVICE_COLORS[type] ?? '#6e7781';
+  const color = deviceColor(
+    type,
+    useStore((s) => s.theme),
+  );
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden fill="none">
       {(ICON_PATHS[type] ?? []).map((p, i) => (

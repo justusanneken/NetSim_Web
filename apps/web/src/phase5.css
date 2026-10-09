@@ -162,12 +162,12 @@ button.link {
 }
 .event.proto-WIFI,
 .event.proto-CAPWAP {
-  border-left-color: #1c7ed6;
-  background: color-mix(in srgb, #1c7ed6 8%, transparent);
+  border-left-color: var(--c-blue);
+  background: color-mix(in srgb, var(--c-blue) 8%, transparent);
 }
 .event.proto-FW {
-  border-left-color: #c92a2a;
-  background: color-mix(in srgb, #c92a2a 8%, transparent);
+  border-left-color: var(--c-red);
+  background: color-mix(in srgb, var(--c-red) 8%, transparent);
 }
 .event.proto-TFTP,
 .event.proto-FTP,
@@ -180,8 +180,8 @@ button.link {
 .event.proto-TELNET,
 .event.proto-SSH,
 .event.proto-IOT {
-  border-left-color: #7048e8;
-  background: color-mix(in srgb, #7048e8 8%, transparent);
+  border-left-color: var(--c-purple);
+  background: color-mix(in srgb, var(--c-purple) 8%, transparent);
 }
 
 /* Programmierung (IoT/SBC) */
@@ -225,7 +225,7 @@ button.link {
   white-space: pre-wrap;
 }
 .prog-status.error {
-  color: var(--danger, #c0392b);
+  color: var(--bad);
   font-weight: 600;
 }
 .prog-status.running {
