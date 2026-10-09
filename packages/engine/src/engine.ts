@@ -26,6 +26,7 @@ import {
   resetIpRuntime,
   type PingOptions,
 } from './devices/host';
+import { discLinkDown, discLinkUp, discRx, discStart, discTimer } from './devices/discovery';
 import { l3Ping, l3Timer, l3Trace, routerRx, type L3Dev } from './devices/l3dev';
 import { routingResetRuntime, routingSync } from './routing';
 import { pppoeClear } from './routing/pppoe';
@@ -221,6 +222,7 @@ export class Engine {
     }
     if ((dev.config.kind === 'router' || dev.config.kind === 'switch') && dev.powered) {
       this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
+      this.withCtx(dev, (ctx) => discStart(ctx, dev));
     }
     if (dev.config.kind === 'host' && dev.powered) {
       const h = dev.config;
@@ -235,6 +237,12 @@ export class Engine {
     if (!dev?.powered || dev.crashed) return;
     if (dev.config.kind === 'router' || dev.config.kind === 'switch')
       this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
+  }
+
+  /** CDP/LLDP-Konfiguration geändert (`cdp run`, `lldp run`, Timer): Advertisement-Timer neu setzen. */
+  discChanged(deviceId: string): void {
+    const dev = this.state.devices[deviceId];
+    if (dev?.powered && !dev.crashed) this.withCtx(dev, (ctx) => discStart(ctx, dev));
   }
 
   /** `clear crypto sa`: alle IKE-/IPsec-SAs löschen. */
@@ -1233,6 +1241,8 @@ export class Engine {
   private setPortOper(dev: Device, p: Port, up: boolean, reason?: string): void {
     if (p.operUp === up) return;
     p.operUp = up;
+    if (!up) discLinkDown(dev, p.id);
+    else if (dev.powered) this.withCtx(dev, (ctx) => discLinkUp(ctx, dev, p.id));
     if (!up) {
       if (dev.config.kind === 'switch') {
         const sw = dev as SwitchDev;
@@ -1488,6 +1498,11 @@ export class Engine {
     const fromId = from?.id ?? '';
     const cfg = dev.config;
     this.withCtx(dev, (ctx) => {
+      if (
+        (p.frame.payload.kind === 'cdp' || p.frame.payload.kind === 'lldp') &&
+        discRx(ctx, dev, p.portId, p.frame, fromId)
+      )
+        return;
       switch (cfg.kind) {
         case 'host':
           hostRx(ctx, cfg, p.portId, p.frame, fromId);
@@ -1522,6 +1537,10 @@ export class Engine {
     }
     const cfg = dev.config;
     const name = p.name.startsWith('bg:') ? p.name.slice(3) : p.name;
+    if (name.startsWith('disc:')) {
+      this.withCtx(dev, (ctx) => discTimer(ctx, dev, name));
+      return;
+    }
     if (name.startsWith('svc:')) {
       this.withCtx(dev, (ctx) => this.p5.timer(ctx, dev, name.slice(4)));
       return;

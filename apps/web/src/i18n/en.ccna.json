@@ -1,0 +1,5 @@
+{
+  "cdp.neighbor": "CDP: new neighbor {{dev}} ({{rport}}) on {{port}}.",
+  "lldp.neighbor": "LLDP: new neighbor {{dev}} ({{rport}}) on {{port}}.",
+  "cdp.nativeMismatch": "CDP: native VLAN mismatch on {{port}} ({{mine}}) with {{dev}} {{rport}} ({{theirs}})."
+}

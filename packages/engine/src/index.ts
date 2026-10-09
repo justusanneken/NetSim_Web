@@ -56,3 +56,10 @@ export * from './p5types';
 export { EngineService5 } from './service5';
 export * from './ipsecTypes';
 export * from './pppTypes';
+export {
+  discOf,
+  defaultDisc,
+  liveNeighbors,
+  platformText,
+  iosVersionText,
+} from './devices/discovery';

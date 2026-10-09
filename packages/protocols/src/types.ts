@@ -34,6 +34,9 @@ export type Ipv6Addr = string;
 export const MAC_STP = '01:80:c2:00:00:00';
 export const MAC_PVST = '01:00:0c:cc:cc:cd';
 export const MAC_VTP = '01:00:0c:cc:cc:cc';
+/** CDP nutzt dieselbe Multicast-Adresse wie VTP (SNAP-Typ 0x2000), LLDP die Nearest-Bridge-Adresse. */
+export const MAC_CDP = '01:00:0c:cc:cc:cc';
+export const MAC_LLDP = '01:80:c2:00:00:0e';
 
 export interface ArpPdu {
   kind: 'arp';
@@ -287,6 +290,38 @@ export interface BpduPdu {
     topologyChange: boolean;
     role: 'root' | 'designated' | 'alternate' | 'unknown';
   };
+}
+
+/** Cisco Discovery Protocol (v2). */
+export interface CdpPdu {
+  kind: 'cdp';
+  /** Device-ID (Hostname). */
+  deviceId: string;
+  /** Sendender Port, z. B. `GigabitEthernet0/1`. */
+  portName: string;
+  platform: string;
+  /** Capabilities: R=Router, S=Switch, H=Host, I=IGMP, r=Repeater. */
+  capabilities: string[];
+  version: string;
+  holdtime: number;
+  addr?: Ipv4Addr;
+  nativeVlan?: number;
+  duplex?: 'full' | 'half';
+}
+
+/** Link Layer Discovery Protocol (IEEE 802.1AB). */
+export interface LldpPdu {
+  kind: 'lldp';
+  chassisId: string;
+  portId: string;
+  portDesc: string;
+  ttl: number;
+  sysName: string;
+  sysDesc: string;
+  /** B=Bridge, R=Router, W=WLAN AP, T=Telephone, S=Station. */
+  capabilities: string[];
+  enabledCaps: string[];
+  mgmtAddr?: Ipv4Addr;
 }
 
 export interface VtpPdu {
@@ -576,7 +611,7 @@ export interface EthernetPdu {
   etherType: number;
   /** 802.1Q-Tag (fehlt bei untagged Frames). */
   vlan?: { vid: number; pcp: number };
-  payload: ArpPdu | Ipv4Pdu | Ipv6Pdu | BpduPdu | VtpPdu | PppoePdu;
+  payload: ArpPdu | Ipv4Pdu | Ipv6Pdu | BpduPdu | VtpPdu | CdpPdu | LldpPdu | PppoePdu;
 }
 
 export type Pdu =
@@ -593,6 +628,8 @@ export type Pdu =
   | SvcPdu
   | BpduPdu
   | VtpPdu
+  | CdpPdu
+  | LldpPdu
   | Ipv6Pdu
   | Icmp6Pdu
   | RipPdu
@@ -629,6 +666,8 @@ export type ProtoTag =
   | 'HTTP'
   | 'STP'
   | 'VTP'
+  | 'CDP'
+  | 'LLDP'
   | 'NAT'
   | 'ACL'
   | 'RIP'

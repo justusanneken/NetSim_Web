@@ -26,6 +26,7 @@ import { ciscoMac } from './format';
 import { compressVlans, ifDisplay } from './ifnames';
 import { type7Encrypt } from './secrets';
 import { fwGlobalLines, fwIfaceLines, mgmtGlobalLines, vtyExtraLines, vtyLast } from './render5';
+import { discGlobalLines, discIfLines } from './cmdDisc';
 
 type CliConfig = RouterConfig | SwitchConfig;
 
@@ -250,6 +251,7 @@ function renderInterfaces(d: Device & { config: CliConfig }, L: string[]): void 
       l3Lines(cfg, cfg.ifaces[p.id], out);
       out.push(` duplex ${p.duplex}`, ` speed ${p.speed}`);
     }
+    out.push(...discIfLines(cfg, p.id));
     if (!p.adminUp) out.push(' shutdown');
     L.push(...out, '!');
     if (!isSwitch) {
@@ -350,6 +352,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
   if (sys.domainName) L.push(`ip domain-name ${sys.domainName}`, '!');
   L.push(...protoGlobalLines(cfg), ...cryptoGlobalLines(cfg));
   L.push(...mgmtGlobalLines(cfg));
+  L.push(...discGlobalLines(cfg));
   if (cfg.kind === 'switch') {
     if (cfg.vtp.mode !== 'server') L.push(`vtp mode ${cfg.vtp.mode}`);
     if (cfg.vtp.domain) L.push(`vtp domain ${cfg.vtp.domain}`);

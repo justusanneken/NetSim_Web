@@ -10,6 +10,7 @@ import { CliError, type CliSession } from './session';
 import { addPhase3 } from './commands3';
 import { addPhase4 } from './commands4';
 import { addGaps } from './commandsGaps';
+import { addDiscovery } from './cmdDisc';
 import * as show from './show';
 import { addPhase5 } from './commands5';
 
@@ -1070,5 +1071,6 @@ export function buildRegistry(): Registry<CliSession> {
   addPhase4(r);
   addPhase5(r);
   addGaps(r);
+  addDiscovery(r);
   return r;
 }
