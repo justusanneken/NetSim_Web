@@ -10,6 +10,7 @@ import { bgpRecompute, bgpReset, bgpRx, bgpStop, bgpSync, bgpTimer } from './bgp
 import { eigrpRecompute, eigrpReset, eigrpRx, eigrpStop, eigrpSync, eigrpTimer } from './eigrp';
 import { dadScan, syncRa } from '../l3v6';
 import { greRx } from './gre';
+import { pppTimer, pppoeReset, pppoeStop, pppoeSync } from './pppoe';
 import { hsrpRx, hsrpRx6, hsrpStop, hsrpSync, hsrpTimer } from './hsrp';
 import { pseudoIface, ospfRecompute, ospfRx, ospfStop, ospfSync, ospfTimer } from './ospf';
 import { ripRecompute, ripRx, ripStop, ripSync, ripTimer } from './rip';
@@ -69,6 +70,7 @@ export function routingSync(ctx: DeviceCtx, dev: L3Dev): void {
   eigrpSync(rt);
   hsrpSync(rt);
   bgpSync(rt);
+  pppoeSync(rt);
   requestRecompute(rt);
 }
 
@@ -80,6 +82,7 @@ export function routingStop(ctx: DeviceCtx, dev: L3Dev): void {
   eigrpStop(rt);
   hsrpStop(rt);
   bgpStop(rt);
+  pppoeStop(rt);
 }
 
 export function routingTimer(ctx: DeviceCtx, dev: L3Dev, name: string): void {
@@ -93,6 +96,7 @@ export function routingTimer(ctx: DeviceCtx, dev: L3Dev, name: string): void {
   if (ospfTimer(rt, name)) return;
   if (eigrpTimer(rt, name)) return;
   if (hsrpTimer(rt, name)) return;
+  if (pppTimer(rt, name)) return;
   if (bgpTimer(rt, name)) return;
 }
 
@@ -130,6 +134,7 @@ function hsrpResetCfg(cfg: L3Cfg): void {
 export function routingResetRuntime(cfg: L3Cfg): void {
   cfg.dynRoutes = [];
   cfg.dynRoutes6 = [];
+  pppoeReset(cfg);
   cfg.raIfs = [];
   for (const ic of Object.values(cfg.ifaces)) if (ic.v6) ic.v6.slaac = [];
   const r = cfg.routing;

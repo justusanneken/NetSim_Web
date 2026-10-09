@@ -12,12 +12,15 @@ export const ETHERTYPE = {
   ipv6: 0x86dd,
   stp: 0x0026,
   vtp: 0x2003,
+  pppoeDiscovery: 0x8863,
+  pppoeSession: 0x8864,
 } as const;
 export const IP_PROTO = {
   icmp: 1,
   tcp: 6,
   udp: 17,
   gre: 47,
+  esp: 50,
   icmp6: 58,
   eigrp: 88,
   ospf: 89,
@@ -98,9 +101,43 @@ export interface Ipv4Pdu {
   payload: IpPayload;
 }
 
-export type IpPayload = IcmpPdu | UdpPdu | TcpPdu | RoutingPdu | GrePdu;
+export type IpPayload = IcmpPdu | UdpPdu | TcpPdu | RoutingPdu | GrePdu | EspPdu;
 
-export type AppPdu = DhcpPdu | Dhcp6Pdu | DnsPdu | RipPdu | HsrpPdu | SvcPdu;
+/**
+ * IPsec ESP (IP-Protokoll 50, Tunnelmodus): `inner` ist das gekapselte Originalpaket. Es dient nur der
+ * Simulation (Entschlüsselung am Endpunkt) und wird im Inspektor und in Listen NICHT angezeigt –
+ * auf dem Weg ist die Nutzlast „verschlüsselt“.
+ */
+export interface EspPdu {
+  kind: 'esp';
+  spi: number;
+  seq: number;
+  /** Verwendete Transform-Bezeichnung (`esp-aes esp-sha-hmac`). */
+  cipher: string;
+  inner: Ipv4Pdu;
+}
+
+/** IKE (UDP 500), vereinfacht: ein Austausch aus Anfrage und Antwort für IKE- und IPsec-SA. */
+export interface IkePdu {
+  kind: 'ike';
+  op: 'request' | 'accept' | 'reject';
+  cookie: number;
+  /** Phase-1-Parameter (ISAKMP-Policy). */
+  encr: string;
+  hash: string;
+  group: number;
+  /** Gegenseitiger Nachweis des Pre-Shared Keys (Digest, kein Klartext). */
+  authHash: string;
+  /** Phase 2: Transform-Set und Verkehrsauswahl (Quelle > Ziel als Präfixe). */
+  transform: string;
+  selector?: { src: string; dst: string };
+  /** SPI, den der Absender für eingehenden Verkehr vom Peer erwartet. */
+  spi: number;
+  /** Ablehnungsgrund (`reject`). */
+  reason?: string;
+}
+
+export type AppPdu = DhcpPdu | Dhcp6Pdu | DnsPdu | RipPdu | HsrpPdu | SvcPdu | IkePdu;
 
 export interface UdpPdu {
   kind: 'udp';
@@ -483,6 +520,40 @@ export interface Icmp6Pdu {
 
 export type Ip6Payload = Icmp6Pdu | UdpPdu | TcpPdu | RoutingPdu | GrePdu;
 
+// ---------------------------------------------------------------- PPPoE / PPP
+
+export type PppMsg =
+  | {
+      proto: 'lcp';
+      op: 'conf-req' | 'conf-ack' | 'term-req';
+      mru: number;
+      auth?: 'chap';
+      magic: number;
+    }
+  | {
+      proto: 'chap';
+      op: 'challenge' | 'response' | 'success' | 'failure';
+      id: number;
+      /** Challenge-Wert bzw. Antwort-Digest (kein Klartextpasswort). */
+      value?: string;
+      name?: string;
+    }
+  | { proto: 'ipcp'; op: 'conf-req' | 'conf-nak' | 'conf-ack'; addr: Ipv4Addr; peer?: Ipv4Addr }
+  | { proto: 'ip'; inner: Ipv4Pdu };
+
+/** PPP over Ethernet: Discovery (EtherType 0x8863) und Session (0x8864) in einem PDU-Typ. */
+export interface PppoePdu {
+  kind: 'pppoe';
+  code: 'PADI' | 'PADO' | 'PADR' | 'PADS' | 'PADT' | 'SESSION';
+  sessionId: number;
+  serviceName?: string;
+  /** Access Concentrator (BRAS) – nur PADO/PADS. */
+  acName?: string;
+  hostUniq?: string;
+  /** Nur `SESSION`. */
+  ppp?: PppMsg;
+}
+
 export interface Ipv6Pdu {
   kind: 'ipv6';
   src: Ipv6Addr;
@@ -499,7 +570,7 @@ export interface EthernetPdu {
   etherType: number;
   /** 802.1Q-Tag (fehlt bei untagged Frames). */
   vlan?: { vid: number; pcp: number };
-  payload: ArpPdu | Ipv4Pdu | Ipv6Pdu | BpduPdu | VtpPdu;
+  payload: ArpPdu | Ipv4Pdu | Ipv6Pdu | BpduPdu | VtpPdu | PppoePdu;
 }
 
 export type Pdu =
@@ -521,7 +592,10 @@ export type Pdu =
   | RipPdu
   | HsrpPdu
   | RoutingPdu
-  | GrePdu;
+  | GrePdu
+  | EspPdu
+  | IkePdu
+  | PppoePdu;
 /** Ein Frame auf dem Kabel ist immer ein Ethernet-PDU. */
 export type Frame = EthernetPdu;
 

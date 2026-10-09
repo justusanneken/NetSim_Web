@@ -9,6 +9,7 @@ import type { RibEntry } from './rib';
 import type {
   CableType,
   DhcpClient,
+  IfaceCfg,
   HostServices,
   HttpRequest,
   SwitchPortCfg,
@@ -57,6 +58,18 @@ export interface RoutingInfo {
     maxPaths?: number;
   }[];
   eigrp: { asn: number; v6?: boolean; neighbors: { ip: string; iface: string }[] }[];
+  /** PPPoE-Sitzungen (Client am Dialer, Server je Virtual-Access). */
+  pppoe?: {
+    role: 'client' | 'server';
+    iface: string;
+    port: string;
+    state: string;
+    sessionId: number;
+    peerMac: string;
+    localIp?: string;
+    peerIp?: string;
+    user?: string;
+  }[];
   bgp?: {
     asn: number;
     neighbors: {
@@ -124,7 +137,7 @@ export interface DeviceView {
   ifaceList?: {
     id: string;
     name: string;
-    kind: 'phys' | 'sub' | 'svi' | 'loop' | 'tunnel';
+    kind: IfaceCfg['kind'];
     ip?: string;
     mask?: string;
     /** IPv6-Adressen (global/ULA, inkl. SLAAC). */
@@ -257,6 +270,18 @@ function addRoutingView(engine: Engine, d: Device, cfg: L3Conf, v: DeviceView): 
       asn: c.asn,
       v6: c.v6 || undefined,
       neighbors: Object.values(c.neighbors).map((n) => ({ ip: n.ip, iface: name(n.ifaceId) })),
+    });
+  for (const s of Object.values(cfg.ppp?.sessions ?? {}))
+    (info.pppoe ??= []).push({
+      role: s.role,
+      iface: name(s.ifaceId),
+      port: d.ports.find((p) => p.id === s.portId)?.name ?? s.portId,
+      state: s.state,
+      sessionId: s.sessionId,
+      peerMac: s.peerMac,
+      localIp: s.localIp,
+      peerIp: s.peerIp,
+      user: s.user,
     });
   if (r.bgp)
     info.bgp = {

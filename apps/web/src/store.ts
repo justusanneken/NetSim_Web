@@ -55,6 +55,11 @@ export const ALL_PROTOS = [
   'WIFI',
   'FW',
   'CAPWAP',
+  'TACACS',
+  'PPPOE',
+  'PPP',
+  'IKE',
+  'ESP',
 ] as const;
 export type ProtoFilter = (typeof ALL_PROTOS)[number];
 

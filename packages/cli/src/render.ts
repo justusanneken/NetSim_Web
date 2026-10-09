@@ -1,3 +1,4 @@
+import { dialerLines, protoGlobalLines, protoIfaceLines, vtemplateLines } from './renderProto';
 import { renderPolicyConfig } from './showGaps';
 import { maskToPrefix, parseIpv4 } from '@netsim/protocols';
 import type {
@@ -83,6 +84,7 @@ function l3Lines(cfg: L3Cfg, c: IfaceCfg | undefined, out: string[]): void {
   if (c?.aclOut) out.push(` ip access-group ${c.aclOut} out`);
   if (c?.natSide && !(cfg as RouterConfig).fw) out.push(` ip nat ${c.natSide}`);
   if (c) routingIfaceLines(c, out);
+  if (c) protoIfaceLines(c, out);
 }
 
 const area = (a: string): string => a;
@@ -239,14 +241,16 @@ function renderInterfaces(d: Device & { config: CliConfig }, L: string[]): void 
       }
     }
   }
-  for (const kind of ['loop', 'tunnel'] as const) {
+  for (const kind of ['loop', 'tunnel', 'dialer', 'vtemplate'] as const) {
     for (const id of sortedIfaceIds(cfg, kind).sort(
       (a, b) => Number(a.slice(2)) - Number(b.slice(2)),
     )) {
       const c = cfg.ifaces[id] as IfaceCfg;
       const out = [`interface ${ifDisplay(d, id)}`];
       if (sys.descriptions[id]) out.push(` description ${sys.descriptions[id]}`);
-      l3Lines(cfg, c, out);
+      if (kind === 'dialer') out.push(...dialerLines(c));
+      else if (kind === 'vtemplate') out.push(...vtemplateLines(d, c));
+      else l3Lines(cfg, c, out);
       if (kind === 'tunnel') {
         if (c.tunnel?.source)
           out.push(
@@ -321,6 +325,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     L.push('!');
   }
   if (sys.domainName) L.push(`ip domain-name ${sys.domainName}`, '!');
+  L.push(...protoGlobalLines(cfg));
   L.push(...mgmtGlobalLines(cfg));
   if (cfg.kind === 'switch') {
     if (cfg.vtp.mode !== 'server') L.push(`vtp mode ${cfg.vtp.mode}`);

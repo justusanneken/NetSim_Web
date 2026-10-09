@@ -1,3 +1,4 @@
+import { pppBriefRows } from './showProto';
 import { maskToPrefix, parseIpv4, sameSubnet } from '@netsim/protocols';
 import type { Device, Engine, Port, RibEntry, SwitchConfig, SysConfig } from '@netsim/engine';
 import { formatClock } from './clock';
@@ -66,6 +67,7 @@ export function showIpInterfaceBrief(_e: Engine, d: D): string[] {
       up ? 'up' : 'down',
     );
   }
+  for (const [name, ip, st, pr] of pppBriefRows(d)) row(name, ip, st, pr);
   if (d.config.kind === 'switch') {
     const svis = Object.entries(d.config.ifaces).filter(([, c]) => c.kind === 'svi');
     if (!svis.some(([id]) => id === 'vlan1'))

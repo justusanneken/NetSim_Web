@@ -915,6 +915,7 @@ export function buildRegistry(): Registry<CliSession> {
   const mtu = (s: CliSession, a: Record<string, string>): void => {
     for (const id of targets(s)) {
       const portId = id.split('.')[0] as string;
+      if (!s.device.ports.some((p) => p.id === portId)) continue; // Dialer/Template: MTU fest 1492
       const res = s.engine.setPortMtu(s.deviceId, portId, s.negated ? 1500 : Number(a.n));
       if (!res.ok) throw engineError(res);
     }

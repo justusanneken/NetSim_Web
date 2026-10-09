@@ -1,3 +1,4 @@
+import type { BbaGroup, DialerCfg, LocalPool, PppRuntime, VTemplateCfg } from './pppTypes';
 import type { HsrpCfg, OspfIfCfg, RoutingCfg, TunnelCfg } from './routing/types';
 import type {
   ApCfg,
@@ -527,7 +528,7 @@ export interface SysConfig {
 
 /** Konfiguration einer L3-Schnittstelle (physisch, Subinterface oder SVI). */
 export interface IfaceCfg {
-  kind: 'phys' | 'sub' | 'svi' | 'loop' | 'tunnel';
+  kind: 'phys' | 'sub' | 'svi' | 'loop' | 'tunnel' | 'dialer' | 'vtemplate' | 'vaccess';
   portId?: string;
   /** Sub: Dot1Q-VLAN; SVI: VLAN-ID. */
   vlan?: number;
@@ -552,6 +553,16 @@ export interface IfaceCfg {
   /** `standby version 2` (gilt für alle Gruppen der Schnittstelle). */
   hsrpVersion?: 1 | 2;
   tunnel?: TunnelCfg;
+  /** Dialer (PPPoE-Client). */
+  dialer?: DialerCfg;
+  /** Virtual-Template (PPPoE-Server). */
+  vtemplate?: VTemplateCfg;
+  /** Physischer Port: `pppoe-client dial-pool-number N`. */
+  pppoeClientPool?: number;
+  /** Physischer Port: `pppoe enable group NAME`. */
+  pppoeGroup?: string;
+  /** IPsec: `crypto map NAME` an dieser Schnittstelle. */
+  cryptoMap?: string;
   /** RIP: Split Horizon an dieser Schnittstelle (Default an). */
   ripSplitHorizon?: boolean;
 }
@@ -638,6 +649,12 @@ export interface L3Cfg extends IpCore {
   dhcp6?: Dhcp6ServerCfg;
   /** Switch ohne Routing: `ip default-gateway`. */
   defaultGateway?: Ipv4Addr;
+  /** PPPoE-Server: `bba-group pppoe`. */
+  bba?: Record<string, BbaGroup>;
+  /** `ip local pool NAME START END`. */
+  ipPools?: Record<string, LocalPool>;
+  /** Laufzeit: PPPoE-Sitzungen. */
+  ppp?: PppRuntime;
 }
 
 export interface RouterConfig extends L3Cfg {

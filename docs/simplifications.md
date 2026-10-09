@@ -240,3 +240,12 @@
   `snmp/trap` an UDP 162, ohne Bestätigung (keine Informs, kein Retry, kein v3, keine Varbind-Liste/OIDs – Typ und Schnittstelle als Felder). Empfänger ist ein Server mit
   aktivem SNMP-Dienst; Traps mit unbekannter Community werden verworfen (`svc.snmp.badCommunity`), gültige in `services.snmp.traps` abgelegt (max. 200) und im Services-Tab sowie in der
   MIB-Browser-App angezeigt. `authentication`/`warmstart` werden akzeptiert, aber nie ausgelöst.
+- **PPPoE/PPP:** Client am `Dialer N` (`dialer pool N` ↔ `pppoe-client dial-pool-number N` am physischen Port), Server/BRAS über `bba-group pppoe` → `virtual-template N` →
+  `interface Virtual-Template N` (`ip unnumbered`, `peer default ip address pool`, `ppp authentication chap`) und `ip local pool`. Discovery (PADI → PADO → PADR → PADS, PADT) und PPP laufen als echte
+  Frames (EtherType 0x8863/0x8864), die PPP-Aushandlung ist verkürzt: LCP nur Configure-Request/-Ack in beide Richtungen (MRU 1492, Authentifizierung CHAP), CHAP mit
+  Challenge/Response/Success|Failure (Digest ist ein deterministischer Pseudo-Hash, kein MD5; das Server-Passwort stammt aus `username X password Y`), IPCP als Request(0.0.0.0) →
+  Nak(zugewiesene Adresse) → Request → Ack. Keine Echo-/Keepalive-Pakete, kein MP/PFC/ACFC, keine IPv6CP-Aushandlung, kein RADIUS für PPP, keine Service-Namen-Filter. Nach einem
+  Fehler (falsches Passwort) versucht der Client es nach 10 s erneut. `Dialer`/`Virtual-Access` erscheinen als IP-Schnittstelle (/32, MTU 1492, Host-Route zur Gegenstelle) nur bei
+  stehender Sitzung; die Default-Route kommt per `ip route 0.0.0.0 0.0.0.0 Dialer1` oder `ppp ipcp route default`. IP-Verkehr in der Sitzung wird in der Ereignisliste als IP-Paket
+  der Dialer-Schnittstelle gezeigt (die PPPoE-Kapselung zeigen nur Discovery-/PPP-Frames). Virtual-Access-Schnittstellen sind nicht konfigurierbar (nur über die Vorlage). Cloud/DSL-Modem
+  reichen die Frames transparent weiter.

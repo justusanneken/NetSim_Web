@@ -44,6 +44,11 @@ export function buildRib(cfg: L3Cfg, ifaces: Iface[]): RibEntry[] {
     if (plen === undefined) continue;
     rib.push({ type: 'C', prefix: networkOf(i.ip, plen), plen, ad: 0, metric: 0, ifaceId: i.id });
     rib.push({ type: 'L', prefix: i.ip, plen: 32, ad: 0, metric: 0, ifaceId: i.id });
+    // PPPoE: Host-Route zur Gegenstelle; optional Default-Route (`ppp ipcp route default`)
+    if (i.peerIp)
+      rib.push({ type: 'C', prefix: i.peerIp, plen: 32, ad: 0, metric: 0, ifaceId: i.id });
+    if (i.kind === 'dialer' && i.cfg.dialer?.ipcpRoute)
+      rib.push({ type: 'S', prefix: '0.0.0.0', plen: 0, ad: 1, metric: 0, ifaceId: i.id });
   }
   const connected = rib.filter((e) => e.type === 'C');
   for (const r of cfg.staticRoutes) {

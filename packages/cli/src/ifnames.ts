@@ -5,7 +5,7 @@ import { resolvePort, shortName } from './format';
 export interface IfRef {
   /** Engine-ID: Port (`p0`), Subinterface (`p0.10`), SVI (`vlan10`) oder Port-Channel (`po1`). */
   id: string;
-  kind: 'phys' | 'sub' | 'svi' | 'po' | 'loop' | 'tunnel';
+  kind: 'phys' | 'sub' | 'svi' | 'po' | 'loop' | 'tunnel' | 'dialer' | 'vtemplate';
 }
 
 /** `gi0/0`, `gi0/0.10`, `vlan10`, `po1` → Referenz. */
@@ -15,6 +15,10 @@ export function resolveIface(dev: Device, text: string): IfRef | undefined {
   if (loop && dev.config.kind !== 'hub') return { id: `lo${Number(loop[1])}`, kind: 'loop' };
   const tun = /^(?:tunnel|tu)(\d{1,4})$/i.exec(t);
   if (tun && dev.config.kind === 'router') return { id: `tu${Number(tun[1])}`, kind: 'tunnel' };
+  const dia = /^(?:dialer|di)(\d{1,4})$/i.exec(t);
+  if (dia && dev.config.kind === 'router') return { id: `di${Number(dia[1])}`, kind: 'dialer' };
+  const vt = /^(?:virtual-template|vt)(\d{1,4})$/i.exec(t);
+  if (vt && dev.config.kind === 'router') return { id: `vt${Number(vt[1])}`, kind: 'vtemplate' };
   const svi = /^vlan(\d{1,4})$/i.exec(t);
   if (svi && dev.config.kind === 'switch') return { id: `vlan${Number(svi[1])}`, kind: 'svi' };
   const po = /^(?:po|port-channel)(\d{1,3})$/i.exec(t);
@@ -56,6 +60,9 @@ export function resolveRange(dev: Device, text: string): IfRef[] | undefined {
 export function ifDisplay(dev: Device, id: string): string {
   if (/^lo\d+$/.test(id)) return `Loopback${id.slice(2)}`;
   if (/^tu\d+$/.test(id)) return `Tunnel${id.slice(2)}`;
+  if (/^di\d+$/.test(id)) return `Dialer${id.slice(2)}`;
+  if (/^vt\d+$/.test(id)) return `Virtual-Template${id.slice(2)}`;
+  if (/^va\d+$/.test(id)) return `Virtual-Access${id.slice(2)}`;
   if (id.startsWith('vlan')) return `Vlan${id.slice(4)}`;
   if (id.startsWith('po')) return `Port-channel${id.slice(2)}`;
   const [pid, vlan] = id.split('.');
@@ -68,11 +75,15 @@ export const ifShort = (dev: Device, id: string): string =>
     ? `Lo${id.slice(2)}`
     : /^tu\d+$/.test(id)
       ? `Tu${id.slice(2)}`
-      : id.startsWith('vlan')
-        ? `Vl${id.slice(4)}`
-        : id.startsWith('po')
-          ? `Po${id.slice(2)}`
-          : shortName(ifDisplay(dev, id));
+      : /^di\d+$/.test(id)
+        ? `Di${id.slice(2)}`
+        : /^va\d+$/.test(id)
+          ? `Vi${id.slice(2)}`
+          : id.startsWith('vlan')
+            ? `Vl${id.slice(4)}`
+            : id.startsWith('po')
+              ? `Po${id.slice(2)}`
+              : shortName(ifDisplay(dev, id));
 
 /** 1,3,5-7 → [1,3,5,6,7] */
 export function parseVlanList(text: string): number[] {
@@ -112,6 +123,7 @@ export const SUBMODES: ModeId[] = [
   'config-eigrp',
   'config-eigrp6',
   'config-tacacs',
+  'config-bba',
   'config-bgp',
   'config-obj-net',
   'config-route-map',

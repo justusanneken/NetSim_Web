@@ -159,3 +159,8 @@ Schnittstelle `ipv6 rip NAME enable`; `redistribute connected|static|rip|ospf|bg
 **TACACS+:** `tacacs-server host A [key K]`, `tacacs server NAME` (`address ipv4 A`, `key K`; Modus `(config-server-tacacs)#`), `aaa authentication login LIST group tacacs+ [group radius] [local]`, `show tacacs`, `show aaa`.
 
 **SNMP-Traps:** `snmp-server host A [version 1|2c] COMMUNITY`, `snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]`, `show snmp` (Trap-Ziele, freigeschaltete Typen).
+
+**PPPoE:** Client: `interface Dialer N` (`encapsulation ppp`, `ip address negotiated`, `dialer pool N`, `ppp chap hostname X`, `ppp chap password [0] Y`, `ppp ipcp route default`), am Port
+`pppoe-client dial-pool-number N`, `ip route 0.0.0.0 0.0.0.0 Dialer N`. Server: `bba-group pppoe NAME` (`virtual-template N`), `interface Virtual-Template N` (`ip unnumbered IF`,
+`peer default ip address pool P`, `ppp authentication chap`), `ip local pool P START [END]`, am Port `pppoe enable [group NAME]`, `username X password Y`.
+Anzeige/Betrieb: `show pppoe session`, `show ip interface brief` (Dialer/Virtual-Access), `clear pppoe all`.

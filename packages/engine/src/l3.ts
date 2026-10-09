@@ -97,13 +97,15 @@ const protoOf = (p: IpPayload): number =>
       ? IP_PROTO.tcp
       : p.kind === 'gre'
         ? IP_PROTO.gre
-        : p.kind === 'routing'
-          ? p.proto === 'ospf'
-            ? IP_PROTO.ospf
-            : p.proto === 'eigrp'
-              ? IP_PROTO.eigrp
-              : IP_PROTO.tcp
-          : IP_PROTO.udp;
+        : p.kind === 'esp'
+          ? IP_PROTO.esp
+          : p.kind === 'routing'
+            ? p.proto === 'ospf'
+              ? IP_PROTO.ospf
+              : p.proto === 'eigrp'
+                ? IP_PROTO.eigrp
+                : IP_PROTO.tcp
+            : IP_PROTO.udp;
 
 export function newIpPacket(
   node: IpNode,
@@ -127,7 +129,8 @@ export function newIpPacket(
 }
 
 /** Loopback und Tunnel haben keine Layer-2-Nachbarn (kein ARP). */
-const isVirtualP2p = (i: Iface): boolean => i.kind === 'tunnel' || i.kind === 'loop';
+const isVirtualP2p = (i: Iface): boolean =>
+  i.kind === 'tunnel' || i.kind === 'loop' || i.kind === 'dialer' || i.kind === 'vaccess';
 
 export const isLocalIp = (node: IpNode, ip: Ipv4Addr): boolean =>
   node.ifaces.some((i) => i.ip === ip) || (node.vips?.some((v) => v.ip === ip) ?? false);
@@ -655,7 +658,7 @@ function deliverLocal(
   }
   const reassembled = ip !== ipIn;
   const l4 = ip.payload;
-  if (l4.kind === 'routing' || l4.kind === 'gre') {
+  if (l4.kind === 'routing' || l4.kind === 'gre' || l4.kind === 'esp') {
     if (node.l3) routingRx(ctx, node, iface, base, ip);
     return;
   }

@@ -15,6 +15,7 @@ export function RoutingPanel({ dev }: { dev: DeviceView }) {
       (info.ripng?.length ?? 0) === 0 &&
       info.ospf.length === 0 &&
       info.eigrp.length === 0 &&
+      (info.pppoe?.length ?? 0) === 0 &&
       !info.bgp &&
       info.hsrp.length === 0);
   return (
@@ -61,6 +62,15 @@ export function RoutingPanel({ dev }: { dev: DeviceView }) {
                   {n.ip} {n.iface}
                 </div>
               ))}
+            </li>
+          ))}
+          {info?.pppoe?.map((p) => (
+            <li key={`ppp${p.iface}${p.sessionId}`} data-testid="pppoe-session">
+              PPPoE {p.role === 'client' ? t('routing.pppoeClient') : t('routing.pppoeServer')}{' '}
+              {p.iface} ({p.port}): {t(`routing.pppState.${p.state}`)}
+              {p.localIp ? ` – ${p.localIp} ↔ ${p.peerIp ?? '?'}` : ''}
+              {p.user ? ` – ${p.user}` : ''}
+              {p.sessionId ? ` – SID ${p.sessionId}` : ''}
             </li>
           ))}
           {info?.bgp && (
