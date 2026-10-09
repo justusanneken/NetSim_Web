@@ -154,7 +154,7 @@ Schnittstelle `ipv6 rip NAME enable`; `redistribute connected|static|rip|ospf|bg
 ## TCP-Anzeige und BGP-Änderungen
 
 **Show (Router/Switch/Firewall):** `show tcp brief` (TCB, lokale/entfernte Adresse.Port, Zustand `ESTAB`/`SYNSENT`/`CLOSEWAIT`/`CLOSED`; Telnet 23, SSH 22, BGP 179 …).
-**BGP:** `no neighbor A` und `neighbor A shutdown` senden eine Cease-NOTIFICATION; `show ip bgp summary` zeigt `Idle`, `Active` (TCP-Verbindung scheitert/wartet) oder `Connect`.
+**BGP:** `no neighbor A` und `neighbor A shutdown` senden eine Cease-NOTIFICATION; `show ip bgp summary` zeigt `Idle`, `Active` (TCP-Verbindung scheitert/wartet) oder `Connect`; MsgRcvd/MsgSent zählen die BGP-Nachrichten der Sitzung.
 `show ip route` zeigt BGP-Routen mit dem BGP-Next-Hop (`B 10.4.0.0/24 [200/0] via 3.3.3.3, 00:02:19`).
 Telnet/SSH: fällt der Pfad während der Sitzung aus, endet sie nach ≈ 31 s mit `% Connection timed out; remote host not responding`.
 
@@ -165,7 +165,7 @@ Telnet/SSH: fällt der Pfad während der Sitzung aus, endet sie nach ≈ 31 s mi
 
 **TACACS+:** `tacacs-server host A [key K]`, `tacacs server NAME` (`address ipv4 A`, `key K`; Modus `(config-server-tacacs)#`), `aaa authentication login LIST group tacacs+ [group radius] [local]`, `show tacacs`, `show aaa`.
 
-**SNMP-Traps:** `snmp-server host A [version 1|2c] COMMUNITY`, `snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]`, `show snmp` (Trap-Ziele, freigeschaltete Typen).
+**SNMP-Traps:** `snmp-server host A [version 1|2c] COMMUNITY`, `snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]`, `show snmp` (Trap-Ziele, freigeschaltete Typen), `show snmp host`.
 
 **PPPoE:** Client: `interface Dialer N` (`encapsulation ppp`, `ip address negotiated`, `dialer pool N`, `ppp chap hostname X`, `ppp chap password [0] Y`, `ppp ipcp route default`), am Port
 `pppoe-client dial-pool-number N`, `ip route 0.0.0.0 0.0.0.0 Dialer N`. Server: `bba-group pppoe NAME` (`virtual-template N`), `interface Virtual-Template N` (`ip unnumbered IF`,

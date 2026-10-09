@@ -568,7 +568,7 @@ export function showBgpSummary(e: Engine, d: D): string[] {
   ];
   for (const nb of Object.values(c.neighbors)) {
     out.push(
-      `${nb.ip.padEnd(16)}4${String(nb.asn).padStart(12)}${'0'.padStart(8)}${'0'.padStart(8)}${String(n).padStart(9)}${'0'.padStart(5)}${'0'.padStart(5)} ${(nb.established !== undefined ? clock(e.state.now - nb.established) : 'never').padEnd(9)} ${nb.state === 'established' ? String(nb.prefixesRx) : cap(nb.state)}`,
+      `${nb.ip.padEnd(16)}4${String(nb.asn).padStart(12)}${String(nb.msgRx ?? 0).padStart(8)}${String(nb.msgTx ?? 0).padStart(8)}${String(n).padStart(9)}${'0'.padStart(5)}${'0'.padStart(5)} ${(nb.established !== undefined ? clock(e.state.now - nb.established) : 'never').padEnd(9)} ${nb.state === 'established' ? String(nb.prefixesRx) : cap(nb.state)}`,
     );
   }
   return out;

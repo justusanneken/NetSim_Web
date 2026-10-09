@@ -170,7 +170,10 @@ function send(rt: Rt, _c: BgpCfg, n: BgpNbrCfg, msg: BgpMsg): boolean {
   const conn = connOf(rt, n);
   if (!conn) return false;
   const ok = connPush(rt.ctx, rt.node, conn, { op: msg.type, bgp: msg });
-  if (ok) n.lastTx = rt.ctx.now;
+  if (ok) {
+    n.lastTx = rt.ctx.now;
+    n.msgTx = (n.msgTx ?? 0) + 1;
+  }
   dbg(rt, 'BGP', 'bgp', () => `BGP: ${n.ip} send ${msg.type.toUpperCase()}`);
   return ok;
 }
@@ -245,6 +248,8 @@ export function bgpReset(c: BgpCfg): void {
     n.prefixesRx = 0;
     n.routerId = undefined;
     n.established = undefined;
+    n.msgRx = undefined;
+    n.msgTx = undefined;
     n.ribIn6 = {};
     n.advertised6 = {};
   }
@@ -359,6 +364,7 @@ export function bgpMessage(rt: Rt, conn: AppConn, msg: BgpMsg): void {
     },
   );
   n.lastRx = rt.ctx.now;
+  n.msgRx = (n.msgRx ?? 0) + 1;
   switch (msg.type) {
     case 'open': {
       if (msg.asn !== n.asn) {

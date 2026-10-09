@@ -366,6 +366,9 @@ export interface BgpNbrCfg {
   established?: number;
   /** Anzahl empfangener Präfixe. */
   prefixesRx: number;
+  /** Zähler gesendeter/empfangener BGP-Nachrichten (`show ip bgp summary`). */
+  msgTx?: number;
+  msgRx?: number;
   /** Zuletzt an den Nachbarn gesendete Präfixe (Präfix → Attribut-Schlüssel) für Withdraws/Änderungen. */
   advertised: Record<string, string>;
   /** Adj-RIB-In: Präfix → Pfad. */

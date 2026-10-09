@@ -3,6 +3,7 @@ import { K, P, R, choice, opt, type ModeId, type Registry } from './parser';
 import { CliError, type CliSession } from './session';
 
 const CF: ModeId[] = ['config'];
+const U: ModeId[] = ['user', 'priv'];
 const ALL: SnmpTrapKind[] = ['linkdown', 'linkup', 'coldstart'];
 const KNOWN = ['snmp', 'linkdown', 'linkup', 'coldstart', 'authentication', 'warmstart'];
 
@@ -23,6 +24,23 @@ export function snmpTrapLines(m: ReturnType<typeof mgmtOf>['snmp']): string[] {
 
 /** SNMP-Traps: `snmp-server host`, `snmp-server enable traps`. */
 export function addSnmpTraps(r: Registry<CliSession>): void {
+  r.add({
+    modes: U,
+    only: 'l3',
+    slots: [
+      K('show', 'Show running system information'),
+      K('snmp', 'snmp statistics'),
+      K('host', 'snmp host information'),
+    ],
+    run: (s) => {
+      for (const h of mgmtOf(s.sys).snmp.trapHosts ?? [])
+        s.outLines([
+          `Notification host: ${h.host}\tudp-port: 162\ttype: trap`,
+          `user: ${h.community}\tsecurity model: v${h.version}`,
+          '',
+        ]);
+    },
+  });
   r.add({
     modes: CF,
     negatable: true,

@@ -42,7 +42,7 @@ export function showNtpAssociations(d: D): string[] {
       `${synced ? '*~' : ' ~'}${s.padEnd(15)} ${'.LOCL.'.padEnd(15)} ${String(synced ? c.stratum - 1 : 16).padStart(2)}    ${'-'.padStart(4)}     64   ${synced ? '377' : '  0'}  ${synced ? '1.000' : '0.000'}   0.000  ${synced ? '0.050' : '15937'}`,
     );
   }
-  out.push(' * sys.peer, # selected, + candidate, - outlyer, x falseknave, ~ configured');
+  out.push(' * sys.peer, # selected, + candidate, - outlyer, x falseticker, ~ configured');
   return out;
 }
 
