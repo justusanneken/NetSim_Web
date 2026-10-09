@@ -143,7 +143,7 @@
   und damit durch ACLs/Firewalls/NAT. Die Sitzung selbst (Tastatur/Ausgabe) wird nicht paketiert, sondern als CLI-Sitzung des
   Zielgeräts im Worker an das Terminal gehängt; die Zeilen/Ausgaben selbst laufen als TCP-Segmente (siehe unten). SSH-Schlüssel sind
   simuliert (Modulgröße wird gespeichert; Voraussetzung: `ip domain-name` + `crypto key generate rsa`). Maximal `line vty 0 N`
-  Sitzungen (Standard 5); alle vty-Leitungen teilen sich eine Konfiguration (`transport`, `login`, Passwort).
+  Sitzungen (Standard 5; `line vty F L` legt wie bei IOS höchstens Leitungen bis L an, entfernt aber keine); alle vty-Leitungen teilen sich eine Konfiguration (`transport`, `login`, Passwort).
 - **Benutzer-Geheimnisse:** `username X secret Y` wird im Konfigurationsbaum im Klartext gehalten und als `secret 5 <Typ-7>`
   gerendert (umkehrbar, damit Replay/`reload` funktionieren); RSA-Schlüssel überstehen `reload` (NVRAM).
 - **AAA:** nur Anmeldung an den vty-Leitungen (kein Console-/Enable-/Accounting-AAA, TACACS+ siehe „Erweiterungen proto“). Methodenliste

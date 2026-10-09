@@ -284,6 +284,13 @@ function banner(s: CliSession, rest: string): void {
   next();
 }
 
+/** Typ-7-Passwort entschlüsseln; ungültige Eingaben weist IOS ab (statt ein leeres Passwort zu setzen). */
+function hidden(enc: string): string {
+  const plain = type7Decrypt(enc);
+  if (plain === undefined) throw new CliError(`Invalid encrypted password: ${enc}`);
+  return plain;
+}
+
 export function buildRegistry(): Registry<CliSession> {
   const r = new Registry<CliSession>();
 
@@ -696,7 +703,7 @@ export function buildRegistry(): Registry<CliSession> {
       P('enc', 'word', 'LINE', "The HIDDEN 'enable' password string"),
     ],
     run: (s, a) => {
-      s.sys.enablePassword = type7Decrypt(a.enc as string) ?? '';
+      s.sys.enablePassword = hidden(a.enc as string);
     },
   });
   r.add({
@@ -883,7 +890,12 @@ export function buildRegistry(): Registry<CliSession> {
     ],
     run: (s, a) => {
       s.lineTarget = a.target === 'console' ? 'con' : 'vty';
-      if (s.lineTarget === 'vty') mgmtOf(s.sys).vty.lines = Number(a.last ?? a.first) + 1;
+      // `line vty F L` wählt Leitungen aus; wie bei IOS legt es höchstens weitere an, entfernt aber keine
+      // (sonst würde das Replay von `line vty 0 4` + `line vty 5 15` die Anzahl verändern)
+      if (s.lineTarget === 'vty') {
+        const v = mgmtOf(s.sys).vty;
+        v.lines = Math.max(v.lines, Number(a.last ?? a.first) + 1);
+      }
       s.mode = 'config-line';
     },
   });
@@ -1023,7 +1035,7 @@ export function buildRegistry(): Registry<CliSession> {
       P('enc', 'word', 'LINE', 'The HIDDEN line password string'),
     ],
     run: (s, a) => {
-      line(s).password = type7Decrypt(a.enc as string) ?? '';
+      line(s).password = hidden(a.enc as string);
     },
   });
   r.add({

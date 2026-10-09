@@ -439,7 +439,8 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
   if (sys.bannerMotd !== undefined) L.push(`banner motd ^C${sys.bannerMotd}^C`, '!');
   renderLine(L, 'line con 0', sys.lineCon, enc);
   L.push('!');
-  if (cfg.kind === 'switch' && vtyLast(cfg) === 4) {
+  // Switches mit 16 vty-Leitungen zeigen wie IOS zwei Blöcke (0 4 und 5 15)
+  if (cfg.kind === 'switch' && vtyLast(cfg) === 15) {
     renderLine(L, 'line vty 0 4', sys.lineVty, enc);
     L.push(...vtyExtraLines(cfg), '!');
     renderLine(L, 'line vty 5 15', sys.lineVty, enc);

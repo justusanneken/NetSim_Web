@@ -570,15 +570,7 @@ export function addPhase3(r: Registry<CliSession>): void {
       K('switchport', 'Set switching mode characteristics'),
       K('access', 'Set access mode characteristics of the interface'),
       K('vlan', 'Set VLAN when interface is in access mode'),
-      opt(
-        P(
-          'v',
-          'int',
-          '<1-4094>',
-          'VLAN ID of the VLAN when this port is in access mode',
-          [1, 4094],
-        ),
-      ),
+      P('v', 'int', '<1-4094>', 'VLAN ID of the VLAN when this port is in access mode', [1, 4094]),
     ],
     run: (s, a) => swPorts(s, () => ({ accessVlan: s.negated ? 1 : Number(a.v) })),
   });
@@ -591,14 +583,12 @@ export function addPhase3(r: Registry<CliSession>): void {
       K('trunk', 'Set trunking characteristics of the interface'),
       K('native', 'Set trunking native characteristics when interface is in trunking mode'),
       K('vlan', 'Set native VLAN when interface is in trunking mode'),
-      opt(
-        P(
-          'v',
-          'int',
-          '<1-4094>',
-          'VLAN ID of the native VLAN when this port is in trunking mode',
-          [1, 4094],
-        ),
+      P(
+        'v',
+        'int',
+        '<1-4094>',
+        'VLAN ID of the native VLAN when this port is in trunking mode',
+        [1, 4094],
       ),
     ],
     run: (s, a) => swPorts(s, () => ({ nativeVlan: s.negated ? 1 : Number(a.v) })),
