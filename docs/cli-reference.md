@@ -3,7 +3,8 @@
 Modi: User EXEC `R>` · Privileged EXEC `R#` · Global Config `R(config)#` · Interface `R(config-if)#` ·
 Line `R(config-line)#`. `?` zeigt die Folgeoptionen, Tab vervollständigt, Befehle dürfen eindeutig
 abgekürzt werden. `no`/`default` stehen bei allen als _negatable_ gekennzeichneten Befehlen zur Verfügung.
-`do <exec-Befehl>` führt Privileged-Befehle im Konfigurationsmodus aus. Pipes: `| include|exclude|begin|section|count <regex>`.
+`do <exec-Befehl>` führt Privileged-Befehle im Konfigurationsmodus aus. Wie bei IOS wird ein im Untermodus
+unbekannter Befehl im globalen Konfigurationsmodus ausgeführt (die Sitzung wechselt dorthin), z. B. `crypto isakmp key …` direkt nach `crypto isakmp policy`. Pipes: `| include|exclude|begin|section|count <regex>`.
 
 ## EXEC (User und Privileged)
 

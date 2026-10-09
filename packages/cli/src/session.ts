@@ -49,6 +49,8 @@ const MODE_SUFFIX: Record<ModeId, string> = {
 
 let REGISTRY: Registry<CliSession> | undefined;
 const registry = (): Registry<CliSession> => (REGISTRY ??= buildRegistry());
+/** Untermodus der Konfiguration (alles außer dem globalen `config`). */
+const isSubConfig = (m: ModeId): boolean => m.startsWith('config-') || m === 'dhcp-config';
 
 /** Eine CLI-Sitzung (Console) an einem Router oder Switch. */
 export class CliSession implements Shell {
@@ -331,7 +333,16 @@ export class CliSession implements Shell {
   }
 
   private run(line: string, mode: ModeId): void {
-    const r = registry().parse(mode, line, this.env());
+    let r = registry().parse(mode, line, this.env());
+    // IOS: ein im Untermodus unbekannter Befehl wird im globalen Konfigurationsmodus versucht;
+    // gelingt das, wechselt die Sitzung dorthin (z. B. `crypto isakmp key …` direkt nach der Policy)
+    if (!r.ok && r.error === 'invalid' && mode === this.mode && isSubConfig(mode)) {
+      const g = registry().parse('config', line, this.env());
+      if (g.ok) {
+        this.mode = 'config';
+        r = g;
+      }
+    }
     if (r.ok) {
       this.negated = r.negated;
       const wasConfig = this.inConfig();
