@@ -157,3 +157,5 @@ Schnittstelle `ipv6 rip NAME enable`; `redistribute connected|static|rip|ospf|bg
 `redistribute connected|static|rip|ospf|bgp [ID] [metric BW DLY REL LOAD MTU] [route-map M]`), Schnittstelle `ipv6 eigrp ASN`; `show ipv6 eigrp neighbors|topology|interfaces`, `show ipv6 protocols`, `show ipv6 route` (Codes `D`, `EX`).
 
 **TACACS+:** `tacacs-server host A [key K]`, `tacacs server NAME` (`address ipv4 A`, `key K`; Modus `(config-server-tacacs)#`), `aaa authentication login LIST group tacacs+ [group radius] [local]`, `show tacacs`, `show aaa`.
+
+**SNMP-Traps:** `snmp-server host A [version 1|2c] COMMUNITY`, `snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]`, `show snmp` (Trap-Ziele, freigeschaltete Typen).

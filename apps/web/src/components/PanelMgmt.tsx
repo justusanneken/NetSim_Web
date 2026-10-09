@@ -40,6 +40,7 @@ export function MgmtPanel({ dev }: { dev: DeviceView }) {
   const [comm, setComm] = useState({ name: '', rw: false });
   const [rad, setRad] = useState({ host: '', key: '' });
   const [tac, setTac] = useState({ host: '', key: '' });
+  const [trap, setTrap] = useState({ host: '', community: 'public' });
   const [clock, setClock] = useState('');
   const transport = m?.vty.transport ?? ['ssh', 'telnet'];
   const sec = (lines: string[]) => void ios.run(lines);
@@ -303,6 +304,45 @@ export function MgmtPanel({ dev }: { dev: DeviceView }) {
               if (comm.name)
                 sec([`snmp-server community ${comm.name.trim()} ${comm.rw ? 'rw' : 'ro'}`]);
               setComm({ name: '', rw: false });
+            }}
+          >
+            {t('common.add')}
+          </button>
+        </div>
+      </details>
+
+      <details className="svc5">
+        <summary>SNMP traps</summary>
+        <ul className="ping-list">
+          {m?.snmp.trapHosts?.map((h) => (
+            <li key={h.host}>
+              snmp-server host {h.host} version {h.version} {h.community}
+            </li>
+          ))}
+          {m?.snmp.traps && m.snmp.traps.length > 0 && (
+            <li>snmp-server enable traps {m.snmp.traps.join(' ')}</li>
+          )}
+        </ul>
+        <div className="form">
+          <input
+            aria-label="SNMP trap host"
+            placeholder="10.0.0.10"
+            value={trap.host}
+            onChange={(e) => setTrap({ ...trap, host: e.target.value })}
+          />
+          <input
+            aria-label="SNMP trap community"
+            value={trap.community}
+            onChange={(e) => setTrap({ ...trap, community: e.target.value })}
+          />
+          <button
+            onClick={() => {
+              if (!trap.host) return;
+              sec([
+                `snmp-server host ${trap.host.trim()} version 2c ${trap.community}`,
+                'snmp-server enable traps snmp linkdown linkup coldstart',
+              ]);
+              setTrap({ host: '', community: 'public' });
             }}
           >
             {t('common.add')}

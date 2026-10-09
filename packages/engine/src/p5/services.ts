@@ -1,3 +1,4 @@
+import { snmpTrapRx } from './snmptrap';
 import type { Ipv4Pdu, SvcPdu, UdpPdu } from '@netsim/protocols';
 import type { DeviceCtx } from '../ctx';
 import type { Iface } from '../ifaces';
@@ -205,6 +206,7 @@ function agentOf(dev: Device): Agent | undefined {
 }
 
 export function snmpAgent(r: SvcRx): boolean {
+  if (r.msg.op === 'trap') return snmpTrapRx(r);
   const dev = r.ctx.device;
   const agent = agentOf(dev);
   if (!agent) return false;

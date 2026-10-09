@@ -12,5 +12,11 @@
   "svc5.tacacsClients": "Erlaubte TACACS+-Clients (Geräte-IP + Schlüssel):",
   "svc.tacacs.pass": "TACACS+: Benutzer „{{user}}“ von {{src}} authentifiziert (PASS).",
   "svc.tacacs.fail": "TACACS+: Benutzer „{{user}}“ von {{src}} abgewiesen (FAIL).",
-  "svc.tacacs.badKey": "TACACS+: Schlüssel von {{src}} stimmt nicht – Paket nicht lesbar (ERROR)."
+  "svc.tacacs.badKey": "TACACS+: Schlüssel von {{src}} stimmt nicht – Paket nicht lesbar (ERROR).",
+  "svc5.traps": "Empfangene SNMP-Traps",
+  "svc5.noTraps": "Noch keine Traps empfangen.",
+  "svc5.trapTime": "Zeit",
+  "svc5.trapFrom": "Absender",
+  "svc5.trapIface": "Schnittstelle",
+  "svc.snmp.trap": "SNMP-Trap {{trap}} von {{src}} empfangen {{iface}}"
 }

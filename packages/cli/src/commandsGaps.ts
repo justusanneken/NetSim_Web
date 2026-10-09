@@ -9,6 +9,7 @@ import { addMisc } from './cmdMisc';
 import { addIpv6Gaps } from './cmdIpv6';
 import { addEigrp6 } from './cmdEigrp6';
 import { addTacacs } from './cmdTacacs';
+import { addSnmpTraps } from './cmdSnmp';
 import * as showGaps from './showGaps';
 
 /**
@@ -66,6 +67,7 @@ export function addGaps(r: Registry<CliSession>): void {
   addIpv6Gaps(r);
   addEigrp6(r);
   addTacacs(r);
+  addSnmpTraps(r);
   // ------------------------------------------------------------ show (Policies)
   const SHOW = K('show', 'Show running system information');
   const U: ModeId[] = ['user', 'priv'];

@@ -163,6 +163,26 @@ export interface SyslogMsg {
   text: string;
 }
 
+export type SnmpTrapKind = 'linkdown' | 'linkup' | 'coldstart';
+
+export interface SnmpTrapHost {
+  host: Ipv4Addr;
+  community: string;
+  version: '1' | '2c';
+}
+
+/** Empfangener Trap (Server-Seite). */
+export interface SnmpTrapRec {
+  t: number;
+  from: Ipv4Addr;
+  host: string;
+  community: string;
+  version: string;
+  trap: string;
+  ifIndex?: number;
+  ifDescr?: string;
+}
+
 export interface SnmpCommunity {
   name: string;
   rw: boolean;
@@ -201,7 +221,14 @@ export interface ServerSvc5 {
   };
   ntp?: { enabled: boolean };
   syslog?: { enabled: boolean; messages: SyslogMsg[] };
-  snmp?: { enabled: boolean; communities: SnmpCommunity[]; location?: string; contact?: string };
+  snmp?: {
+    enabled: boolean;
+    communities: SnmpCommunity[];
+    location?: string;
+    contact?: string;
+    /** Empfangene Traps (UDP 162). */
+    traps?: SnmpTrapRec[];
+  };
   aaa?: { enabled: boolean; clients: { ip: Ipv4Addr; secret: string }[]; users: UserCred[] };
   /** TACACS+-Dienst (TCP 49): Clients mit Schlüssel und Benutzerliste. */
   tacacs?: { enabled: boolean; clients: { ip: Ipv4Addr; secret: string }[]; users: UserCred[] };
@@ -331,7 +358,15 @@ export interface MgmtCfg {
   ntp: { servers: Ipv4Addr[]; master?: number };
   clock: ClockCfg;
   syslog: { hosts: Ipv4Addr[]; trap: number; buffered: boolean };
-  snmp: { communities: SnmpCommunity[]; location?: string; contact?: string };
+  snmp: {
+    communities: SnmpCommunity[];
+    location?: string;
+    contact?: string;
+    /** `snmp-server host A [version 2c] COMMUNITY`. */
+    trapHosts?: SnmpTrapHost[];
+    /** `snmp-server enable traps …`: freigeschaltete Trap-Typen. */
+    traps?: SnmpTrapKind[];
+  };
   aaa: {
     newModel: boolean;
     radius: { host: Ipv4Addr; key: string }[];

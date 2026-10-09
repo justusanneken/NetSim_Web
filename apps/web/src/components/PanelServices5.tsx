@@ -124,6 +124,7 @@ export function Services5Config({ dev }: { dev: DeviceView }) {
           list={get('snmp').communities}
           onChange={(communities) => save('snmp', { communities })}
         />
+        <TrapList traps={get('snmp').traps ?? []} />
       </details>
       <details className="svc5">
         {head('aaa', 'AAA / RADIUS')}
@@ -585,6 +586,45 @@ export function MailClient({ dev }: { dev: DeviceView }) {
   );
 }
 
+/** Empfangene SNMP-Traps (UDP 162), neueste zuerst. */
+function TrapList({ traps }: { traps: NonNullable<Svc['snmp']['traps']> }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <h5>{t('svc5.traps')}</h5>
+      {traps.length === 0 ? (
+        <p className="muted small">{t('svc5.noTraps')}</p>
+      ) : (
+        <table className="grid" aria-label={t('svc5.traps')}>
+          <thead>
+            <tr>
+              <th>{t('svc5.trapTime')}</th>
+              <th>{t('svc5.trapFrom')}</th>
+              <th>Trap</th>
+              <th>{t('svc5.trapIface')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...traps]
+              .slice(-50)
+              .reverse()
+              .map((x, i) => (
+                <tr key={i}>
+                  <td>{(x.t / 1e6).toFixed(1)} s</td>
+                  <td>
+                    {x.host} ({x.from})
+                  </td>
+                  <td className="mono">{x.trap}</td>
+                  <td>{x.ifDescr ?? ''}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      )}
+    </>
+  );
+}
+
 /** SNMP-/MIB-Browser (Desktop-App). */
 export function MibBrowser({ dev }: { dev: DeviceView }) {
   const { t } = useTranslation();
@@ -618,6 +658,7 @@ export function MibBrowser({ dev }: { dev: DeviceView }) {
   };
   return (
     <div className="pad scroll">
+      {dev.services?.snmp?.enabled && <TrapList traps={dev.services.snmp.traps ?? []} />}
       <div className="form">
         <label>
           {t('mib.agent')}

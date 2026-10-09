@@ -47,6 +47,7 @@ export { mgmtOf, newMgmt, newFw, CHANNELS } from './p5defaults';
 export { fwApplyNat, idleText } from './p5/fw';
 export { vtyAuthMode, sshReady } from './p5/remote';
 export { SEVERITY_NAMES, syslogEmit } from './p5/syslog';
+export { TRAP_KINDS } from './p5/snmptrap';
 export { buildMib, oidName, oidFromName, MIB_NAMES } from './p5/snmp';
 export { iotValue } from './p5/iot';
 export { parseLocation, formatLocation } from './p5/physical';

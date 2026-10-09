@@ -145,6 +145,9 @@ export function showSnmp(d: D): string[] {
   if (m.snmp.contact) out.push(`Contact: ${m.snmp.contact}`);
   if (m.snmp.location) out.push(`Location: ${m.snmp.location}`);
   out.push('0 SNMP packets input', '0 SNMP packets output');
+  for (const h of m.snmp.trapHosts ?? [])
+    out.push(`Trap host: ${h.host} udp-port 162 community ${h.community} version ${h.version}`);
+  if (m.snmp.traps?.length) out.push(`Enabled traps: ${m.snmp.traps.join(' ')}`);
   for (const c of m.snmp.communities)
     out.push(
       '',

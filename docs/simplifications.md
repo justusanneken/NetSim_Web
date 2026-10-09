@@ -155,7 +155,7 @@
   Hosts am 1.1.2026 12:00 UTC (deterministisch statt Wanduhr). Keine Zeitzonen/Sommerzeit (immer UTC).
 - **Syslog:** Meldungen für Link-/Leitungsstatus, Konfigurationsänderung (`%SYS-5-CONFIG_I`) und Logins; Schweregrad-Filter
   (`logging trap`), Puffer 100 Zeilen. Keine Facility-Auswahl, kein `logging source-interface`.
-- **SNMP:** v2c-ähnlich mit Community (kein v1/v3, keine Traps/Informs); MIB: system-Gruppe und ifTable-Spalten (Index, Descr, Type,
+- **SNMP:** v2c-ähnlich mit Community (kein v3, keine Informs; Traps siehe „Erweiterungen proto“); MIB: system-Gruppe und ifTable-Spalten (Index, Descr, Type,
   Mtu, Speed, PhysAddress, Admin/Oper-Status, Zähler); `set` nur für `sysName.0` und `ifAdminStatus`.
 - **Mail:** SMTP mit Absender-Authentifizierung gegen die Konten des Servers, nur lokale Zustellung (eine Domäne); POP3 liefert
   den gesamten Posteingang (kein Löschen, kein IMAP, kein TLS).
@@ -235,3 +235,8 @@
   (kein Authorization/Accounting, keine Console-/Enable-Authentifizierung), nur der erste konfigurierte Server wird befragt, Server-Gruppen (`aaa group server`) gibt es nicht.
   Zähler für `show tacacs` (Verbindungen, pass/fail/errors) sind Laufzeitwerte. Der Client-Aufruf sitzt in `p5/remote.ts` (`aaaStep`) und `p5/tacacs.ts`; der Server-Dienst hat
   eigene Clients und Benutzer (getrennt von RADIUS).
+- **SNMP-Traps:** `snmp-server host A [version 1|2c] COMMUNITY` und `snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]` (ohne Angabe alle drei). Gesendet werden
+  `linkDown`/`linkUp` (bei Änderung des Link-Status eines Ports, mit ifIndex/ifDescr) und `coldStart` (12 s nach Einschalten/`reload`, Hintergrund-Timer) als `svc`-Nachricht
+  `snmp/trap` an UDP 162, ohne Bestätigung (keine Informs, kein Retry, kein v3, keine Varbind-Liste/OIDs – Typ und Schnittstelle als Felder). Empfänger ist ein Server mit
+  aktivem SNMP-Dienst; Traps mit unbekannter Community werden verworfen (`svc.snmp.badCommunity`), gültige in `services.snmp.traps` abgelegt (max. 200) und im Services-Tab sowie in der
+  MIB-Browser-App angezeigt. `authentication`/`warmstart` werden akzeptiert, aber nie ausgelöst.

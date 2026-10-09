@@ -2,6 +2,7 @@ import type { RouterConfig, SwitchConfig } from '@netsim/engine';
 import { mgmtOf } from '@netsim/engine';
 import { asaEntryText } from './commands5';
 import { type7Encrypt } from './secrets';
+import { snmpTrapLines } from './cmdSnmp';
 
 type CliConfig = RouterConfig | SwitchConfig;
 
@@ -43,6 +44,7 @@ export function mgmtGlobalLines(cfg: CliConfig): string[] {
     L.push(`snmp-server community ${c.name} ${c.rw ? 'RW' : 'RO'}`);
   if (m.snmp.location) L.push(`snmp-server location ${m.snmp.location}`);
   if (m.snmp.contact) L.push(`snmp-server contact ${m.snmp.contact}`);
+  L.push(...snmpTrapLines(m.snmp));
   if (L.length > 0) L.push('!');
   return L;
 }

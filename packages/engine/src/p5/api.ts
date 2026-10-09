@@ -31,6 +31,7 @@ import {
 } from './physical';
 import { ntpPoll, ntpServersOf } from './services';
 import { syslogEmit } from './syslog';
+import { snmpTrap } from './snmptrap';
 import { udpRequest } from './udputil';
 
 const err = (error: string, params?: Record<string, string | number>): Result<never> => ({
@@ -81,6 +82,11 @@ export class Phase5 {
       if (dev.config.iot?.server) wants.push(['bg:svc:iot', 2_000_000]);
     }
     if (ntpServersOf(dev).length > 0) wants.push(['bg:svc:ntp', 2_000_000]);
+    if (dev.config.kind === 'router' || dev.config.kind === 'switch') {
+      const sn = dev.config.sys.mgmt?.snmp;
+      if (sn?.traps?.includes('coldstart') && sn.trapHosts?.length)
+        wants.push(['bg:svc:coldstart', 12_000_000]);
+    }
     if (wants.length === 0) return;
     this.eng.withCtx(dev, (ctx) => {
       for (const [name, delay] of wants) ctx.setTimer(name, delay);
@@ -127,6 +133,7 @@ export class Phase5 {
 
   timer(ctx: DeviceCtx, dev: Device, name: string): void {
     if (name === 'capwap') return capwapTick(ctx, dev);
+    if (name === 'coldstart') return snmpTrap(ctx, dev, 'coldstart');
     if (name === 'ntp') {
       ntpPoll(ctx, dev);
       if (ntpServersOf(dev).length > 0) ctx.setTimer('bg:svc:ntp', NTP_INTERVAL_US);
@@ -147,6 +154,10 @@ export class Phase5 {
     if (!dev.powered || (dev.config.kind !== 'router' && dev.config.kind !== 'switch')) return;
     const state = up ? 'up' : 'down';
     this.eng.withCtx(dev, (ctx) => {
+      snmpTrap(ctx, dev, up ? 'linkup' : 'linkdown', {
+        index: dev.ports.indexOf(p) + 1,
+        name: p.name,
+      });
       syslogEmit(ctx, dev, 3, 'LINK-3-UPDOWN', `Interface ${p.name}, changed state to ${state}`);
       syslogEmit(
         ctx,
