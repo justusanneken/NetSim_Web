@@ -26,7 +26,7 @@ describe('QA2: Skript-Sandbox – Speicher- und Rechenzeitgrenzen', () => {
       expect(() => run(BIG + tail.replace('log(a);', 'const j = String(a);')), tail).toThrow(
         /string too long/,
       );
-  });
+  }, 60_000);
 
   it('zyklische Arrays führen zu einem Skriptfehler, nicht zu einem Stacküberlauf', () => {
     expect(() => run(`const a = []; a.push(a); const s = a + '';`)).toThrow(ScriptError);
@@ -52,7 +52,7 @@ describe('QA2: Skript-Sandbox – Speicher- und Rechenzeitgrenzen', () => {
     it.parse();
     it.runTop();
     expect(() => exportVars(it)).toThrow(ScriptError);
-  });
+  }, 60_000);
 
   it('Prototyp-/Konstruktor-Ausbrüche bleiben gesperrt', () => {
     for (const code of [

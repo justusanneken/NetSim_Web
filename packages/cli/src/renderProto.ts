@@ -44,7 +44,7 @@ export function protoGlobalLines(cfg: L3Cfg): string[] {
     L.push('!');
   }
   for (const p of Object.values(cfg.ipPools ?? {}))
-    L.push(`ip local pool ${p.name} ${p.start} ${p.end}`);
+    L.push(`ip local pool ${p.name} ${p.start}${p.end !== p.start ? ` ${p.end}` : ''}`);
   return L;
 }
 

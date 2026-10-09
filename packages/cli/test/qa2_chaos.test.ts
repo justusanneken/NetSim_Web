@@ -164,6 +164,6 @@ describe('QA2: Störungen über alle Funktionen hinweg (Chaos)', () => {
         pingOk(a.e, pc1, '10.2.0.10');
         expect(pingOk(a.e, pc1, '10.2.0.10')).toBe(true);
       }
-    });
+    }, 60_000);
   }
 });

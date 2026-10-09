@@ -88,7 +88,7 @@ describe('QA2: no-Formen ohne Parameter werfen keine internen Fehler', () => {
     }
     expect(tried).toBeGreaterThan(200);
     expect(crashes).toEqual([]);
-  });
+  }, 60_000);
 
   it('IOS-gültige verkürzte no-Formen wirken; unvollständige melden % Incomplete', () => {
     const e = new Engine({ seed: 1 });

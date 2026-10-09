@@ -54,4 +54,18 @@ describe('QA2: IOS-Treue der Ausgaben neuer Funktionen', () => {
     expect(out).toContain('Notification host: 10.1.0.11\tudp-port: 162\ttype: trap');
     expect(out).toContain('user: public\tsecurity model: v1');
   });
+
+  it('ip local pool: Einzeladresse ohne Wiederholung, Endadresse vor Startadresse abgewiesen', () => {
+    const { r1 } = lab();
+    const out = r1.run(
+      'configure terminal',
+      'ip local pool ONE 100.64.0.10',
+      'ip local pool BAD 100.64.0.20 100.64.0.10',
+      'end',
+    );
+    expect(out).toContain('%End address less than starting address');
+    const rc = r1.s.input('show running-config');
+    expect(rc).toContain('ip local pool ONE 100.64.0.10\n');
+    expect(rc).not.toContain('ip local pool BAD');
+  });
 });

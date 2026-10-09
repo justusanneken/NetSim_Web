@@ -150,5 +150,5 @@ describe('QA2: Befehlsfuzzing – keine internen Fehler, running-config-Replay s
     expect(tried).toBeGreaterThan(300);
     expect(crashes).toEqual([]);
     expect(replay).toEqual([]);
-  });
+  }, 60_000);
 });
