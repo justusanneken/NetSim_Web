@@ -18,6 +18,82 @@ export function deviceByIp(e: Engine, ip: string): Device | undefined {
   return undefined;
 }
 
+/**
+ * Telnet-/SSH-Sitzung nach der Anmeldung: Zeilen und Ausgabe der Ziel-CLI werden als TCP-Segmente zwischen den
+ * Geräten übertragen (eine Zeile = ein Segment `line`, die Ausgabe = ein Segment `out`). Fällt der Pfad aus,
+ * wiederholt TCP die Segmente und die Sitzung steht still, bis die Retransmission aufgibt (≈ 31 s); dann wird
+ * sie mit der Meldung „Connection timed out“ geschlossen. SSH-Segmente sind im Inspektor als verschlüsselt markiert.
+ */
+export class RemoteNetShell implements Shell {
+  private dead = false;
+
+  constructor(
+    private readonly engine: Engine,
+    private readonly fromId: string,
+    private readonly key: string,
+    private readonly targetId: string,
+    private readonly serverKey: string,
+    private readonly inner: CliSession,
+  ) {}
+
+  get closed(): boolean {
+    return this.dead || this.inner.closed;
+  }
+  set closed(v: boolean) {
+    this.inner.closed = v;
+  }
+  next?: Shell;
+  set nest(n: ShellNest | undefined) {
+    this.inner.nest = n;
+  }
+  get history(): readonly string[] {
+    return this.inner.history;
+  }
+  get terminalLength(): number {
+    return this.inner.terminalLength;
+  }
+  prompt = (): string => this.inner.prompt();
+  secret = (): boolean => this.inner.secret();
+  help = (l: string): string | undefined => this.inner.help(l);
+  complete = (l: string): string => this.inner.complete(l);
+  end = (): string => this.inner.end();
+  start = (): string => this.inner.start();
+  poll = (): string => this.inner.poll();
+  interrupt = (): string => this.inner.interrupt();
+
+  private failed(): boolean {
+    const c = this.engine.p5.connState(this.fromId, this.key);
+    return !c || c.state !== 'open';
+  }
+
+  private timeout(): string {
+    this.dead = true;
+    this.engine.p5.abortRemote(this.fromId, this.key);
+    return '\n% Connection timed out; remote host not responding\n';
+  }
+
+  input(line: string): string {
+    const e = this.engine;
+    const before = e.p5.connState(this.fromId, this.key)?.replySeq ?? 0;
+    if (!e.p5.send(this.fromId, this.key, 'line', {}, line)) return this.timeout();
+    // Zeile zum Zielgerät: warten, bis das Segment bestätigt ist (oder TCP aufgibt)
+    waitFor(
+      e,
+      () => this.failed() || (e.p5.connState(this.fromId, this.key)?.rtx ?? []).length === 0,
+    );
+    if (this.failed()) return this.timeout();
+    const out = this.inner.input(line);
+    // Ausgabe zurück zum Client: ebenfalls als TCP-Segment
+    if (!e.p5.pushOut(this.targetId, this.serverKey, out)) return out;
+    waitFor(
+      e,
+      () => this.failed() || (e.p5.connState(this.fromId, this.key)?.replySeq ?? 0) > before,
+    );
+    if (this.failed() && this.inner.closed === false) return this.timeout();
+    return e.p5.connState(this.fromId, this.key)?.reply?.body ?? out;
+  }
+}
+
 /** Anmeldedialog einer Telnet-/SSH-Verbindung; wird nach Erfolg durch die CLI des Zielgeräts ersetzt. */
 export class RemoteLoginShell implements Shell {
   readonly history: string[] = [];
@@ -106,7 +182,14 @@ export class RemoteLoginShell implements Shell {
         from: sourceIpOf(from, this.dst),
         proto: this.proto,
       });
-      this.next = sess;
+      this.next = new RemoteNetShell(
+        this.engine,
+        this.fromId,
+        this.key,
+        target.id,
+        String(c.banner?.args.sk ?? ''),
+        sess,
+      );
       this.stage = 'done';
       return '';
     }

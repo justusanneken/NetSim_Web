@@ -18,7 +18,7 @@ import type { Device, HostConfig, Port, Result, RouterConfig, SwitchConfig } fro
 import { apBss, wirelessSync } from './wifi';
 import { capwapTick } from './capwap';
 import { clockOf, deviceTimeMs, setDeviceTime } from './clock';
-import { connClose, connOpen, connSend } from './conn';
+import { connClose, connOpen, connPush, connSend } from './conn';
 import { svcTimer } from './dispatch';
 import { iotTick } from './iot';
 import { appcOf, ipNodeOf } from './node';
@@ -389,6 +389,44 @@ export class Phase5 {
       const node = ipNodeOf(ctx, d);
       return node ? connSend(ctx, node, key, op, args, body) : false;
     });
+  }
+
+  /**
+   * Telnet/SSH-Sitzung: Ausgabe der Zielgerät-CLI als TCP-Segment (`out`) vom Server zurück zum Client senden.
+   * `devId`/`key` bezeichnen die Server-Verbindung (`banner.args.dev` / `banner.args.sk`).
+   */
+  pushOut(devId: string, key: string, text: string): boolean {
+    const d = this.dev(devId);
+    if (!d?.powered) return false;
+    return this.eng.withCtx(d, (ctx) => {
+      const node = ipNodeOf(ctx, d);
+      const cfg = d.config;
+      const c =
+        cfg.kind === 'host' || cfg.kind === 'router' || cfg.kind === 'switch'
+          ? appcOf(cfg).conns[key]
+          : undefined;
+      return node && c ? connPush(ctx, node, c, { op: 'out', body: text }) : false;
+    });
+  }
+
+  /**
+   * Eine Telnet/SSH-Verbindung, deren Pfad ausgefallen ist, gegenstellenseitig abräumen (die vty-Leitung wird
+   * freigegeben – vereinfachter exec-timeout), nachdem der Client sie nach der Retransmission aufgegeben hat.
+   */
+  abortRemote(id: string, key: string): void {
+    const c = this.dev(id)?.config;
+    if (!c || !('appc' in c)) return;
+    const conn = c.appc?.conns[key];
+    if (!conn) return;
+    const peer = this.cli(String(conn.banner?.args.dev ?? ''));
+    const sk = String(conn.banner?.args.sk ?? '');
+    const sconn = peer?.config.appc?.conns[sk];
+    if (peer && sconn) {
+      delete peer.config.appc?.conns[sk];
+      const m = peer.config.sys.mgmt;
+      if (m && sconn.vty !== undefined) m.sessions = m.sessions.filter((x) => x.line !== sconn.vty);
+    }
+    this.close(id, key);
   }
 
   close(id: string, key: string): void {
