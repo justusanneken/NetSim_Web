@@ -10,6 +10,7 @@ import { Palette } from './components/Palette';
 import { PhysicalView } from './components/PanelPhysical';
 import { applyTheme } from './theme';
 import { PortPicker } from './components/PortPicker';
+import { ScriptConsole } from './components/ScriptConsole';
 import { SimPanel } from './components/SimPanel';
 import { Toolbar } from './components/Toolbar';
 import { sim, useStore } from './store';
@@ -74,6 +75,7 @@ export function App() {
         )}
         <PortPicker />
         <DeviceDialog />
+        <ScriptConsole />
         {toast && (
           <div className={`toast ${toast.kind}`} role="alert">
             {translateMsg(t, toast)}

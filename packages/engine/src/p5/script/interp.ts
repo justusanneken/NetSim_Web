@@ -1288,7 +1288,10 @@ export class Interp {
           return recv.lastIndexOf(args[0]);
         case 'concat': {
           const out = recv.slice();
-          for (const a of args) Array.isArray(a) ? out.push(...a) : out.push(a);
+          for (const a of args) {
+            if (Array.isArray(a)) out.push(...a);
+            else out.push(a);
+          }
           if (out.length > MAX_ITEMS) throw new ScriptError('array too large', line);
           return out;
         }

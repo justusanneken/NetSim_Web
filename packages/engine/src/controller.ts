@@ -1,5 +1,5 @@
 import { Engine, type EngineOptions } from './engine';
-import type { EngineSnapshot } from './types';
+import type { EngineSnapshot, LogEntry } from './types';
 import { buildDevices, buildLinks, type SimMode, type ViewModel } from './view';
 
 const MAX_HISTORY = 200;
@@ -99,6 +99,13 @@ export class SimController {
     this.history = [];
     this.autoCapture = false;
     this.acc = 0;
+    this.markDirty();
+  }
+
+  /** Skriptlauf (Sandbox-Worker) übernehmen; der Verlauf für „Schritt zurück“ wird verworfen. */
+  adoptRun(state: EngineSnapshot['state'], entries: LogEntry[]): void {
+    this.engine.adoptRun(state, entries);
+    this.history = [];
     this.markDirty();
   }
 

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { setLang, type Lang } from '../i18n';
 import { download, logToCsv } from '../format';
 import { useStore } from '../store';
+import { useScript } from './ScriptConsole';
 
 interface Item {
   label: string;
@@ -76,7 +77,10 @@ export function MenuBar() {
         onClick: () => s.setViewMode('physical'),
       },
     ],
-    tools: [later('menu.scripting'), later('menu.activities')],
+    tools: [
+      { label: t('menu.scriptConsole'), onClick: () => useScript.getState().setOpen(true) },
+      later('menu.activities'),
+    ],
     help: [{ label: t('menu.about'), onClick: () => window.alert(t('about.text')) }],
     language: (['de', 'en'] as Lang[]).map((l) => ({
       label: l === 'de' ? 'Deutsch' : 'English',

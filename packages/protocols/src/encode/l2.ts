@@ -169,7 +169,7 @@ export function encodePppoe(p: PppoePdu): Uint8Array {
 /** Ethernet II (optional 802.1Q) bzw. 802.3 mit LLC (STP) / SNAP (PVST+, VTP). Ohne FCS, auf 60 Byte aufgefüllt. */
 export function encodeFrame(f: EthernetPdu): Uint8Array {
   const p = f.payload;
-  let etherType = f.etherType;
+  const etherType = f.etherType;
   let body: number[];
   let llc = false;
   switch (p.kind) {

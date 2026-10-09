@@ -4,6 +4,7 @@ import './i18n';
 import './styles.css';
 import './phase5.css';
 import './proto.css';
+import './script.css';
 import { App } from './App';
 import { connectEngine } from './store';
 

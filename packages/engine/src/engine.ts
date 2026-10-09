@@ -154,6 +154,21 @@ export class Engine {
     } else this.log.length = Math.min(this.log.length, keep);
   }
 
+  /**
+   * Übernimmt das Ergebnis eines Skriptlaufs (Sandbox-Worker mit eigener Engine-Kopie): neuer Zustand und die
+   * dabei entstandenen Log-Einträge (Ids werden fortgesetzt).
+   */
+  adoptRun(state: EngineSnapshot['state'], entries: LogEntry[]): void {
+    this.state = state;
+    for (const e of entries) this.log.push({ ...e, id: this.logOffset + this.log.length });
+    const cap = this.state.config.maxLogEntries ?? 0;
+    if (cap > 0 && this.log.length > cap) {
+      const drop = this.log.length - cap;
+      this.log.splice(0, drop);
+      this.logOffset += drop;
+    }
+  }
+
   /** Setzt Zeit, Queue, Log und Laufzeitzustand zurück; Topologie und Konfiguration bleiben. */
   resetRuntime(): void {
     const s = this.state;
