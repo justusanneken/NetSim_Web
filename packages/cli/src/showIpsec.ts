@@ -34,8 +34,21 @@ const encrText = {
   des: 'DES-CBC (56 bit keys).',
   '3des': 'Three key triple DES',
   aes: 'AES - Advanced Encryption Standard (128 bit keys).',
+  'aes 192': 'AES - Advanced Encryption Standard (192 bit keys).',
+  'aes 256': 'AES - Advanced Encryption Standard (256 bit keys).',
 } as const;
-const dhText = { 1: '#1 (768 bit)', 2: '#2 (1024 bit)', 5: '#5 (1536 bit)' } as const;
+const dhText = {
+  1: '#1 (768 bit)',
+  2: '#2 (1024 bit)',
+  5: '#5 (1536 bit)',
+  14: '#14 (2048 bit)',
+  15: '#15 (3072 bit)',
+  16: '#16 (4096 bit)',
+  19: '#19 (256 bit ecp)',
+  20: '#20 (384 bit ecp)',
+  21: '#21 (521 bit ecp)',
+  24: '#24 (2048 bit, 256 bit subgroup)',
+} as const;
 
 /** `show crypto isakmp policy`. */
 export function showIsakmpPolicy(d: Device): string[] {

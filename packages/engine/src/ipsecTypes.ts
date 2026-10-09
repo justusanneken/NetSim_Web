@@ -1,12 +1,16 @@
 import type { Ipv4Addr } from '@netsim/protocols';
 
+/** Diffie-Hellman-Gruppen von `crypto isakmp policy … group N`. */
+export type IsakmpGroup = 1 | 2 | 5 | 14 | 15 | 16 | 19 | 20 | 21 | 24;
+
 /** `crypto isakmp policy N` (Defaults wie IOS: des, sha, rsa-sig, Gruppe 1, 86400 s). */
 export interface IsakmpPolicy {
   prio: number;
-  encr: 'des' | '3des' | 'aes';
+  /** `aes` = AES 128; `aes 192`/`aes 256` mit Schlüssellänge (wie in der running-config). */
+  encr: 'des' | '3des' | 'aes' | 'aes 192' | 'aes 256';
   hash: 'md5' | 'sha';
   auth: 'pre-share' | 'rsa-sig';
-  group: 1 | 2 | 5;
+  group: IsakmpGroup;
   lifetime: number;
 }
 
