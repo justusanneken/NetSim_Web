@@ -656,7 +656,16 @@ export class Engine {
 
   addStaticRoute(
     deviceId: string,
-    r: { prefix: string; mask: string; nextHop?: string; outIfaceId?: string; ad?: number },
+    r: {
+      prefix: string;
+      mask: string;
+      nextHop?: string;
+      outIfaceId?: string;
+      ad?: number;
+      name?: string;
+      tag?: number;
+      permanent?: boolean;
+    },
   ): Result<true> {
     const dev = this.l3(deviceId);
     if (!dev) return { ok: false, error: 'ip.notARouter' };
@@ -672,6 +681,9 @@ export class Engine {
       nextHop: r.nextHop,
       outIfaceId: r.outIfaceId,
       ad: r.ad ?? 1,
+      ...(r.name !== undefined ? { name: r.name } : {}),
+      ...(r.tag !== undefined ? { tag: r.tag } : {}),
+      ...(r.permanent ? { permanent: true } : {}),
     };
     const routes = dev.config.staticRoutes;
     const same = (x: (typeof routes)[number]) =>
@@ -679,7 +691,9 @@ export class Engine {
       x.mask === entry.mask &&
       x.nextHop === entry.nextHop &&
       x.outIfaceId === entry.outIfaceId;
-    if (!routes.some(same)) routes.push(entry);
+    const at = routes.findIndex(same);
+    if (at < 0) routes.push(entry);
+    else routes[at] = entry; // gleiches Ziel: AD/Name/Tag werden ersetzt (wie IOS)
     return { ok: true, value: true };
   }
 

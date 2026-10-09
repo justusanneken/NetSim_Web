@@ -5,12 +5,14 @@ import { resolvePort, shortName } from './format';
 export interface IfRef {
   /** Engine-ID: Port (`p0`), Subinterface (`p0.10`), SVI (`vlan10`) oder Port-Channel (`po1`). */
   id: string;
-  kind: 'phys' | 'sub' | 'svi' | 'po' | 'loop' | 'tunnel' | 'dialer' | 'vtemplate';
+  kind: 'phys' | 'sub' | 'svi' | 'po' | 'loop' | 'tunnel' | 'dialer' | 'vtemplate' | 'null';
 }
 
 /** `gi0/0`, `gi0/0.10`, `vlan10`, `po1` → Referenz. */
 export function resolveIface(dev: Device, text: string): IfRef | undefined {
   const t = text.replace(/\s+/g, '');
+  if (/^(?:null|nu)0$/i.test(t) && dev.config.kind === 'router')
+    return { id: 'null0', kind: 'null' };
   const loop = /^(?:loopback|lo)(\d{1,4})$/i.exec(t);
   if (loop && dev.config.kind !== 'hub') return { id: `lo${Number(loop[1])}`, kind: 'loop' };
   const tun = /^(?:tunnel|tu)(\d{1,4})$/i.exec(t);
@@ -58,6 +60,7 @@ export function resolveRange(dev: Device, text: string): IfRef[] | undefined {
 }
 
 export function ifDisplay(dev: Device, id: string): string {
+  if (id === 'null0') return 'Null0';
   if (/^lo\d+$/.test(id)) return `Loopback${id.slice(2)}`;
   if (/^tu\d+$/.test(id)) return `Tunnel${id.slice(2)}`;
   if (/^di\d+$/.test(id)) return `Dialer${id.slice(2)}`;

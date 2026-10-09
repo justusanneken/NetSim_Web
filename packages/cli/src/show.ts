@@ -123,7 +123,13 @@ function classful(ip: string): { net: string; plen: number } {
   return { net: networkOf(ip, plen), plen };
 }
 
-export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): string[] {
+export function showIpRoute(
+  e: Engine,
+  d: D,
+  target?: string,
+  proto?: string,
+  mask?: string,
+): string[] {
   const allRib = e.routingTable(d.id);
   const codeOf: Record<string, string> = {
     rip: 'R',
@@ -136,7 +142,7 @@ export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): s
   const rib = proto
     ? allRib.filter((r) => r.type === codeOf[proto] || (proto === 'connected' && r.type === 'L'))
     : allRib;
-  if (target) return showRouteEntry(e, d, rib, target);
+  if (target) return showRouteEntry(e, d, rib, target, mask);
   const def = rib.find((r) => r.plen === 0 && r.type !== 'C' && r.type !== 'L');
   const out = [...CODES, ''];
   out.push(
@@ -156,7 +162,8 @@ export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): s
   }
   const where = (r: RibEntry): string => {
     const ifn = r.ifaceId ? ifDisplay(d, r.ifaceId) : '';
-    if (r.type === 'C' || r.type === 'L') return `is directly connected, ${ifn}`;
+    if (r.type === 'C' || r.type === 'L' || (r.type === 'S' && !r.nextHop && r.ad === 1))
+      return `is directly connected, ${ifn}`;
     if (r.type === 'B' && r.bgpNextHop)
       return `[${r.ad}/${r.metric}] via ${r.bgpNextHop}, ${clock(e.state.now - (r.since ?? 0))}`;
     if (r.nextHop) {
@@ -207,23 +214,51 @@ export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): s
   return out;
 }
 
-function showRouteEntry(e: Engine, d: D, rib: RibEntry[], target: string): string[] {
+/** `Known via`-Teil einer Route (Protokollname, Distanz, Metrik, Typ) wie `show ip route <addr>`. */
+function knownVia(best: RibEntry): string {
+  const pid = best.src?.split(':')[1];
+  const name =
+    best.type === 'C'
+      ? 'connected'
+      : best.type === 'L'
+        ? 'receive'
+        : best.type === 'S'
+          ? 'static'
+          : best.type === 'R'
+            ? 'rip'
+            : best.type === 'O'
+              ? `ospf ${pid ?? 1}`
+              : best.type === 'D'
+                ? `eigrp ${pid ?? 1}`
+                : `bgp ${pid ?? ''}`.trim();
+  let tail = '';
+  if (best.type === 'O') {
+    const t: Record<string, string> = {
+      IA: 'inter area',
+      E1: 'extern 1',
+      E2: 'extern 2',
+      N1: 'NSSA extern 1',
+      N2: 'NSSA extern 2',
+    };
+    tail = `, type ${t[best.sub ?? ''] ?? 'intra area'}`;
+  } else if (best.type === 'D') tail = `, type ${best.sub === 'EX' ? 'external' : 'internal'}`;
+  else if (best.type === 'B') tail = `, type ${best.ad === 20 ? 'external' : 'internal'}`;
+  return `  Known via "${name}", distance ${best.ad}, metric ${best.metric}${tail}${best.type === 'C' ? ' (connected, via interface)' : ''}`;
+}
+
+function showRouteEntry(e: Engine, d: D, rib: RibEntry[], target: string, mask?: string): string[] {
   let best: RibEntry | undefined;
   for (const r of rib) {
-    if (r.type === 'L' && r.prefix !== target) continue;
-    if (!sameSubnet(r.prefix, target, prefixMask(r.plen))) continue;
+    if (mask !== undefined) {
+      if (r.type === 'L' || r.plen !== maskToPrefix(mask) || r.prefix !== networkOf(target, r.plen))
+        continue;
+    } else {
+      if (r.type === 'L' && r.prefix !== target) continue;
+      if (!sameSubnet(r.prefix, target, prefixMask(r.plen))) continue;
+    }
     if (!best || r.plen > best.plen || (r.plen === best.plen && r.ad < best.ad)) best = r;
   }
-  if (!best) return ['% Network not in table'];
-  const names: Record<string, string> = {
-    C: 'connected',
-    L: 'receive',
-    S: 'static',
-    R: 'rip',
-    O: 'ospf',
-    D: 'eigrp',
-    B: 'bgp',
-  };
+  if (!best) return [mask !== undefined ? '% Subnet not in table' : '% Network not in table'];
   const paths = rib.filter(
     (r) =>
       r.type === best.type &&
@@ -232,17 +267,22 @@ function showRouteEntry(e: Engine, d: D, rib: RibEntry[], target: string): strin
       r.ad === best.ad &&
       (r.metric === best.metric || r.share !== undefined),
   );
-  const out = [
-    `Routing entry for ${best.prefix}/${best.plen}`,
-    `  Known via "${names[best.type]}", distance ${best.ad}, metric ${best.metric}${best.type === 'C' ? ' (connected, via interface)' : ''}`,
-    '  Routing Descriptor Blocks:',
-  ];
+  const out = [`Routing entry for ${best.prefix}/${best.plen}`, knownVia(best)];
+  const first = paths[0];
+  if (first?.nextHop && first.type !== 'S')
+    out.push(
+      `  Last update from ${first.bgpNextHop ?? first.nextHop}${first.ifaceId && first.type !== 'B' ? ` on ${ifDisplay(d, first.ifaceId)}` : ''}, ${clock(e.state.now - (first.since ?? 0))} ago`,
+    );
+  out.push('  Routing Descriptor Blocks:');
   const minShare = Math.min(...paths.map((p) => p.share ?? 1));
   paths.forEach((p, i) => {
     const ifn = p.ifaceId ? ifDisplay(d, p.ifaceId) : '';
-    out.push(
-      `${i === 0 ? '  * ' : '    '}${p.nextHop ? (p.type === 'S' ? p.nextHop : `${p.bgpNextHop ?? p.nextHop}, from ${p.bgpNextHop ?? p.nextHop}, ${clock(e.state.now - (p.since ?? 0))} ago, via ${ifn}`) : `directly connected, via ${ifn}`}`,
-    );
+    const via = p.nextHop
+      ? p.type === 'S'
+        ? p.nextHop
+        : `${p.bgpNextHop ?? p.nextHop}, from ${p.bgpNextHop ?? p.nextHop}, ${clock(e.state.now - (p.since ?? 0))} ago${p.type === 'B' ? '' : `, via ${ifn}`}`
+      : `directly connected, via ${ifn}`;
+    out.push(`${i === 0 ? '  * ' : '    '}${via}`);
     out.push(
       `      Route metric is ${p.metric}, traffic share count is ${p.share !== undefined ? Math.max(1, Math.round(p.share / minShare)) : 1}`,
     );

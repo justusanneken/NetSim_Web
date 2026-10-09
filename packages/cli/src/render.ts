@@ -409,8 +409,12 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
         (maskToPrefix(a.mask) ?? 0) - (maskToPrefix(b.mask) ?? 0),
     );
     for (const r of routes) {
-      const via = r.outIfaceId ? ifDisplay(d, r.outIfaceId) : r.nextHop;
-      L.push(`ip route ${r.prefix} ${r.mask} ${via}${r.ad !== 1 ? ` ${r.ad}` : ''}`);
+      const via = [r.outIfaceId ? ifDisplay(d, r.outIfaceId) : undefined, r.nextHop]
+        .filter(Boolean)
+        .join(' ');
+      L.push(
+        `ip route ${r.prefix} ${r.mask} ${via}${r.ad !== 1 ? ` ${r.ad}` : ''}${r.name !== undefined ? ` name ${r.name}` : ''}${r.tag !== undefined ? ` tag ${r.tag}` : ''}${r.permanent ? ' permanent' : ''}`,
+      );
     }
   }
   for (const r of [...cfg.staticRoutes6].sort(

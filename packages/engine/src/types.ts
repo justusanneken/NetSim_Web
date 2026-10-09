@@ -635,6 +635,10 @@ export interface StaticRoute {
   outIfaceId?: string;
   /** Administrative Distance (Default 1). */
   ad: number;
+  /** `name TEXT`, `tag N`, `permanent` */
+  name?: string;
+  tag?: number;
+  permanent?: boolean;
 }
 
 /** Von einem dynamischen Routing-Protokoll installierte Route (Laufzeit). */
