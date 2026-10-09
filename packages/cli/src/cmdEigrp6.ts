@@ -73,7 +73,6 @@ export function addEigrp6(r: Registry<CliSession>): void {
         }
         ic.v6 ??= { enabled: false, addrs: [], autoconfig: false, slaac: [] };
         ic.v6.eigrp = Number(a.asn);
-        ic.v6.enabled = true;
       }
       touch(s);
     },
