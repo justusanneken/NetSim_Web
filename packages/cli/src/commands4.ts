@@ -1707,6 +1707,22 @@ export function addPhase4(r: Registry<CliSession>): void {
       label: 'IP routing',
     },
     { words: [['tunnel', 'Generic Tunnel Interface']], tags: ['gre'], label: 'Tunnel debugging' },
+    {
+      words: [
+        ['ppp', 'PPP (Point to Point Protocol) information'],
+        ['negotiation', 'Protocol parameter negotiation'],
+      ],
+      tags: ['ppp.negotiation'],
+      label: 'PPP protocol negotiation debugging',
+    },
+    {
+      words: [
+        ['ppp', 'PPP (Point to Point Protocol) information'],
+        ['authentication', 'Authentication protocol activity'],
+      ],
+      tags: ['ppp.authentication'],
+      label: 'PPP authentication debugging',
+    },
   ];
   for (const d of DBG) {
     r.add({

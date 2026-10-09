@@ -15,13 +15,15 @@ export function shortName(name: string): string {
   return name
     .replace('TenGigabitEthernet', 'Te')
     .replace('GigabitEthernet', 'Gi')
-    .replace('FastEthernet', 'Fa');
+    .replace('FastEthernet', 'Fa')
+    .replace('Serial', 'Se');
 }
 
 const PREFIXES: [RegExp, string][] = [
   [/^(tengigabitethernet|te)/i, 'TenGigabitEthernet'],
   [/^(gigabitethernet|gigabit|gi|g)/i, 'GigabitEthernet'],
   [/^(fastethernet|fa|f)/i, 'FastEthernet'],
+  [/^(serial|se|s)/i, 'Serial'],
 ];
 
 /** `gi0/0`, `Gig 0/0`, `fastethernet0/1` … → Port. */

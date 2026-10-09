@@ -1,0 +1,9 @@
+{
+  "serial.protoUp": "Line-Protocol von {{port}} ist up ({{encap}}).",
+  "serial.protoDown": "Line-Protocol von {{port}} ist down ({{reason}}).",
+  "serial.reason.noclock": "keine Taktrate am DCE-Ende",
+  "serial.reason.encap": "Kapselung (HDLC/PPP) stimmt nicht überein",
+  "serial.reason.auth": "PPP-Authentifizierung fehlgeschlagen",
+  "serial.reason.peerdown": "Gegenstelle abgeschaltet",
+  "serial.reason.keepalive": "Keepalive ausgefallen"
+}

@@ -233,7 +233,8 @@ export function ifCfg(iface: Iface, c: OspfCfg): NonNullable<Iface['cfg']['ospf'
   return o && (o.pid === undefined || o.pid === c.pid) ? o : undefined;
 }
 export const ifNetwork = (iface: Iface, c: OspfCfg): 'broadcast' | 'point-to-point' =>
-  ifCfg(iface, c)?.network ?? (iface.kind === 'tunnel' ? 'point-to-point' : 'broadcast');
+  ifCfg(iface, c)?.network ??
+  (iface.kind === 'tunnel' || iface.cfg.serial ? 'point-to-point' : 'broadcast');
 export const ifHello = (iface: Iface, c: OspfCfg): number => ifCfg(iface, c)?.helloSec ?? 10;
 export const ifDead = (iface: Iface, c: OspfCfg): number =>
   ifCfg(iface, c)?.deadSec ?? ifHello(iface, c) * 4;

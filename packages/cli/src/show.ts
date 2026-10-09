@@ -15,7 +15,7 @@ const portStatus = (p: Port): { status: string; proto: string } =>
     : !p.adminUp
       ? { status: 'administratively down', proto: 'down' }
       : p.operUp
-        ? { status: 'up', proto: 'up' }
+        ? { status: 'up', proto: p.protoDown ? 'down' : 'up' }
         : { status: 'down', proto: 'down' };
 
 const sw = (d: D): SwitchConfig | undefined => (d.config.kind === 'switch' ? d.config : undefined);

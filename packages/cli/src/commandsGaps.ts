@@ -12,6 +12,7 @@ import { addTacacs } from './cmdTacacs';
 import { addSnmpTraps } from './cmdSnmp';
 import { addPppoe } from './cmdPppoe';
 import { addIpsec } from './cmdIpsec';
+import { addWan } from './cmdWan';
 import * as showGaps from './showGaps';
 
 /**
@@ -72,6 +73,7 @@ export function addGaps(r: Registry<CliSession>): void {
   addSnmpTraps(r);
   addPppoe(r);
   addIpsec(r);
+  addWan(r);
   // ------------------------------------------------------------ show (Policies)
   const SHOW = K('show', 'Show running system information');
   const U: ModeId[] = ['user', 'priv'];

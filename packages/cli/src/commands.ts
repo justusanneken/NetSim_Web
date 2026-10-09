@@ -12,6 +12,7 @@ import { addPhase4 } from './commands4';
 import { addGaps } from './commandsGaps';
 import * as show from './show';
 import { addPhase5 } from './commands5';
+import { showSerialInterface } from './showWan';
 
 const U: ModeId[] = ['user', 'priv'];
 const PR: ModeId[] = ['priv'];
@@ -105,7 +106,11 @@ export function runPing(s: CliSession, dst: string, o: PingParams): void {
     `Sending ${o.count}, ${o.size}-byte ICMP Echos to ${dst}, timeout is ${o.timeoutSec} seconds:`,
   );
   if (!r.ok) {
-    s.out('% ' + r.error);
+    if (r.error === 'ping.noIp') {
+      // Kein aktives IP-Interface (z. B. alle Schnittstellen down): IOS meldet 0 % Erfolg
+      s.out('.'.repeat(o.count));
+      s.out(`Success rate is 0 percent (0/${o.count})`);
+    } else s.out('% ' + r.error);
     return;
   }
   const cfg = d.config;
@@ -508,7 +513,10 @@ export function buildRegistry(): Registry<CliSession> {
     ],
     run: (s, a) => {
       const ports = a.if ? [portOf(s, a.if)] : s.device.ports;
-      for (const p of ports) s.outLines(show.showInterface(s.device, p));
+      for (const p of ports)
+        s.outLines(
+          p.kind === 'serial' ? showSerialInterface(s.device, p) : show.showInterface(s.device, p),
+        );
     },
   });
   sh(

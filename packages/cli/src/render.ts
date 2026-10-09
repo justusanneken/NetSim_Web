@@ -3,6 +3,7 @@ import {
   dialerLines,
   protoGlobalLines,
   protoIfaceLines,
+  serialLines,
   vtemplateLines,
 } from './renderProto';
 import { renderPolicyConfig } from './showGaps';
@@ -248,7 +249,8 @@ function renderInterfaces(d: Device & { config: CliConfig }, L: string[]): void 
       if (p.mtu !== 1500) out.push(` ip mtu ${p.mtu}`);
       if (cfg.kind === 'router') out.push(...fwIfaceLines(cfg, p.id));
       l3Lines(cfg, cfg.ifaces[p.id], out);
-      out.push(` duplex ${p.duplex}`, ` speed ${p.speed}`);
+      if (p.kind === 'serial') out.push(...serialLines(cfg.ifaces[p.id]));
+      else out.push(` duplex ${p.duplex}`, ` speed ${p.speed}`);
     }
     if (!p.adminUp) out.push(' shutdown');
     L.push(...out, '!');

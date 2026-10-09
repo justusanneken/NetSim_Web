@@ -12,6 +12,8 @@ import {
   type Frame,
 } from '@netsim/protocols';
 import { pickCable, validateCable } from './cabling';
+import { evalSerial, serialEnds } from './serial';
+import { serialLineChanged } from './serialLog';
 import { CATALOG, PORT_MAX_SPEED } from './catalog';
 import type { DeviceCtx, LogInput } from './ctx';
 import {
@@ -233,6 +235,8 @@ export class Engine {
   routingChanged(deviceId: string): void {
     const dev = this.state.devices[deviceId];
     if (!dev?.powered || dev.crashed) return;
+    if (dev.config.kind === 'router' && dev.ports.some((p) => p.kind === 'serial'))
+      this.refreshLinks(); // Kapselung/Takt/PPP-Zugangsdaten wirken auf das Line-Protocol
     if (dev.config.kind === 'router' || dev.config.kind === 'switch')
       this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
   }
@@ -454,6 +458,17 @@ export class Engine {
     this.p5.wirelessSync();
   }
 
+  /** Serial-Kabelende (`dce`/`dte`) eines Ports; undefined ohne Kabel. */
+  serialRole(deviceId: string, portId: string): 'dce' | 'dte' | undefined {
+    const dev = this.state.devices[deviceId];
+    const p = dev?.ports.find((x) => x.id === portId);
+    const link = p?.linkId ? this.state.links[p.linkId] : undefined;
+    if (!link || p?.kind !== 'serial') return undefined;
+    const isA = link.a.deviceId === deviceId && link.a.portId === portId;
+    const aDce = link.cable !== 'serial-dte';
+    return isA === aDce ? 'dce' : 'dte';
+  }
+
   setPortAdmin(deviceId: string, portId: string, up: boolean): void {
     const p = this.getPort({ deviceId, portId });
     if (!p || p.adminUp === up) return;
@@ -581,7 +596,11 @@ export class Engine {
     } else if (svi && dev.config.kind === 'switch') {
       cfg.ifaces[id] = { kind: 'svi', vlan: Number(svi[1]), shutdown: false };
     } else if (dev.ports.some((p) => p.id === id)) {
-      cfg.ifaces[id] = { kind: 'phys', portId: id };
+      const sp = dev.ports.find((x) => x.id === id);
+      cfg.ifaces[id] =
+        sp?.kind === 'serial'
+          ? { kind: 'phys', portId: id, serial: { encap: 'hdlc' } }
+          : { kind: 'phys', portId: id };
     } else return { ok: false, error: 'cable.reject.notFound' };
     return { ok: true, value: id };
   }
@@ -1118,6 +1137,10 @@ export class Engine {
       const devB = this.state.devices[link.b.deviceId] as Device;
       const pa = this.getPort(link.a) as Port;
       const pb = this.getPort(link.b) as Port;
+      if (pa.kind === 'serial' && pb.kind === 'serial') {
+        this.refreshSerialLink(link, devA, devB, pa, pb);
+        continue;
+      }
       let reason: string | undefined;
       if (!link.cableOk) reason = link.cableProblem ?? 'cable.problem.generic';
       else if (!devA.powered || !devB.powered) reason = 'link.reason.power';
@@ -1137,6 +1160,41 @@ export class Engine {
       }
     }
     this.refreshSwitches();
+  }
+
+  /** Serial-Link: Träger (up/up-Voraussetzung) und Line-Protocol (HDLC/PPP, Takt, Authentifizierung). */
+  private refreshSerialLink(link: Link, devA: Device, devB: Device, pa: Port, pb: Port): void {
+    const phys = link.cableOk && devA.powered && devB.powered;
+    const upA = phys && pa.adminUp;
+    const upB = phys && pb.adminUp;
+    link.operUp = upA && upB;
+    const [ea, eb] = serialEnds(link, devA, devB, pa, pb);
+    const proto = upA && upB ? evalSerial(ea, eb) : undefined;
+    const dce = ea.dce ? ea : eb;
+    const speed = (dce.cfg.clockRate ?? 2_000_000) / 1_000_000;
+    const reasonKey = !link.cableOk
+      ? (link.cableProblem ?? 'cable.problem.generic')
+      : !devA.powered || !devB.powered
+        ? 'link.reason.power'
+        : 'link.reason.admin';
+    for (const [e, up, peerUp] of [
+      [ea, upA, upB],
+      [eb, upB, upA],
+    ] as const) {
+      const p = e.port;
+      const wasLine = p.operUp && !p.protoDown;
+      const wasProto = p.protoDown;
+      p.protoDown = up ? (peerUp ? proto : 'peerdown') : undefined;
+      p.operSpeed = up ? speed : 0;
+      p.operDuplex = 'full';
+      this.setPortOper(e.dev, p, up, reasonKey);
+      const line = p.operUp && !p.protoDown;
+      if (wasProto !== p.protoDown && p.operUp === up && up) {
+        if (e.dev.powered && (e.dev.config.kind === 'router' || e.dev.config.kind === 'switch'))
+          this.withCtx(e.dev, (ctx) => routingSync(ctx, e.dev as L3Dev));
+      }
+      if (wasLine !== line) serialLineChanged(this, e.dev, p, line, wasProto, proto, peerUp);
+    }
   }
 
   /** Trunk-Aushandlung (DTP) und EtherChannel-Bündelung je Switch neu berechnen. */
@@ -1574,7 +1632,7 @@ export class Engine {
 
   // ------------------------------------------------------------ Kontext & Log
 
-  private addLog(dev: Device, e: LogInput): void {
+  addLog(dev: Device, e: LogInput): void {
     const from = e.from ? this.state.devices[e.from] : undefined;
     this.log.push({
       id: this.logOffset + this.log.length,

@@ -70,7 +70,7 @@ export function ifaceUp(dev: Device, cfg: L3Cfg, id: string, c: IfaceCfg): boole
     return !!sw && !c.shutdown && vlanActive(sw, dev, c.vlan ?? 0);
   }
   const port = dev.ports.find((p) => p.id === c.portId);
-  if (!port || !port.operUp) return false;
+  if (!port || !port.operUp || port.protoDown) return false;
   if (c.kind === 'sub') return !c.shutdown;
   if (dev.config.kind === 'switch') return dev.config.ports[port.id]?.routed === true;
   void cfg;

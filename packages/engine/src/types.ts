@@ -112,6 +112,28 @@ export interface Port {
   mtu: number;
   /** Gesetzt, wenn der Port durch err-disable abgeschaltet wurde (z. B. `psecure-violation`). */
   errdisabled?: string;
+  /** Serial: Grund, warum das Line-Protocol down ist (Link-Schicht), sonst up. */
+  protoDown?: SerialDown;
+}
+
+/** Warum das Line-Protocol einer Serial-Schnittstelle down ist, obwohl die Schnittstelle up ist. */
+export type SerialDown = 'noclock' | 'encap' | 'auth' | 'peerdown' | 'keepalive';
+
+/** Serial-Konfiguration (`encapsulation hdlc|ppp`, `clock rate`, PPP-Authentifizierung). */
+export interface SerialCfg {
+  encap: 'hdlc' | 'ppp';
+  /** `clock rate` (bit/s), nur am DCE-Ende wirksam. */
+  clockRate?: number;
+  /** `keepalive SEC` (Default 10, 0 = aus). */
+  keepalive?: number;
+  /** `ppp authentication chap|pap …` in Reihenfolge. */
+  auth?: ('chap' | 'pap')[];
+  chapHostname?: string;
+  chapPassword?: string;
+  papUser?: string;
+  papPass?: string;
+  /** `loopback` an der Schnittstelle. */
+  loopback?: boolean;
 }
 
 export interface PortRef {
@@ -569,6 +591,8 @@ export interface IfaceCfg {
   cryptoMap?: string;
   /** RIP: Split Horizon an dieser Schnittstelle (Default an). */
   ripSplitHorizon?: boolean;
+  /** Serial-Port: Kapselung, Taktrate, PPP. */
+  serial?: SerialCfg;
 }
 export interface V6IfCfg {
   /** `ipv6 enable`: Link-Local ohne globale Adresse. */

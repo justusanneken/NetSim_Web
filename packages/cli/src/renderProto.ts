@@ -85,3 +85,20 @@ export function cryptoGlobalLines(cfg: L3Cfg): string[] {
     }
   return L;
 }
+
+/** Serial-Schnittstelle: Kapselung, PPP-Authentifizierung, Keepalive, Taktrate (IOS-Reihenfolge). */
+export function serialLines(c: IfaceCfg | undefined): string[] {
+  const sc = c?.serial;
+  const out: string[] = [];
+  if (!sc) return out;
+  if (sc.encap === 'ppp') out.push(' encapsulation ppp');
+  if (sc.keepalive === 0) out.push(' no keepalive');
+  else if (sc.keepalive !== undefined) out.push(` keepalive ${sc.keepalive}`);
+  if (sc.auth?.length) out.push(` ppp authentication ${sc.auth.join(' ')}`);
+  if (sc.chapHostname !== undefined) out.push(` ppp chap hostname ${sc.chapHostname}`);
+  if (sc.chapPassword !== undefined) out.push(` ppp chap password 0 ${sc.chapPassword}`);
+  if (sc.papUser !== undefined)
+    out.push(` ppp pap sent-username ${sc.papUser} password 0 ${sc.papPass ?? ''}`);
+  if (sc.clockRate !== undefined) out.push(` clock rate ${sc.clockRate}`);
+  return out;
+}
