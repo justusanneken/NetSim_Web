@@ -6,3 +6,4 @@ export * from './activity';
 export * from './derive';
 export * from './scenario';
 export * from './service';
+export * from './challenge';
