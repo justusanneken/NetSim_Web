@@ -608,8 +608,11 @@ function ifaces6(d: D): Iface6[] {
 
 export function showIpv6Route(e: Engine, d: D): string[] {
   const rib = e.routingTable6(d.id);
+  // IOS zählt jedes Präfix einmal (ECMP-Pfade nicht doppelt), einschließlich der Local-Routen
+  const locals = ifaces6(d).reduce((n, i) => n + i.addrs.length, 0);
+  const count = new Set(rib.map((r) => `${r.prefix}/${r.plen}`)).size + locals;
   const out = [
-    `IPv6 Routing Table - default - ${rib.length} entries`,
+    `IPv6 Routing Table - default - ${count} entries`,
     'Codes: C - Connected, L - Local, S - Static, U - Per-user Static route',
     '       B - BGP, R - RIP, I1 - ISIS L1, I2 - ISIS L2',
     '       IA - ISIS interarea, IS - ISIS summary, D - EIGRP, EX - EIGRP external',
