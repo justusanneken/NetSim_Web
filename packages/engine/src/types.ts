@@ -298,9 +298,19 @@ export type NatRule =
       proto?: 'tcp' | 'udp';
       lport?: number;
       gport?: number;
+      /** Firewall-Objekt-NAT: gilt nur für das Paar (reale Schnittstelle, gemappte Schnittstelle). */
+      fromIf?: string;
+      toIf?: string;
     }
-  | { kind: 'dynamic'; acl: string; pool: string; overload: boolean }
-  | { kind: 'interface'; acl: string; ifaceId: string };
+  | {
+      kind: 'dynamic';
+      acl: string;
+      pool: string;
+      overload: boolean;
+      fromIf?: string;
+      toIf?: string;
+    }
+  | { kind: 'interface'; acl: string; ifaceId: string; fromIf?: string; toIf?: string };
 
 export interface NatEndpoint {
   ip: Ipv4Addr;
@@ -314,6 +324,9 @@ export interface NatEntry {
   outside: NatEndpoint;
   kind: 'static' | 'dynamic';
   expiresAt: number;
+  /** Firewall: Schnittstellenpaar der erzeugenden Regel (Rückverkehr wird nur dort zurückübersetzt). */
+  fromIf?: string;
+  toIf?: string;
 }
 
 export interface NatCfg {
