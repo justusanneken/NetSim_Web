@@ -161,6 +161,14 @@ export class Engine {
     for (const d of Object.values(state.devices)) {
       const c = d.config;
       if ((c.kind === 'router' || c.kind === 'switch') && c.sys.mgmt) c.sys.mgmt.logBuffer = [];
+      if (c.kind === 'host') {
+        // WLAN-Assoziationen sind Laufzeit: Clients verbinden sich nach dem Laden neu
+        if (c.wifi) {
+          c.wifi.assoc = undefined;
+          c.wifi.status = c.wifi.enabled ? 'idle' : 'off';
+        }
+        if (c.ap) c.ap.clients = {};
+      }
     }
     this.resetRuntime();
     this.p5.wirelessSync();

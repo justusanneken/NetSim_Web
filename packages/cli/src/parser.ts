@@ -263,7 +263,7 @@ export class Registry<C> {
           const slot = pos.def.slots[j] as Slot;
           if (slot.kind === 'kw') {
             for (const a of slot.alts) {
-              if (a.word.startsWith(low)) kwHits.push({ pos, j, word: a.word });
+              if (a.word.toLowerCase().startsWith(low)) kwHits.push({ pos, j, word: a.word });
             }
           } else if (slot.kind === 'rest' || validParam(slot, tok.text, env)) {
             other.push({ pos, j });
@@ -337,7 +337,7 @@ export class Registry<C> {
         const s = pos.def.slots[j] as Slot;
         if (s.kind === 'kw') {
           for (const a of s.alts) {
-            if (a.word.startsWith(partial.toLowerCase()) && !items.has(a.word))
+            if (a.word.toLowerCase().startsWith(partial.toLowerCase()) && !items.has(a.word))
               items.set(a.word, a.help);
           }
         } else if (partial === '' && !items.has(s.label)) items.set(s.label, s.help);
@@ -372,7 +372,8 @@ export class Registry<C> {
       for (const j of reachable(pos.def.slots, pos.idx)) {
         const s = pos.def.slots[j] as Slot;
         if (s.kind === 'kw') {
-          for (const a of s.alts) if (a.word.startsWith(last.text.toLowerCase())) words.add(a.word);
+          for (const a of s.alts)
+            if (a.word.toLowerCase().startsWith(last.text.toLowerCase())) words.add(a.word);
         }
       }
     }

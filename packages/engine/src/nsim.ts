@@ -248,6 +248,14 @@ function checkPlain(v: unknown): string | undefined {
 type Plain = Record<string, unknown>;
 const isObj = (x: unknown): x is Plain => typeof x === 'object' && x !== null && !Array.isArray(x);
 
+/** Grundtyp-Konflikt zwischen Standardwert und importiertem Wert (Union-Felder wie `'all' | number[]` sind erlaubt). */
+function mismatch(d: unknown, v: unknown): boolean {
+  if (Array.isArray(d)) return !Array.isArray(v);
+  if (typeof d === 'string') return typeof v !== 'string' && !Array.isArray(v);
+  if (typeof d === 'object') return !isObj(v);
+  return typeof d !== typeof v;
+}
+
 /**
  * Gleicht eine importierte Konfiguration mit der Standardkonfiguration des Gerätetyps ab: fehlende Felder
  * werden ergänzt (Vorwärtskompatibilität), Felder mit falschem Grundtyp lehnen den Import ab.
@@ -262,12 +270,7 @@ function conform(defaults: unknown, value: unknown, path: string): string | unde
     }
     const v = value[k];
     if (d === undefined || d === null || v === undefined) continue;
-    if (
-      Array.isArray(d)
-        ? !Array.isArray(v)
-        : typeof d !== typeof v || Array.isArray(v) || (v === null && typeof d === 'object')
-    )
-      return `${path}.${k}: wrong type`;
+    if (mismatch(d, v)) return `${path}.${k}: wrong type`;
     if (isObj(d) && Object.keys(d).length > 0) {
       const r = conform(d, v, `${path}.${k}`);
       if (r) return r;
