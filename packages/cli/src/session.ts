@@ -107,8 +107,8 @@ export class CliSession implements Shell {
     if (this.remoteGone()) return '';
     const eng = this.engine;
     const log = eng.log;
-    // Cursor = absolute Log-Id; nach Step Back/Trimmen auf den vorhandenen Bereich begrenzen
-    if (this.debugCursor > eng.logLength) this.debugCursor = 0;
+    // Das Log ist geschrumpft (Step Back/Restore, Reset): bis dahin Gezeigtes nicht erneut ausgeben
+    if (this.debugCursor > eng.logLength) this.debugCursor = eng.logLength;
     if (this.debugCursor < eng.logOffset) this.debugCursor = eng.logOffset;
     const cfg = this.device.config;
     const flags = cfg.routing.debug;
