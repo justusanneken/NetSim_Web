@@ -76,6 +76,35 @@ export function dhcpStart(ctx: DeviceCtx, node: IpNode, h: HostConfig): void {
   ctx.setTimer('dhcp:retry', RETRY_US);
 }
 
+/**
+ * INIT-REBOOT (RFC 2131 §3.2): nach einem Roaming im selben L2-Segment behält der Client seine Adresse und fragt
+ * per Broadcast-REQUEST (ohne Server-ID) nach Bestätigung. ACK ⇒ sofort `bound` (keine ARP-Probe, kein DORA);
+ * NAK oder keine Antwort (4 s) ⇒ vollständiger DORA. Gibt `false` zurück, wenn kein Lease vorhanden ist.
+ */
+export function dhcpReboot(ctx: DeviceCtx, node: IpNode, h: HostConfig): boolean {
+  const c = h.dhcpClient;
+  if (!c.enabled || !h.ip || (c.state !== 'bound' && c.state !== 'renewing')) return false;
+  c.state = 'rebooting';
+  c.xid = (ctx.rand(0x7fffffff) + 1) >>> 0;
+  c.offered = {
+    ip: h.ip,
+    mask: h.mask ?? '255.255.255.0',
+    router: h.gateway,
+    dns: h.dnsServers,
+    leaseSec: c.leaseSec,
+  };
+  ctx.cancelTimer('dhcp:renewRetry');
+  send(ctx, node, h, 'request', { requestedIp: h.ip });
+  ctx.log({
+    kind: 'info',
+    proto: 'DHCP',
+    status: 'info',
+    msg: { key: 'dhcp.reboot', params: { ip: h.ip } },
+  });
+  ctx.setTimer('dhcp:retry', RETRY_US);
+  return true;
+}
+
 export function dhcpStop(ctx: DeviceCtx, node: IpNode, h: HostConfig, release = true): void {
   const c = h.dhcpClient;
   for (const t of ['dhcp:retry', 'dhcp:probe', 'dhcp:renew', 'dhcp:expire']) ctx.cancelTimer(t);
@@ -115,6 +144,13 @@ export function clientRx(
     log('dhcp.gotOffer', 'ok', { ip: m.yiaddr, server: c.server });
     send(ctx, node, h, 'request', { requestedIp: m.yiaddr, serverId: c.server });
     ctx.setTimer('dhcp:retry', RETRY_US);
+  } else if (m.op === 'ack' && c.state === 'rebooting' && c.offered) {
+    ctx.cancelTimer('dhcp:retry');
+    c.boundAt = ctx.now;
+    c.leaseSec = m.options.leaseSec ?? c.leaseSec;
+    c.state = 'bound';
+    log('dhcp.renewed', 'ok', { ip: m.yiaddr });
+    armLease(ctx, c.leaseSec);
   } else if (m.op === 'ack' && (c.state === 'requesting' || c.state === 'renewing') && c.offered) {
     if (c.state === 'renewing') {
       c.boundAt = ctx.now;
@@ -144,6 +180,7 @@ export function clientRx(
     ctx.setTimer('dhcp:probe', PROBE_US);
   } else if (m.op === 'nak') {
     log('dhcp.gotNak', 'drop');
+    node.cfg.arpCache = {};
     dhcpStart(ctx, node, h);
   } else return false;
   return true;
@@ -177,7 +214,13 @@ export function dhcpTimer(ctx: DeviceCtx, node: IpNode, h: HostConfig, name: str
   if (!c.enabled) return true;
   switch (name) {
     case 'dhcp:retry':
-      if (c.state === 'requesting' || c.state === 'selecting' || c.state === 'init')
+      if (c.state === 'rebooting') node.cfg.arpCache = {};
+      if (
+        c.state === 'rebooting' ||
+        c.state === 'requesting' ||
+        c.state === 'selecting' ||
+        c.state === 'init'
+      )
         dhcpStart(ctx, node, h);
       break;
     case 'dhcp:probe':

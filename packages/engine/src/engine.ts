@@ -79,6 +79,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   propagationUs: 5,
   processingUs: 50,
   maxCopperLengthM: 100,
+  maxLogEntries: 50_000,
 };
 
 export interface EngineOptions {
@@ -93,6 +94,8 @@ export class Engine {
   state: EngineState;
   /** Event-Log (außerhalb des Zustands, damit Snapshots klein bleiben). */
   log: LogEntry[] = [];
+  /** Id des ersten Eintrags in `log` (Anzahl bereits getrimmter Einträge); `log[i].id === logOffset + i`. */
+  logOffset = 0;
   private refreshWanted = false;
   /** Phase 5: WLAN-Assoziationen nach dem aktuellen Ereignis neu berechnen. */
   private wifiWanted = false;
@@ -123,13 +126,29 @@ export class Engine {
 
   // ------------------------------------------------------------ Snapshot
 
+  /** Absolute Log-Länge = nächste zu vergebende Log-Id (wächst monoton, auch wenn das Log getrimmt wird). */
+  get logLength(): number {
+    return this.logOffset + this.log.length;
+  }
+
+  /** Log-Einträge ab absoluter Id `from` (höchstens `limit`); getrimmte Ids werden übersprungen. */
+  logSlice(from: number, limit = 5000): LogEntry[] {
+    const start = Math.max(0, from - this.logOffset);
+    return this.log.slice(start, start + limit);
+  }
+
   snapshot(): EngineSnapshot {
-    return { state: structuredClone(this.state), logLength: this.log.length };
+    return { state: structuredClone(this.state), logLength: this.logLength };
   }
 
   restore(snap: EngineSnapshot): void {
     this.state = structuredClone(snap.state);
-    this.log.length = Math.min(this.log.length, snap.logLength);
+    const keep = snap.logLength - this.logOffset;
+    if (keep < 0) {
+      // Der Snapshot ist älter als der aufbewahrte Bereich: Log leer, Ids setzen bei der Snapshot-Länge fort
+      this.log.length = 0;
+      this.logOffset = snap.logLength;
+    } else this.log.length = Math.min(this.log.length, keep);
   }
 
   /** Setzt Zeit, Queue, Log und Laufzeitzustand zurück; Topologie und Konfiguration bleiben. */
@@ -187,6 +206,7 @@ export class Engine {
       }
     }
     this.log.length = 0;
+    this.logOffset = 0;
     this.refreshLinks();
     for (const dev of Object.values(s.devices)) this.startTimers(dev);
   }
@@ -1534,7 +1554,7 @@ export class Engine {
   private addLog(dev: Device, e: LogInput): void {
     const from = e.from ? this.state.devices[e.from] : undefined;
     this.log.push({
-      id: this.log.length,
+      id: this.logOffset + this.log.length,
       t: this.state.now,
       kind: e.kind,
       proto: e.proto,
@@ -1549,6 +1569,13 @@ export class Engine {
       frame: e.frame,
       debug: e.debug,
     });
+    const cap = this.state.config.maxLogEntries ?? 0;
+    if (cap > 0 && this.log.length > cap) {
+      // in Blöcken (~10 %) trimmen, damit das Entfernen amortisiert O(1) bleibt
+      const drop = this.log.length - Math.max(1, Math.floor(cap * 0.9));
+      this.log.splice(0, drop);
+      this.logOffset += drop;
+    }
   }
 
   withCtx<T>(dev: Device, fn: (ctx: DeviceCtx) => T): T {

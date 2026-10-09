@@ -10,6 +10,7 @@ import type {
 } from '@netsim/engine';
 import { api, proxy } from './engine/client';
 import { isEndDevice } from './deviceKinds';
+import { syncLogWindow } from './logSync';
 
 export type Tool = 'select' | 'hand' | 'cable' | 'delete' | 'pdu';
 export type CableChoice = CableType | 'auto';
@@ -77,6 +78,8 @@ export interface PortPicker {
 interface UiState {
   view: ViewModel | null;
   log: LogEntry[];
+  /** Id des ersten Eintrags in `log` (die Engine trimmt das Log; `log[i].id === logBase + i`). */
+  logBase: number;
   tool: Tool;
   cable: CableChoice;
   placing: DeviceType | null;
@@ -149,6 +152,7 @@ let epoch = -1;
 export const useStore = create<UiState>((set, get) => ({
   view: null,
   log: [],
+  logBase: 0,
   tool: 'select',
   cable: 'auto',
   placing: null,
@@ -361,22 +365,20 @@ async function syncLog(): Promise<void> {
       syncAgain = false;
       const v = useStore.getState().view;
       if (!v) break;
-      let log = useStore.getState().log;
-      if (v.logEpoch !== epoch || v.logLength < log.length) {
-        epoch = v.logEpoch;
-        log = [];
-      }
-      if (v.logLength > log.length) {
-        const more = await api.getLog(log.length, v.logLength - log.length);
-        log = log.concat(more);
-      }
-      const prev = useStore.getState().log.length;
-      useStore.setState({ log });
-      if (
-        (v.mode === 'simulation' && log.length > prev && prev > 0) ||
-        (v.mode === 'simulation' && prev === 0 && log.length > 0)
-      ) {
-        addAnimations(log.slice(prev));
+      const cur = useStore.getState();
+      const reset = v.logEpoch !== epoch;
+      epoch = v.logEpoch;
+      const curEnd = cur.logBase + cur.log.length;
+      const next = await syncLogWindow(
+        { log: cur.log, base: cur.logBase },
+        v,
+        reset,
+        (from, limit) => api.getLog(from, limit),
+      );
+      useStore.setState({ log: next.log, logBase: next.base });
+      if (v.mode === 'simulation' && !reset) {
+        const fresh = next.log.filter((l) => l.id >= curEnd);
+        if (fresh.length > 0) addAnimations(fresh);
       }
     } while (syncAgain);
   } finally {
