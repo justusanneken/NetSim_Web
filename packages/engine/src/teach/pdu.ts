@@ -144,7 +144,8 @@ export function startAttempt(e: Engine, spec: PduSpec): Result<Attempt> {
       if (r.cached) return { ok: true, value: { ...base, decided: { status: 'ok' } } };
       return { ok: true, value: { ...base, ref: r.id } };
     }
-    const target = spec.dst.includes('://') ? spec.dst : `${p}://${spec.dst}`;
+    const asDevice = spec.dst.includes('://') ? undefined : resolveTarget(e, spec.dst);
+    const target = spec.dst.includes('://') ? spec.dst : `${p}://${asDevice ?? spec.dst}`;
     const path = spec.payload?.startsWith('/') ? spec.payload : '';
     const port = spec.dport && spec.dport !== (p === 'https' ? 443 : 80) ? `:${spec.dport}` : '';
     const url = target.replace(/^(https?:\/\/[^/:]+)(:\d+)?(\/.*)?$/i, `$1${port}${path || '$3'}`);

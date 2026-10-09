@@ -22,12 +22,26 @@ import { netNum, normMask, plenOf, resolveIface, resolvePort } from './ref';
  */
 
 const dev = z.string().min(1).max(64);
+/** Text in einer oder mehreren Sprachen (`{ de, en }`); ein einfacher String gilt fuer alle Sprachen. */
+export const LTextSchema = z.union([
+  z.string().max(4000),
+  z.object({ de: z.string().max(4000).optional(), en: z.string().max(4000).optional() }),
+]);
+export type LText = z.infer<typeof LTextSchema>;
+
+/** Waehlt die Sprachfassung (Fallback: andere Sprache, dann leer). */
+export function pickText(t: LText | undefined, lang: string): string {
+  if (t === undefined) return '';
+  if (typeof t === 'string') return t;
+  return (lang === 'en' ? (t.en ?? t.de) : (t.de ?? t.en)) ?? '';
+}
+
 const wi = {
   id: z.string().min(1).max(40),
   weight: z.number().min(0.1).max(100).default(1),
   /** Eigene Beschriftung; sonst wird sie aus der Pruefung abgeleitet. */
-  label: z.string().max(200).optional(),
-  hint: z.string().max(500).optional(),
+  label: LTextSchema.optional(),
+  hint: LTextSchema.optional(),
 };
 const ip4 = z.string().refine((s) => isValidIpv4(s), 'IPv4');
 const maskStr = z.string().max(15);

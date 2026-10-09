@@ -9,6 +9,7 @@ import {
   resolveIface,
   resolvePort,
   type Check,
+  type ConfigItem,
   type CheckInput,
   type Engine,
   type RouterConfig,
@@ -274,7 +275,7 @@ describe('statische Pruefungen', () => {
       networks: [{ prefix: '10.0.1.0', wildcard: '0.0.0.255', area: '0' }],
       passive: [],
     } as never;
-    const item = (spec: Record<string, unknown>, id = 'c') => ({
+    const item = (spec: ConfigItem, id = 'c') => ({
       id,
       type: 'config' as const,
       device: dn,
@@ -353,7 +354,7 @@ describe('statische Pruefungen', () => {
     const d = e.getDevice(sw as string);
     if (d?.config.kind !== 'switch') throw new Error('switch');
     const cfg: SwitchConfig = d.config;
-    const item = (spec: Record<string, unknown>) => ({
+    const item = (spec: ConfigItem) => ({
       id: 'c',
       type: 'config' as const,
       device: d.name,
