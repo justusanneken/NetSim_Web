@@ -56,7 +56,7 @@ export interface RoutingInfo {
     vlinks?: { area: string; rid: string; up: boolean }[];
     maxPaths?: number;
   }[];
-  eigrp: { asn: number; neighbors: { ip: string; iface: string }[] }[];
+  eigrp: { asn: number; v6?: boolean; neighbors: { ip: string; iface: string }[] }[];
   bgp?: {
     asn: number;
     neighbors: {
@@ -249,9 +249,10 @@ function addRoutingView(engine: Engine, d: Device, cfg: L3Conf, v: DeviceView): 
       });
     }
   }
-  for (const c of Object.values(r.eigrp))
+  for (const c of [...Object.values(r.eigrp), ...Object.values(r.eigrp6 ?? {})])
     info.eigrp.push({
       asn: c.asn,
+      v6: c.v6 || undefined,
       neighbors: Object.values(c.neighbors).map((n) => ({ ip: n.ip, iface: name(n.ifaceId) })),
     });
   if (r.bgp)

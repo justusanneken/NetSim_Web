@@ -13,6 +13,7 @@ import type {
 import { listIfaces6, newHsrp, virtualLl6, vmac6Of, vmacOf } from '@netsim/engine';
 import { ciscoMac } from './format';
 import { ifDisplay, ifShort } from './ifnames';
+import * as showEigrp6 from './showEigrp6';
 
 type D = Device;
 const l3 = (d: D) =>
@@ -618,15 +619,19 @@ export function showIpv6Route(e: Engine, d: D): string[] {
   const sorted = [...rib].sort((a, b) => a.prefix.localeCompare(b.prefix) || a.plen - b.plen);
   for (const r of sorted) {
     const code =
-      r.type === 'O'
-        ? r.sub === 'IA'
-          ? 'OI'
-          : r.sub === 'E1'
-            ? 'OE1'
-            : r.sub === 'E2'
-              ? 'OE2'
-              : 'O'
-        : r.type;
+      r.type === 'D'
+        ? r.sub === 'EX'
+          ? 'EX'
+          : 'D'
+        : r.type === 'O'
+          ? r.sub === 'IA'
+            ? 'OI'
+            : r.sub === 'E1'
+              ? 'OE1'
+              : r.sub === 'E2'
+                ? 'OE2'
+                : 'O'
+          : r.type;
     const prev = sorted[sorted.indexOf(r) - 1];
     const sameAsPrev =
       prev !== undefined &&
@@ -718,6 +723,7 @@ export function showIpv6Protocols(e: Engine, d: D): string[] {
       '',
     );
   }
+  out.push(...showEigrp6.protocols(d));
   if (!out.length) out.push('IPv6 Routing Protocol is "connected"', '');
   void e;
   return out;

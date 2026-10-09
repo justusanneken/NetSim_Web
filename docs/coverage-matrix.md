@@ -85,7 +85,7 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | OSPFv2 Einzel- und Multi-Area (Hello/DBD/LSR/LSU/LSAck, DR/BDR, LSA 1–5, SPF, ABR-Summaries, `area range`, Kosten/Referenzbandbreite, ECMP)                              | 4     | fertig                                      | `engine › ospf › *`, `engine › ecmp › *`                |
 | OSPF Stub, Totally Stubby, NSSA (Typ 7 + Übersetzung), Virtual Links, Authentifizierung (simple/MD5 als Schlüsselvergleich)                                              | 4     | fertig                                      | `engine › ospf_areas › *`, `engine › ospf_vlink › *`    |
 | Abnahme: OSPF konvergiert im 4-Router-Ring, Linkausfall führt zum Umschalten                                                                                             | 4     | fertig                                      | `engine › ospf › Abnahme…`                              |
-| EIGRP (Hello/Hold, Update/Query/Reply mit Ack/Retransmit, DUAL mit Feasible Successor, klassische Metrik, Auto-Summary, `variance`, ECMP, Stuck-in-Active)               | 4     | fertig (EIGRP für IPv6 fehlt)               | `engine › eigrp › *`, `engine › eigrp_gaps › *`         |
+| EIGRP (Hello/Hold, Update/Query/Reply mit Ack/Retransmit, DUAL mit Feasible Successor, klassische Metrik, Auto-Summary, `variance`, ECMP, Stuck-in-Active)               | 4     | fertig (EIGRP für IPv6: siehe unten)        | `engine › eigrp › *`, `engine › eigrp_gaps › *`         |
 | HSRP v1/v2 (Active/Standby/Preempt, virtuelle MAC, Tracking, Failover, Gruppen bis 4095, Klartext-Authentifizierung, HSRP für IPv6)                                      | 4     | fertig (kein MD5, keine Coup/Resign-Pakete) | `engine › hsrp_gre › HSRP`, `engine › hsrp_v2 › *`      |
 | GRE-Tunnel (Loopback als Quelle, OSPF über Tunnel)                                                                                                                       | 4     | fertig                                      | `engine › hsrp_gre › GRE…`                              |
 | Redistribution (connected/static/RIP/OSPF/EIGRP/BGP → RIP/OSPF/EIGRP/BGP; IPv6: OSPFv3/RIPng), `default-information originate`, `route-map`, `distribute-list`           | 4     | fertig                                      | `engine › redistribute › *`, `engine › routemap › *`    |
@@ -131,3 +131,9 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | CLI-Framework (Modi, `?`, Tab, Abkürzungen), `running-config`-Renderer      | 2     | offen  | –    |
 | Desktop (IP-Config, Command Prompt), Animation, PDU-Inspektor (voll)        | 2     | offen  | –    |
 | `.nsim`, Autosave, Undo/Redo, Vorlagen, Scripting, Aufgabenmodus, Multiuser | 6     | offen  | –    |
+
+## Erweiterungen proto
+
+| Feature                                                                                                                                         | Status                            | Test                                            |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ----------------------------------------------- |
+| EIGRP für IPv6 (`ipv6 router eigrp`, `ipv6 eigrp`, Link-Local-Nachbarn über `ff02::a`, DUAL/Metrik wie IPv4, `show ipv6 eigrp …`, D/EX, Replay) | fertig (kein Auto-Summary/Filter) | `engine › eigrp6 › *`, `cli › proto_eigrp6 › *` |

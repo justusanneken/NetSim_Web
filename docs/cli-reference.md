@@ -150,3 +150,8 @@ Schnittstelle `ipv6 rip NAME enable`; `redistribute connected|static|rip|ospf|bg
 **Host-Shell:** `tracert <IPv6>`, `ipconfig /all` (DHCPv6, IPv6-DNS, `(Preferred)/(Tentative)/(Duplicate)`), `ipconfig /renew6`, `ipconfig /release6`.
 
 **Uhr:** `clock set HH:MM:SS DAY MONTH YEAR` (auch `MONTH DAY`) im privilegierten Modus; `show clock` und `debug`-Zeitstempel folgen der gesetzten Uhr.
+
+## Erweiterungen proto
+
+**EIGRP für IPv6:** `ipv6 router eigrp ASN` (Modus `(config-rtr)#`: `eigrp router-id A.B.C.D`, `[no] shutdown`, `passive-interface IF|default`, `variance N`, `maximum-paths N`,
+`redistribute connected|static|rip|ospf|bgp [ID] [metric BW DLY REL LOAD MTU] [route-map M]`), Schnittstelle `ipv6 eigrp ASN`; `show ipv6 eigrp neighbors|topology|interfaces`, `show ipv6 protocols`, `show ipv6 route` (Codes `D`, `EX`).

@@ -443,7 +443,7 @@ export type BgpMsg =
 /** OSPF (IP-Protokoll 89), EIGRP (88) und – vereinfacht ohne TCP – BGP (Port 179). */
 export type RoutingPdu =
   | { kind: 'routing'; proto: 'ospf'; v: 2 | 3; msg: OspfMsg }
-  | { kind: 'routing'; proto: 'eigrp'; msg: EigrpMsg }
+  | { kind: 'routing'; proto: 'eigrp'; /** 6 = EIGRP für IPv6. */ v?: 6; msg: EigrpMsg }
   | { kind: 'routing'; proto: 'bgp'; sport: number; dport: number; msg: BgpMsg };
 
 /** GRE (IP-Protokoll 47): kapselt ein IPv4-/IPv6-Paket. */

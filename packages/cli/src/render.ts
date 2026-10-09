@@ -141,6 +141,7 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
     if (v6.otherConfig) out.push(' ipv6 nd other-config-flag');
     if (v6.dhcp6Server) out.push(` ipv6 dhcp server ${v6.dhcp6Server}`);
     if (v6.ripng) out.push(` ipv6 rip ${v6.ripng} enable`);
+    if (v6.eigrp !== undefined) out.push(` ipv6 eigrp ${v6.eigrp}`);
     const v = v6.ospf;
     if (v) {
       if (v.area !== undefined) out.push(` ipv6 ospf ${v.pid ?? 1} area ${area(v.area)}`);
@@ -541,6 +542,16 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     }
     if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
     for (const x of c.redistribute) L.push(redist6Text(x));
+    L.push('!');
+  }
+  for (const c of Object.values(r.eigrp6 ?? {})) {
+    L.push(`ipv6 router eigrp ${c.asn}`);
+    if (c.routerId) L.push(` eigrp router-id ${c.routerId}`);
+    L.push(c.shutdown ? ' shutdown' : ' no shutdown');
+    passiveLines(d, c, L);
+    if (c.variance !== 1) L.push(` variance ${c.variance}`);
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    for (const x of c.redistribute) L.push(redistText(x, 'eigrp'));
     L.push('!');
   }
   for (const c of Object.values(r.eigrp)) {

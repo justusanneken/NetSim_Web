@@ -558,6 +558,8 @@ export interface V6IfCfg {
   otherConfig?: boolean;
   /** OSPFv3 (`ipv6 ospf PID area A`). */
   ospf?: OspfIfCfg;
+  /** EIGRP für IPv6 (`ipv6 eigrp ASN`): AS-Nummer des Prozesses an dieser Schnittstelle. */
+  eigrp?: number;
   /** Laufzeit: per SLAAC gelernte Adressen. */
   slaac: V6Addr[];
 }

@@ -54,8 +54,8 @@ export function RoutingPanel({ dev }: { dev: DeviceView }) {
             </li>
           ))}
           {info?.eigrp.map((e) => (
-            <li key={`e${e.asn}`}>
-              EIGRP {e.asn} – {t('routing.neighbors')}: {e.neighbors.length}
+            <li key={`e${e.v6 ? 6 : 4}${e.asn}`}>
+              {e.v6 ? 'EIGRPv6' : 'EIGRP'} {e.asn} – {t('routing.neighbors')}: {e.neighbors.length}
               {e.neighbors.map((n) => (
                 <div key={n.ip} className="mono small">
                   {n.ip} {n.iface}

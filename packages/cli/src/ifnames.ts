@@ -110,6 +110,7 @@ export const SUBMODES: ModeId[] = [
   'config-ospf',
   'config-ospf6',
   'config-eigrp',
+  'config-eigrp6',
   'config-bgp',
   'config-obj-net',
   'config-route-map',

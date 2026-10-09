@@ -300,6 +300,10 @@ export interface EigrpCfg {
   autoSummary: boolean;
   variance: number;
   redistribute: RedistCfg[];
+  /** EIGRP für IPv6 (`ipv6 router eigrp ASN`): Adressen sind IPv6, Nachbarn Link-Local. */
+  v6?: boolean;
+  /** Nur IPv6: Prozess ist administrativ aus (`shutdown`, Default bei neuen Prozessen). */
+  shutdown?: boolean;
   // ---- Laufzeit
   rid?: string;
   neighbors: Record<string, EigrpNbr>;
@@ -436,6 +440,8 @@ export interface RoutingCfg {
   /** OSPFv3 (IPv6). */
   ospf6: Record<number, OspfCfg>;
   eigrp: Record<number, EigrpCfg>;
+  /** EIGRP für IPv6 (`ipv6 router eigrp`). */
+  eigrp6?: Record<number, EigrpCfg>;
   bgp?: BgpCfg;
   /** Aktive `debug`-Schalter (z. B. `ospf.adj`). */
   debug: string[];

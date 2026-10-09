@@ -109,7 +109,8 @@ export function routingRx(
   else if (l4.kind === 'udp' && l4.app?.kind === 'hsrp') hsrpRx(rt, iface, ip, l4.app);
   else if (l4.kind === 'gre') greRx(rt, base, ip, l4);
   else if (l4.kind === 'routing' && l4.proto === 'ospf') ospfRx(rt, iface, base, ip, l4.msg);
-  else if (l4.kind === 'routing' && l4.proto === 'eigrp') eigrpRx(rt, iface, base, ip, l4.msg);
+  else if (l4.kind === 'routing' && l4.proto === 'eigrp' && l4.v !== 6)
+    eigrpRx(rt, iface, base, ip, l4.msg);
   else if (l4.kind === 'routing' && l4.proto === 'bgp') bgpRx(rt, iface, ip, l4.msg);
 }
 
@@ -144,7 +145,7 @@ export function routingResetRuntime(cfg: L3Cfg): void {
   }
   hsrpResetCfg(cfg);
   if (r.bgp) bgpReset(r.bgp);
-  for (const c of Object.values(r.eigrp)) eigrpReset(c);
+  for (const c of [...Object.values(r.eigrp), ...Object.values(r.eigrp6 ?? {})]) eigrpReset(c);
   for (const c of [...Object.values(r.ospf), ...Object.values(r.ospf6)]) {
     c.ifs = {};
     c.lsdb = {};
@@ -170,6 +171,8 @@ export function routingRx6(
   const l4 = pkt.payload;
   if (l4.kind === 'routing' && l4.proto === 'ospf' && l4.v === 3)
     ospfRx(rt, pseudoIface(iface), base, { src: pkt.src }, l4.msg, true);
+  else if (l4.kind === 'routing' && l4.proto === 'eigrp' && l4.v === 6)
+    eigrpRx(rt, pseudoIface(iface), base, { src: pkt.src }, l4.msg, true);
   else if (l4.kind === 'udp' && l4.app?.kind === 'hsrp') hsrpRx6(rt, iface, pkt, l4.app);
   else if (l4.kind === 'udp' && l4.app?.kind === 'rip') ripngRx(rt, iface, pkt, l4.app);
 }

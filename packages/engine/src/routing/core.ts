@@ -301,7 +301,7 @@ export function redistSource6(rt: Rt, red: RedistCfg, self: string): RedistRoute
       const t = { rip: 'R', ospf: 'O', eigrp: 'D', bgp: 'B' }[red.source];
       ok =
         e.type === t &&
-        (red.id === undefined || e.src === `ospf6:${red.id}` || e.src === red.source);
+        (red.id === undefined || e.src === `${red.source}6:${red.id}` || e.src === red.source);
     }
     if (!ok) continue;
     let set: RouteMapSet | undefined;
