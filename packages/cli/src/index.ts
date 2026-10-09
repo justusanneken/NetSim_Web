@@ -12,3 +12,4 @@ export { ShellStack } from './shellstack';
 export type { ShellNest } from './shell';
 export { RemoteLoginShell, deviceByIp } from './remote';
 export { FtpShell } from './ftpshell';
+export { runScript, type ScriptOptions, type ScriptResult } from './scripting';
