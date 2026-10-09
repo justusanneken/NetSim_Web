@@ -1,6 +1,7 @@
 import type { Device, Engine, MgmtCfg } from '@netsim/engine';
 import { clockOf, idleText, mgmtOf, oidName } from '@netsim/engine';
 import { ifDisplay } from './ifnames';
+import { aaaMethodText } from './render5';
 
 type D = Device;
 
@@ -144,6 +145,9 @@ export function showSnmp(d: D): string[] {
   if (m.snmp.contact) out.push(`Contact: ${m.snmp.contact}`);
   if (m.snmp.location) out.push(`Location: ${m.snmp.location}`);
   out.push('0 SNMP packets input', '0 SNMP packets output');
+  for (const h of m.snmp.trapHosts ?? [])
+    out.push(`Trap host: ${h.host} udp-port 162 community ${h.community} version ${h.version}`);
+  if (m.snmp.traps?.length) out.push(`Enabled traps: ${m.snmp.traps.join(' ')}`);
   for (const c of m.snmp.communities)
     out.push(
       '',
@@ -161,8 +165,11 @@ export function showAaa(d: D): string[] {
   const m = cfg ? mgmtOf(cfg.sys) : undefined;
   if (!m?.aaa.newModel) return ['AAA is not enabled (aaa new-model)'];
   return [
-    `AAA new-model enabled; login list "${m.aaa.listName}": ${m.aaa.methods.map((x) => (x === 'radius' ? 'group radius' : x)).join(' ') || 'none'}`,
+    `AAA new-model enabled; login list "${m.aaa.listName}": ${m.aaa.methods.map(aaaMethodText).join(' ') || 'none'}`,
     ...m.aaa.radius.map((r) => `RADIUS server ${r.host} (udp port 1812)`),
+    ...(m.aaa.tacacs ?? [])
+      .filter((t) => t.host)
+      .map((t) => `TACACS+ server ${t.host} (tcp port 49)`),
   ];
 }
 

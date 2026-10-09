@@ -1,4 +1,5 @@
 import type { Ipv4Addr } from '@netsim/protocols';
+import { pppIfaces } from './pppifaces';
 import type { Device, IfaceCfg, L3Cfg, SwitchConfig } from './types';
 
 /** Laufzeitsicht einer aktiven L3-Schnittstelle. */
@@ -12,6 +13,8 @@ export interface Iface {
   mask: string;
   mtu: number;
   cfg: IfaceCfg;
+  /** Dialer/Virtual-Access: Adresse der Gegenstelle (Host-Route). */
+  peerIp?: Ipv4Addr;
   /** Nur OSPFv3-Pseudo-Schnittstellen: globale IPv6-Präfixe. */
   v6Prefixes?: { prefix: string; plen: number }[];
 }
@@ -22,7 +25,12 @@ export const loopId = (n: number): string => `lo${n}`;
 export const tunnelId = (n: number): string => `tu${n}`;
 /** Virtuelle Schnittstelle ohne physischen Port (Loopback, Tunnel, SVI). */
 export const isVirtualIface = (kind: IfaceCfg['kind']): boolean =>
-  kind === 'svi' || kind === 'loop' || kind === 'tunnel';
+  kind === 'svi' ||
+  kind === 'loop' ||
+  kind === 'tunnel' ||
+  kind === 'dialer' ||
+  kind === 'vtemplate' ||
+  kind === 'vaccess';
 
 /** Anzeigename (`GigabitEthernet0/0.10`, `Vlan10`). */
 export function ifaceName(dev: Device, id: string, cfg?: IfaceCfg): string {
@@ -30,6 +38,9 @@ export function ifaceName(dev: Device, id: string, cfg?: IfaceCfg): string {
   if (c?.kind === 'svi') return `Vlan${c.vlan}`;
   if (c?.kind === 'loop') return `Loopback${id.slice(2)}`;
   if (c?.kind === 'tunnel') return `Tunnel${id.slice(2)}`;
+  if (c?.kind === 'dialer') return `Dialer${id.slice(2)}`;
+  if (c?.kind === 'vtemplate') return `Virtual-Template${id.slice(2)}`;
+  if (/^va\d+$/.test(id)) return `Virtual-Access${id.slice(2)}`;
   if (c?.kind === 'sub') {
     const port = dev.ports.find((p) => p.id === c.portId);
     return `${port?.name ?? id}.${c.vlan}`;
@@ -51,6 +62,8 @@ export function vlanActive(cfg: SwitchConfig, dev: Device, vlan: number): boolea
 /** Ob die Schnittstelle (unabhängig von der IP) betriebsbereit ist. */
 export function ifaceUp(dev: Device, cfg: L3Cfg, id: string, c: IfaceCfg): boolean {
   if (c.kind === 'loop') return !c.shutdown;
+  // PPPoE: Dialer/Virtual-Access erscheinen erst mit stehender Sitzung (pppIfaces), Template nie
+  if (c.kind === 'dialer' || c.kind === 'vtemplate' || c.kind === 'vaccess') return false;
   if (c.kind === 'tunnel') return !c.shutdown && tunnelUp(dev, cfg, c);
   if (c.kind === 'svi') {
     const sw = dev.config.kind === 'switch' ? dev.config : undefined;
@@ -81,6 +94,7 @@ function tunnelUp(dev: Device, cfg: L3Cfg, c: IfaceCfg): boolean {
 export function listIfaces(dev: Device, cfg: L3Cfg): Iface[] {
   const out: Iface[] = [];
   const baseMac = dev.ports[0]?.mac ?? '';
+  out.push(...pppIfaces(dev, cfg));
   for (const [id, c] of Object.entries(cfg.ifaces)) {
     if (!c.ip || !c.mask || !ifaceUp(dev, cfg, id, c)) continue;
     const port = dev.ports.find((p) => p.id === c.portId);

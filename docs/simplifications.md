@@ -128,7 +128,7 @@
   behält der Client IP, ARP-Cache und laufende Pings: er sendet ein Gratuitous ARP und – bei DHCP – einen INIT-REBOOT-REQUEST (Broadcast ohne Server-ID,
   Zustand `rebooting`); ACK ⇒ sofort `bound`, NAK oder 4 s ohne Antwort ⇒ voller DORA. Verloren gehen nur Frames, die während des Wechsels unterwegs sind.
   Ein Wechsel auf eine andere SSID (oder nach vollständigem Verbindungsverlust) startet weiterhin mit frischem Zustand und DORA.
-  WPA2-Enterprise/802.1X fehlt.
+  WPA2-Enterprise/802.1X siehe „Erweiterungen proto“.
 - **Physical View:** Entfernung für die Funkreichweite = Canvas-Abstand; liegen beide Geräte in der Physical View, gilt:
   anderes Gebäude/andere Stadt = außer Reichweite, anderer Raum = + 120 px „Wandabschlag“. Keine Kabellängen/Dämpfung,
   keine maßstäbliche Darstellung.
@@ -145,7 +145,7 @@
   Sitzungen (Standard 5); alle vty-Leitungen teilen sich eine Konfiguration (`transport`, `login`, Passwort).
 - **Benutzer-Geheimnisse:** `username X secret Y` wird im Konfigurationsbaum im Klartext gehalten und als `secret 5 <Typ-7>`
   gerendert (umkehrbar, damit Replay/`reload` funktionieren); RSA-Schlüssel überstehen `reload` (NVRAM).
-- **AAA:** nur Anmeldung an den vty-Leitungen (kein Console-/Enable-/Accounting-AAA, kein TACACS+). Methodenliste
+- **AAA:** nur Anmeldung an den vty-Leitungen (kein Console-/Enable-/Accounting-AAA, TACACS+ siehe „Erweiterungen proto“). Methodenliste
   `group radius`/`local`; bei RADIUS-Timeout (3 s) wird die nächste Methode genutzt, bei explizitem Reject nicht.
 - **NTP:** Anfrage/Antwort mit Zeitstempel (kein Offset-/Delay-Algorithmus, kein Stratum-Auswahlverfahren, keine Authentifizierung);
   Abfrage 2 s nach Konfiguration, dann alle 64 s. **Verlust:** nach 4 aufeinanderfolgenden unbeantworteten Abfragen (≈ 4 min; IOS wertet ein 8-Bit-Reach-Register,
@@ -155,7 +155,7 @@
   Hosts am 1.1.2026 12:00 UTC (deterministisch statt Wanduhr). Keine Zeitzonen/Sommerzeit (immer UTC).
 - **Syslog:** Meldungen für Link-/Leitungsstatus, Konfigurationsänderung (`%SYS-5-CONFIG_I`) und Logins; Schweregrad-Filter
   (`logging trap`), Puffer 100 Zeilen. Keine Facility-Auswahl, kein `logging source-interface`.
-- **SNMP:** v2c-ähnlich mit Community (kein v1/v3, keine Traps/Informs); MIB: system-Gruppe und ifTable-Spalten (Index, Descr, Type,
+- **SNMP:** v2c-ähnlich mit Community (kein v3, keine Informs; Traps siehe „Erweiterungen proto“); MIB: system-Gruppe und ifTable-Spalten (Index, Descr, Type,
   Mtu, Speed, PhysAddress, Admin/Oper-Status, Zähler); `set` nur für `sysName.0` und `ifAdminStatus`.
 - **Mail:** SMTP mit Absender-Authentifizierung gegen die Konten des Servers, nur lokale Zustellung (eine Domäne); POP3 liefert
   den gesamten Posteingang (kein Löschen, kein IMAP, kein TLS).
@@ -193,7 +193,7 @@
   verglichen; Nachrichten mit falschem/fehlendem Schlüssel werden mit `ospf.authFail` verworfen. Nur ein MD5-Schlüssel je Schnittstelle wird gesendet (der mit der kleinsten ID).
 - **EIGRP:** Successor-Wahl mit Feasibility Condition; `variance` (Feasible Successors mit RD < FD und Distanz ≤ variance·FD) und ECMP; Stuck-in-Active nach 3 min
   (säumige Nachbarn werden zurückgesetzt, keine SIA-Query/-Reply-Phase). Reliable Transport mit einem unbestätigten Paket je Nachbar (RTO 2 s, 16 Versuche).
-  EIGRP für IPv6 fehlt. Redistribution aus OSPF/RIP/BGP ohne `metric` (bzw. Route-Map-`set metric`) kündigt wie bei IOS nichts an;
+  EIGRP für IPv6 siehe unten (Abschnitt „Erweiterungen proto“). Redistribution aus OSPF/RIP/BGP ohne `metric` (bzw. Route-Map-`set metric`) kündigt wie bei IOS nichts an;
   `default-metric` gibt es für EIGRP nicht. connected/static ohne Metrik erhalten 100 000 kbit/s / 10 µs.
 - **HSRP:** vereinfachte Zustandsmaschine (Listen → Speak → Standby/Active), Hello 3 s/Hold 10 s, keine Coup/Resign-Pakete. Version 2 (Gruppen 0–4095, `0000.0c9f.fXXX`,
   224.0.0.102), Klartext-Authentifizierung (Default `cisco`, kein MD5) und HSRP für IPv6 (vMAC `0005.73a0.0XXX`, `ff02::66`, ND-Antworten der virtuellen Adresse) sind vorhanden.
@@ -207,7 +207,7 @@
 - **IPv6:** Duplicate Address Detection (eine Probe, 1 s) mit Zustand `tentative/ok/dup` je Adresse; tentative Adressen sind nicht nutzbar. DHCPv6 (Solicit/Advertise/Request/Reply,
   Information-Request, IA_NA mit Sequenzvergabe aus `address prefix`; DUID = MAC; keine Renew/Rebind-Timer, keine Präfixdelegation, kein Relay). DNS-Server aus DHCPv6 werden gespeichert
   und angezeigt, die Namensauflösung nutzt weiterhin IPv4-DNS. Traceroute (Router `traceroute ipv6`, Host `tracert`). RIPng (ohne ECMP-Zusatzpfade) und OSPFv3-Redistribution
-  (connected/static/andere IPv6-Protokolle). Keine Fragmentierung (zu große Pakete werden verworfen); EIGRP für IPv6 fehlt. OSPFv3 nutzt dieselbe LSDB-Struktur wie v2 (Präfixe in Router-LSAs).
+  (connected/static/andere IPv6-Protokolle). Keine Fragmentierung (zu große Pakete werden verworfen); EIGRP für IPv6 siehe „Erweiterungen proto“. OSPFv3 nutzt dieselbe LSDB-Struktur wie v2 (Präfixe in Router-LSAs).
 - **Uhr:** `clock set` setzt die Gerätezeit; `show clock` und `debug`-Zeitstempel folgen ihr (ohne gesetzte Uhr `*Mar  1 1993` wie bei IOS). Zeitangaben in `show ip dhcp binding` nutzen weiterhin eine feste Basis.
 - **Debug-Ausgabe:** Zeitstempel aus virtueller Zeit; Meldungstexte sind englisch, nicht übersetzt.
 - **Event-Log:** auf `EngineConfig.maxLogEntries` (Default 50 000, 0 = unbegrenzt) begrenzt; beim Überlauf fallen die ältesten ≈ 10 % weg. Log-Ids bleiben monoton (`Engine.logOffset` = Id des ersten
@@ -252,3 +252,47 @@
   ausgewertet und die gespeicherten Variablen eingesetzt (Funktionswerte werden nicht gespeichert; Variablen, die Funktionen halten, und Closure-Zustand
   außerhalb des Hauptteils gehen zwischen Aktivierungen verloren). Ein Fehler (Syntax, Laufzeit, Schrittgrenze) hält nur dieses Gerät an (`crashed`) und
   schreibt einen Log-Eintrag; Run startet es neu. Kein Python.
+
+## Erweiterungen proto
+
+- **EIGRP für IPv6:** `routing/eigrp.ts` ist über die Adressfamilie verallgemeinert (wie OSPFv3 über `ospf.ts`): derselbe DUAL-/Metrik-/Reliable-Transport-Code, Nachbarn über
+  Link-Local-Adressen und die Gruppe `ff02::a` (IP-Protokoll 88 / Next Header 88, Nutzlast `routing/eigrp` mit `v: 6`), Prozesse in `RoutingCfg.eigrp6`, Schnittstellenzuordnung
+  `ipv6 eigrp ASN` (`V6IfCfg.eigrp`) statt `network`-Anweisungen. Wie bei IOS startet ein Prozess im Zustand `shutdown` und braucht eine Router-ID (`eigrp router-id` oder eine
+  IPv4-Adresse am Gerät). Kein Auto-Summary, kein `distribute-list`/`route-map` für IPv6-EIGRP, keine `metric weights`; Routen erscheinen als `D`/`EX` in `show ipv6 route`.
+- **WPA2-Enterprise / 802.1X:** WLAN-Sicherheit `wpa2-enterprise` (Funkmodul des autonomen AP oder WLAN am WLC) mit RADIUS-Server (Adresse + Shared Secret, Dienst `aaa` des Servers aus Phase 5).
+  Das Verfahren ist vereinfacht: kein EAPOL/EAP-Frame-Austausch, kein TLS-Tunnel. Der AP agiert immer als Authenticator (auch Lightweight-AP: die WLAN-Konfiguration
+  einschließlich RADIUS-Server kommt per CAPWAP vom WLC, die Anfrage geht aber direkt vom AP – IP-Adresse des APs muss als RADIUS-Client am Server stehen) und sendet ein
+  `access-request` (UDP 1812, Benutzer + Passwort aus dem Wi-Fi-Profil; Passwort/Secret werden im Inspektor maskiert). `access-accept` ⇒ Assoziation, `access-reject`/Timeout (3 s) ⇒
+  Status `auth-failed`, kein Link. Die Assoziation ist dadurch asynchron (Status `authenticating`). Ein abgewiesenes Verfahren wird nicht wiederholt, bis Zugangsdaten oder die
+  Server-Dienste (`aaa`) geändert werden; nach Trennung (Reichweite, Aus) authentifiziert sich der Client erneut. Roaming zwischen Enterprise-APs authentifiziert den Ziel-AP vorab.
+  Keine Zertifikate, keine Schlüsselableitung, keine Gruppen-/Rollenzuweisung, kein Accounting.
+- **TACACS+:** eigener Dienst über die bestehende Dienst-Transportschicht (`p5/conn.ts`, vereinfachtes TCP auf Port 49): Anfrage `authen` (Benutzer, Passwort, Schlüssel) →
+  `authen-pass` | `authen-fail` | `authen-error`. Der gemeinsame Schlüssel wird nur verglichen (kein Header-/Body-Verschleiern); falscher Schlüssel oder unbekannter Client-IP ⇒ Fehler
+  bzw. abgelehnte Verbindung und damit Weiterfallen auf die nächste Methode (`local`), `fail` ⇒ harte Ablehnung ohne Fallback (wie bei IOS). Nur Authentifizierung der vty-Anmeldung
+  (kein Authorization/Accounting, keine Console-/Enable-Authentifizierung), nur der erste konfigurierte Server wird befragt, Server-Gruppen (`aaa group server`) gibt es nicht.
+  Zähler für `show tacacs` (Verbindungen, pass/fail/errors) sind Laufzeitwerte. Der Client-Aufruf sitzt in `p5/remote.ts` (`aaaStep`) und `p5/tacacs.ts`; der Server-Dienst hat
+  eigene Clients und Benutzer (getrennt von RADIUS).
+- **SNMP-Traps:** `snmp-server host A [version 1|2c] COMMUNITY` und `snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]` (ohne Angabe alle drei). Gesendet werden
+  `linkDown`/`linkUp` (bei Änderung des Link-Status eines Ports, mit ifIndex/ifDescr) und `coldStart` (12 s nach Einschalten/`reload`, Hintergrund-Timer) als `svc`-Nachricht
+  `snmp/trap` an UDP 162, ohne Bestätigung (keine Informs, kein Retry, kein v3, keine Varbind-Liste/OIDs – Typ und Schnittstelle als Felder). Empfänger ist ein Server mit
+  aktivem SNMP-Dienst; Traps mit unbekannter Community werden verworfen (`svc.snmp.badCommunity`), gültige in `services.snmp.traps` abgelegt (max. 200) und im Services-Tab sowie in der
+  MIB-Browser-App angezeigt. `authentication`/`warmstart` werden akzeptiert, aber nie ausgelöst.
+- **PPPoE/PPP:** Client am `Dialer N` (`dialer pool N` ↔ `pppoe-client dial-pool-number N` am physischen Port), Server/BRAS über `bba-group pppoe` → `virtual-template N` →
+  `interface Virtual-Template N` (`ip unnumbered`, `peer default ip address pool`, `ppp authentication chap`) und `ip local pool`. Discovery (PADI → PADO → PADR → PADS, PADT) und PPP laufen als echte
+  Frames (EtherType 0x8863/0x8864), die PPP-Aushandlung ist verkürzt: LCP nur Configure-Request/-Ack in beide Richtungen (MRU 1492, Authentifizierung CHAP), CHAP mit
+  Challenge/Response/Success|Failure (Digest ist ein deterministischer Pseudo-Hash, kein MD5; das Server-Passwort stammt aus `username X password Y`), IPCP als Request(0.0.0.0) →
+  Nak(zugewiesene Adresse) → Request → Ack. Keine Echo-/Keepalive-Pakete, kein MP/PFC/ACFC, keine IPv6CP-Aushandlung, kein RADIUS für PPP, keine Service-Namen-Filter. Nach einem
+  Fehler (falsches Passwort) versucht der Client es nach 10 s erneut. `Dialer`/`Virtual-Access` erscheinen als IP-Schnittstelle (/32, MTU 1492, Host-Route zur Gegenstelle) nur bei
+  stehender Sitzung; die Default-Route kommt per `ip route 0.0.0.0 0.0.0.0 Dialer1` oder `ppp ipcp route default`. IP-Verkehr in der Sitzung wird in der Ereignisliste als IP-Paket
+  der Dialer-Schnittstelle gezeigt (die PPPoE-Kapselung zeigen nur Discovery-/PPP-Frames). Virtual-Access-Schnittstellen sind nicht konfigurierbar (nur über die Vorlage). Cloud/DSL-Modem
+  reichen die Frames transparent weiter.
+- **IPsec (Crypto Maps):** Site-to-Site über `crypto map` an der WAN-Schnittstelle. IKE ist **ein** Austausch (Anfrage → Accept/Reject, UDP 500) für IKE- und IPsec-SA gemeinsam:
+  der Initiator sendet seine beste ISAKMP-Policy (niedrigste Nummer: Verschlüsselung, Hash, DH-Gruppe), einen Digest des Pre-Shared Keys (kein Klartext), das Transform-Set und die
+  Verkehrsauswahl (die passende ACL-Zeile) sowie seinen SPI. Der Responder lehnt mit Grund ab bei: unbekanntem Peer, keiner passenden Policy (Policy-Authentifizierung muss `pre-share`
+  sein – Default ist wie bei IOS `rsa-sig`), abweichendem Schlüssel (`authentication failed`), anderem Transform-Set oder fehlender gespiegelter ACL-Zeile (`proxy identities not
+supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolgt frühestens nach 8 s beim nächsten passenden Paket. Während des Aufbaus (und bei fehlgeschlagener SA)
+  werden passende Pakete verworfen (die ersten Pings gehen verloren, wie in der Praxis). Je ACL-Zeile entsteht ein SA-Paar. ESP (IP-Protokoll 50, Tunnelmodus) kapselt das ganze
+  Originalpaket; die Nutzlast ist im Inspektor und in Ereignislisten nur als „verschlüsselt“ sichtbar (Transitgeräte sehen nur äußere Adressen, SPI, Sequenz), an den Endpunkten steht
+  „decrypted …“ im Log. Keine echte Kryptografie, kein Lifetime-/Rekey-Ablauf (SAs bleiben bis `clear crypto sa`, Reload oder Link-/Strom-Aus), kein Replay-Fenster, kein NAT-T, kein
+  IKEv2, keine Transport-Mode-Wirkung (wird gespeichert), kein DPD, **keine VTI** (`tunnel mode ipsec`) und keine IPsec-Profile; Crypto Maps sind an physischen/Sub-Schnittstellen möglich,
+  nicht am Dialer. Entschlüsselte Pakete laufen danach durch die normale Eingangsverarbeitung der Schnittstelle (ACL-in, Weiterleitung).

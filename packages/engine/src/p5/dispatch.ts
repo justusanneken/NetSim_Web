@@ -9,6 +9,7 @@ import { ftpServer } from './ftp';
 import { iotHandler } from './iot';
 import { mailClientHook, pop3Server, smtpServer } from './mail';
 import { aaaDecision, remoteServer } from './remote';
+import { tacacsClientHook, tacacsServer } from './tacacs';
 import {
   onUdpReply,
   radiusServer,
@@ -19,6 +20,7 @@ import {
   type SvcRx,
 } from './services';
 import { appcOf } from './node';
+import { eapDecision } from './wifi';
 
 const SERVERS: Partial<Record<SvcProto, TcpServer>> = {
   ftp: ftpServer,
@@ -26,12 +28,14 @@ const SERVERS: Partial<Record<SvcProto, TcpServer>> = {
   pop3: pop3Server,
   telnet: remoteServer('telnet'),
   ssh: remoteServer('ssh'),
+  tacacs: tacacsServer,
   bgp: bgpServer,
 };
 
-/** Client-Hook je Protokoll (Mail-Abschluss, BGP-Sitzung). */
+/** Client-Hook je Protokoll (BGP-Sitzung, TACACS+, Mail-Abschluss). */
 const clientHook: ClientHook = (ctx, node, c, event) => {
   if (c.proto === 'bgp') bgpClientHook(ctx, node, c, event);
+  else if (c.proto === 'tacacs') tacacsClientHook(ctx, node, c, event);
   else mailClientHook(ctx, node, c, event);
 };
 
@@ -52,7 +56,9 @@ export function svcUdpRx(
       if (msg.proto === 'capwap' && msg.op === 'join-ok')
         capwapReply(rx.ctx, dev, req.dst, msg.body ?? '[]');
       else if (msg.proto === 'radius') {
-        aaaDecision(rx.ctx, rx.node, dev, Number(msg.args.rid), msg.op === 'access-accept');
+        const rid = Number(msg.args.rid);
+        if (!eapDecision(rx.ctx, rx.node, rid, msg.op === 'access-accept'))
+          aaaDecision(rx.ctx, rx.node, dev, rid, msg.op === 'access-accept');
       } else if (msg.proto === 'iot' && msg.op === 'registered' && dev.config.kind === 'host') {
         if (dev.config.iot) dev.config.iot.registered = true;
       } else if (msg.proto === 'iot' && msg.op === 'unknown' && dev.config.kind === 'host') {
@@ -105,7 +111,8 @@ export function svcTimer(ctx: DeviceCtx, node: IpNode, name: string): void {
       status: 'error',
       msg: { key: 'svc.timeout', params: { proto: req.proto.toUpperCase(), dst: req.dst } },
     });
-    if (req.proto === 'radius') aaaDecision(ctx, node, ctx.device, id, undefined);
+    if (req.proto === 'radius' && !eapDecision(ctx, node, id, undefined))
+      aaaDecision(ctx, node, ctx.device, id, undefined);
     return;
   }
   connTimer(ctx, node, name, clientHook, SERVERS);

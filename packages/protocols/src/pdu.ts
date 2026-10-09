@@ -1,6 +1,7 @@
 import {
   type BpduPdu,
   type EigrpMsg,
+  type PppoePdu,
   type Icmp6Pdu,
   type Ipv6Pdu,
   type OspfLsa,
@@ -55,6 +56,21 @@ function ospfSize(m: OspfMsg): number {
   }
 }
 
+function pppoeSize(p: PppoePdu): number {
+  if (p.code !== 'SESSION' || !p.ppp) return 6 + 20;
+  const m = p.ppp;
+  switch (m.proto) {
+    case 'lcp':
+      return 6 + 2 + 14;
+    case 'chap':
+      return 6 + 2 + 20;
+    case 'ipcp':
+      return 6 + 2 + 10;
+    case 'ip':
+      return 6 + 2 + pduSize(m.inner);
+  }
+}
+
 function routingSize(p: RoutingPdu): number {
   switch (p.proto) {
     case 'ospf':
@@ -89,6 +105,8 @@ function appSize(p: UdpPdu['app'] | TcpPdu['app']): number {
       return 40 + (p.dns?.length ?? 0) * 16;
     case 'dns':
       return 12 + 20 + p.answers.length * 16;
+    case 'ike':
+      return 120 + (p.selector ? 24 : 0);
     case 'http':
       return (p.body?.length ?? 0) + 60 + (p.path?.length ?? 0);
     case 'svc':
@@ -127,6 +145,13 @@ export function pduSize(pdu: Pdu): number {
       return routingSize(pdu);
     case 'gre':
       return 4 + pduSize(pdu.inner);
+    case 'esp':
+      // SPI + Sequenz + IV + Auth-Tag + Padding um das gekapselte Paket
+      return 8 + 16 + 12 + 2 + pduSize(pdu.inner);
+    case 'ike':
+      return 120 + (pdu.selector ? 24 : 0);
+    case 'pppoe':
+      return pppoeSize(pdu);
     case 'icmp6':
       return (
         ICMP_HEADER +
@@ -159,6 +184,8 @@ export function layersOf(pdu: Pdu): Pdu[] {
       return [pdu, ...layersOf(pdu.payload)];
     case 'gre':
       return [pdu, ...layersOf(pdu.inner)];
+    case 'pppoe':
+      return pdu.ppp?.proto === 'ip' ? [pdu, ...layersOf(pdu.ppp.inner)] : [pdu];
     case 'udp':
     case 'tcp':
       return pdu.app ? [pdu, pdu.app] : [pdu];
@@ -183,6 +210,7 @@ const SVC_TAG: Record<SvcPdu['proto'], ProtoTag> = {
   syslog: 'SYSLOG',
   snmp: 'SNMP',
   radius: 'RADIUS',
+  tacacs: 'TACACS',
   telnet: 'TELNET',
   ssh: 'SSH',
   iot: 'IOT',
@@ -302,6 +330,28 @@ export function describePdu(pdu: Pdu): HeaderField[] {
       return describeRouting(pdu);
     case 'gre':
       return [f('Protocol Type', hex(pdu.protocolType))];
+    case 'esp':
+      return [
+        f('SPI', hex(pdu.spi, 8)),
+        f('Sequence', pdu.seq),
+        f('Cipher', pdu.cipher),
+        f('Payload', `encrypted (${pduSize(pdu.inner)} bytes)`),
+      ];
+    case 'ike':
+      return [
+        f('Exchange', pdu.op),
+        f('Cookie', hex(pdu.cookie, 8)),
+        f('Encryption', pdu.encr),
+        f('Hash', pdu.hash),
+        f('DH Group', pdu.group),
+        f('Auth Digest', '********'),
+        f('Transform', pdu.transform),
+        ...(pdu.selector ? [f('Proxy ID', `${pdu.selector.src} > ${pdu.selector.dst}`)] : []),
+        f('SPI', hex(pdu.spi, 8)),
+        ...(pdu.reason ? [f('Reason', pdu.reason)] : []),
+      ];
+    case 'pppoe':
+      return describePppoe(pdu);
     case 'ipv6':
       return [
         f('Version', 6),
@@ -313,6 +363,48 @@ export function describePdu(pdu: Pdu): HeaderField[] {
       ];
     case 'icmp6':
       return describeIcmp6(pdu);
+  }
+}
+
+function describePppoe(p: PppoePdu): HeaderField[] {
+  const head = [f('Code', p.code), f('Session ID', hex(p.sessionId))];
+  if (p.code !== 'SESSION' || !p.ppp)
+    return [
+      ...head,
+      ...(p.serviceName !== undefined ? [f('Service-Name', p.serviceName || '(any)')] : []),
+      ...(p.acName ? [f('AC-Name', p.acName)] : []),
+      ...(p.hostUniq ? [f('Host-Uniq', p.hostUniq)] : []),
+    ];
+  const m = p.ppp;
+  switch (m.proto) {
+    case 'lcp':
+      return [
+        ...head,
+        f('PPP Protocol', 'LCP (0xc021)'),
+        f('Code', m.op),
+        f('MRU', m.mru),
+        ...(m.auth ? [f('Authentication', 'CHAP')] : []),
+        f('Magic Number', hex(m.magic, 8)),
+      ];
+    case 'chap':
+      return [
+        ...head,
+        f('PPP Protocol', 'CHAP (0xc223)'),
+        f('Code', m.op),
+        f('Identifier', m.id),
+        ...(m.name ? [f('Name', m.name)] : []),
+        ...(m.value ? [f('Value', m.op === 'challenge' ? m.value : '********')] : []),
+      ];
+    case 'ipcp':
+      return [
+        ...head,
+        f('PPP Protocol', 'IPCP (0x8021)'),
+        f('Code', m.op),
+        f('IP-Address', m.addr),
+        ...(m.peer ? [f('Peer', m.peer)] : []),
+      ];
+    case 'ip':
+      return [...head, f('PPP Protocol', 'IP (0x0021)')];
   }
 }
 
@@ -489,6 +581,9 @@ const LAYER_META: Record<Pdu['kind'], { osi: number; name: string }> = {
   ipv6: { osi: 3, name: 'IPv6' },
   icmp6: { osi: 3, name: 'ICMPv6' },
   gre: { osi: 3, name: 'GRE' },
+  esp: { osi: 3, name: 'ESP' },
+  ike: { osi: 7, name: 'IKE (ISAKMP)' },
+  pppoe: { osi: 2, name: 'PPPoE' },
   routing: { osi: 4, name: 'Routing' },
   rip: { osi: 7, name: 'RIPv2' },
   hsrp: { osi: 7, name: 'HSRP' },
@@ -529,7 +624,26 @@ export function summarizeFrame(frame: EthernetPdu): { proto: ProtoTag; info: str
       return summarizeIp(p);
     case 'ipv6':
       return summarizeIp6(p);
+    case 'pppoe':
+      return summarizePppoe(p);
   }
+}
+
+function summarizePppoe(p: PppoePdu): { proto: ProtoTag; info: string } {
+  if (p.code !== 'SESSION' || !p.ppp)
+    return {
+      proto: 'PPPOE',
+      info: `${p.code}${p.acName ? ' ' + p.acName : ''}${p.sessionId ? ' session ' + hex(p.sessionId) : ''}`,
+    };
+  const m = p.ppp;
+  if (m.proto === 'ip') {
+    const s = summarizeIp(m.inner);
+    return { proto: s.proto, info: `[PPPoE ${hex(p.sessionId)}] ${s.info}` };
+  }
+  return {
+    proto: 'PPP',
+    info: `${m.proto.toUpperCase()} ${m.op}${m.proto === 'ipcp' ? ' ' + m.addr : ''} (session ${hex(p.sessionId)})`,
+  };
 }
 
 function summarizeRouting(r: RoutingPdu, tail: string): { proto: ProtoTag; info: string } {
@@ -607,6 +721,12 @@ function summarizeIp(p: Ipv4Pdu): { proto: ProtoTag; info: string } {
   }
   if (l4.kind === 'udp') return summarizeUdp(p, l4, tail);
   if (l4.kind === 'routing') return summarizeRouting(l4, ` ${p.src} → ${p.dst}${tail}`);
+  if (l4.kind === 'esp') {
+    return {
+      proto: 'ESP',
+      info: `${p.src} → ${p.dst} SPI ${hex(l4.spi, 8)} seq ${l4.seq} (encrypted)${tail}`,
+    };
+  }
   if (l4.kind === 'gre') {
     const inner =
       l4.inner.kind === 'ipv4' ? summarizeIp(l4.inner).info : summarizeIp6(l4.inner).info;
@@ -645,6 +765,12 @@ function summarizeUdp(p: Ipv4Pdu, u: UdpPdu, tail: string): { proto: ProtoTag; i
     return {
       proto: SVC_TAG[a.proto],
       info: `${a.op} ${p.src}:${u.srcPort} → ${p.dst}:${u.dstPort}${tail}`,
+    };
+  }
+  if (a?.kind === 'ike') {
+    return {
+      proto: 'IKE',
+      info: `${a.op.toUpperCase()} ${p.src}:${u.srcPort} → ${p.dst}:${u.dstPort}${a.reason ? ' (' + a.reason + ')' : ''}${tail}`,
     };
   }
   if (a?.kind === 'hsrp') {

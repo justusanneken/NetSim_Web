@@ -157,3 +157,21 @@ Schnittstelle `ipv6 rip NAME enable`; `redistribute connected|static|rip|ospf|bg
 **BGP:** `no neighbor A` und `neighbor A shutdown` senden eine Cease-NOTIFICATION; `show ip bgp summary` zeigt `Idle`, `Active` (TCP-Verbindung scheitert/wartet) oder `Connect`.
 `show ip route` zeigt BGP-Routen mit dem BGP-Next-Hop (`B 10.4.0.0/24 [200/0] via 3.3.3.3, 00:02:19`).
 Telnet/SSH: fällt der Pfad während der Sitzung aus, endet sie nach ≈ 31 s mit `% Connection timed out; remote host not responding`.
+
+## Erweiterungen proto
+
+**EIGRP für IPv6:** `ipv6 router eigrp ASN` (Modus `(config-rtr)#`: `eigrp router-id A.B.C.D`, `[no] shutdown`, `passive-interface IF|default`, `variance N`, `maximum-paths N`,
+`redistribute connected|static|rip|ospf|bgp [ID] [metric BW DLY REL LOAD MTU] [route-map M]`), Schnittstelle `ipv6 eigrp ASN`; `show ipv6 eigrp neighbors|topology|interfaces`, `show ipv6 protocols`, `show ipv6 route` (Codes `D`, `EX`).
+
+**TACACS+:** `tacacs-server host A [key K]`, `tacacs server NAME` (`address ipv4 A`, `key K`; Modus `(config-server-tacacs)#`), `aaa authentication login LIST group tacacs+ [group radius] [local]`, `show tacacs`, `show aaa`.
+
+**SNMP-Traps:** `snmp-server host A [version 1|2c] COMMUNITY`, `snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]`, `show snmp` (Trap-Ziele, freigeschaltete Typen).
+
+**PPPoE:** Client: `interface Dialer N` (`encapsulation ppp`, `ip address negotiated`, `dialer pool N`, `ppp chap hostname X`, `ppp chap password [0] Y`, `ppp ipcp route default`), am Port
+`pppoe-client dial-pool-number N`, `ip route 0.0.0.0 0.0.0.0 Dialer N`. Server: `bba-group pppoe NAME` (`virtual-template N`), `interface Virtual-Template N` (`ip unnumbered IF`,
+`peer default ip address pool P`, `ppp authentication chap`), `ip local pool P START [END]`, am Port `pppoe enable [group NAME]`, `username X password Y`.
+Anzeige/Betrieb: `show pppoe session`, `show ip interface brief` (Dialer/Virtual-Access), `clear pppoe all`.
+
+**IPsec (Crypto Map):** `crypto isakmp policy N` (`encryption des|3des|aes`, `hash md5|sha`, `authentication pre-share|rsa-sig`, `group 1|2|5`, `lifetime S`), `crypto isakmp key K address A [MASK]`,
+`crypto ipsec transform-set NAME esp-… [esp-…]` (`mode tunnel|transport`), `crypto map NAME SEQ ipsec-isakmp` (`set peer A`, `set transform-set T`, `match address ACL`, `set pfs groupN`,
+`set security-association lifetime seconds S`), an der Schnittstelle `crypto map NAME`; `show crypto isakmp sa|policy`, `show crypto ipsec sa|transform-set`, `show crypto map`, `clear crypto sa|isakmp`.

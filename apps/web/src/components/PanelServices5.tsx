@@ -13,6 +13,7 @@ const DEFAULTS: Svc = {
   syslog: { enabled: false, messages: [] },
   snmp: { enabled: false, communities: [{ name: 'public', rw: false }] },
   aaa: { enabled: false, clients: [], users: [] },
+  tacacs: { enabled: false, clients: [], users: [] },
   iot: { enabled: false, devices: {}, rules: [] },
 };
 
@@ -123,6 +124,7 @@ export function Services5Config({ dev }: { dev: DeviceView }) {
           list={get('snmp').communities}
           onChange={(communities) => save('snmp', { communities })}
         />
+        <TrapList traps={get('snmp').traps ?? []} />
       </details>
       <details className="svc5">
         {head('aaa', 'AAA / RADIUS')}
@@ -131,6 +133,19 @@ export function Services5Config({ dev }: { dev: DeviceView }) {
           users={get('aaa').users}
           onChange={(users) => save('aaa', { users })}
           prefix="aaa"
+        />
+      </details>
+      <details className="svc5">
+        {head('tacacs', 'TACACS+')}
+        <ClientEditor
+          kind="TACACS+"
+          list={get('tacacs').clients}
+          onChange={(clients) => save('tacacs', { clients })}
+        />
+        <UserList
+          users={get('tacacs').users}
+          onChange={(users) => save('tacacs', { users })}
+          prefix="tacacs"
         />
       </details>
       <details className="svc5">
@@ -275,16 +290,20 @@ function CommunityEditor({
 function ClientEditor({
   list,
   onChange,
+  kind = 'RADIUS',
 }: {
   list: { ip: string; secret: string }[];
   onChange: (l: { ip: string; secret: string }[]) => void;
+  kind?: 'RADIUS' | 'TACACS+';
 }) {
   const { t } = useTranslation();
   const [ip, setIp] = useState('');
   const [secret, setSecret] = useState('');
   return (
     <>
-      <p className="small muted">{t('svc5.radiusClients')}</p>
+      <p className="small muted">
+        {kind === 'RADIUS' ? t('svc5.radiusClients') : t('svc5.tacacsClients')}
+      </p>
       <ul className="ping-list">
         {list.map((c) => (
           <li key={c.ip}>
@@ -300,13 +319,13 @@ function ClientEditor({
       </ul>
       <div className="form inline3">
         <input
-          aria-label="RADIUS client IP"
+          aria-label={`${kind} client IP`}
           placeholder="10.0.0.1"
           value={ip}
           onChange={(e) => setIp(e.target.value)}
         />
         <input
-          aria-label="RADIUS shared secret"
+          aria-label={`${kind} shared secret`}
           placeholder="Shared secret"
           value={secret}
           onChange={(e) => setSecret(e.target.value)}
@@ -567,6 +586,45 @@ export function MailClient({ dev }: { dev: DeviceView }) {
   );
 }
 
+/** Empfangene SNMP-Traps (UDP 162), neueste zuerst. */
+function TrapList({ traps }: { traps: NonNullable<Svc['snmp']['traps']> }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <h5>{t('svc5.traps')}</h5>
+      {traps.length === 0 ? (
+        <p className="muted small">{t('svc5.noTraps')}</p>
+      ) : (
+        <table className="grid" aria-label={t('svc5.traps')}>
+          <thead>
+            <tr>
+              <th>{t('svc5.trapTime')}</th>
+              <th>{t('svc5.trapFrom')}</th>
+              <th>Trap</th>
+              <th>{t('svc5.trapIface')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...traps]
+              .slice(-50)
+              .reverse()
+              .map((x, i) => (
+                <tr key={i}>
+                  <td>{(x.t / 1e6).toFixed(1)} s</td>
+                  <td>
+                    {x.host} ({x.from})
+                  </td>
+                  <td className="mono">{x.trap}</td>
+                  <td>{x.ifDescr ?? ''}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      )}
+    </>
+  );
+}
+
 /** SNMP-/MIB-Browser (Desktop-App). */
 export function MibBrowser({ dev }: { dev: DeviceView }) {
   const { t } = useTranslation();
@@ -600,6 +658,7 @@ export function MibBrowser({ dev }: { dev: DeviceView }) {
   };
   return (
     <div className="pad scroll">
+      {dev.services?.snmp?.enabled && <TrapList traps={dev.services.snmp.traps ?? []} />}
       <div className="form">
         <label>
           {t('mib.agent')}

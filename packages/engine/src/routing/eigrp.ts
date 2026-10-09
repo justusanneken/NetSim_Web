@@ -1,6 +1,8 @@
 import type { EigrpMsg, EigrpRoute, Ipv4Pdu } from '@netsim/protocols';
 import type { Iface } from '../ifaces';
 import type { Base } from '../l3';
+import { sendMcast6, sendNbr6 } from '../l3v6';
+import { pseudoIface } from './ospf';
 import {
   AD,
   SEC,
@@ -14,6 +16,7 @@ import {
   inNet,
   installRoutes,
   redistSource,
+  redistSource6,
   rlog,
   sendMcast,
   sendNbr,
@@ -38,13 +41,17 @@ const MAX_TRIES = 16;
 /** Stuck-in-Active-Timer (3 Minuten). */
 export const SIA_SEC = 180;
 
-export const newEigrp = (asn: number): EigrpCfg => ({
+export const EIGRP_GROUP6 = 'ff02::a';
+
+/** Neuer EIGRP-Prozess; `v6`: EIGRP für IPv6 (startet wie bei IOS im Zustand `shutdown`, kein Auto-Summary). */
+export const newEigrp = (asn: number, v6 = false): EigrpCfg => ({
   asn,
   networks: [],
   passive: [],
   unpassive: [],
   passiveDefault: false,
-  autoSummary: true,
+  autoSummary: !v6,
+  ...(v6 ? { v6: true, shutdown: true } : {}),
   variance: 1,
   redistribute: [],
   neighbors: {},
@@ -62,10 +69,44 @@ const key = (prefix: string, plen: number): string => `${prefix}/${plen}`;
 let withdrawDenied = false;
 const nameOf = (rt: Rt, id: string): string => rt.ctx.deviceIfaceName(id);
 
+/** Alle EIGRP-Prozesse (IPv4 und IPv6). */
+export const eigrpProcs = (rt: Rt): EigrpCfg[] => [
+  ...Object.values(rt.r.eigrp),
+  ...Object.values(rt.r.eigrp6 ?? {}),
+];
+const procOf = (rt: Rt, asn: number, v6: boolean): EigrpCfg | undefined =>
+  (v6 ? rt.r.eigrp6 : rt.r.eigrp)?.[asn];
+/** Timer-Präfix: `rt:eigrp` bzw. `rt:eigrp6`. */
+const tp = (c: EigrpCfg): string => (c.v6 ? 'rt:eigrp6' : 'rt:eigrp');
+/** Quelle der installierten Routen. */
+export const eigrpSrc = (c: EigrpCfg): string => `${c.v6 ? 'eigrp6' : 'eigrp'}:${c.asn}`;
+
+/** IPv6-Prozesse laufen nur mit `no shutdown` und einer (IPv4-)Router-ID. */
+const enabled = (rt: Rt, c: EigrpCfg): boolean =>
+  !c.v6 || (!c.shutdown && eigrpRid(rt, c) !== '0.0.0.0');
+
+/** Schnittstellen eines Prozesses (IPv6: Pseudo-Schnittstellen, Adresse = Link-Local). */
+function allIfaces(rt: Rt, c: EigrpCfg): Iface[] {
+  return c.v6 ? (rt.node.v6?.ifaces ?? []).map(pseudoIface) : rt.node.ifaces;
+}
+const ifOf = (rt: Rt, c: EigrpCfg, id: string): Iface | undefined =>
+  allIfaces(rt, c).find((i) => i.id === id);
+
 export function eigrpIfaces(rt: Rt, c: EigrpCfg): Iface[] {
+  if (c.v6) {
+    if (!enabled(rt, c)) return [];
+    return allIfaces(rt, c).filter((i) => i.cfg.v6?.eigrp === c.asn);
+  }
   return rt.node.ifaces.filter((i) =>
     c.networks.some((n) => wildcardMatch(i.ip, n.prefix, n.wildcard)),
   );
+}
+
+/** Angeschlossene Präfixe einer Schnittstelle (IPv4: ein Netz, IPv6: alle globalen Präfixe). */
+function localPrefixes(rt: Rt, c: EigrpCfg, i: Iface): { prefix: string; plen: number }[] {
+  if (c.v6) return i.v6Prefixes ?? [];
+  const plen = i.kind === 'loop' ? 32 : maskLen(i.mask);
+  return [{ prefix: i.kind === 'loop' ? i.ip : netOf(i.ip, plen), plen }];
 }
 
 function eigrpRid(rt: Rt, c: EigrpCfg): string {
@@ -74,14 +115,43 @@ function eigrpRid(rt: Rt, c: EigrpCfg): string {
   const loops = rt.node.ifaces.filter((i) => i.kind === 'loop').map((i) => i.ip);
   const all = loops.length ? loops : rt.node.ifaces.map((i) => i.ip);
   const rid = all.sort().at(-1) ?? '0.0.0.0';
-  c.rid = rid;
+  if (rid !== '0.0.0.0') c.rid = rid;
   return rid;
 }
+
+function xmit6(rt: Rt, iface: Iface, dst: string, payload: IpPayload6): void {
+  const n6 = rt.node.v6;
+  const i6 = n6?.ifaces.find((i) => i.id === iface.id);
+  if (!n6 || !i6) return;
+  const host = { cfg: rt.node.cfg, v6: n6, xmit: rt.node.xmit };
+  if (dst === EIGRP_GROUP6) sendMcast6(rt.ctx, host, i6, dst, payload);
+  else sendNbr6(rt.ctx, host, i6, dst, payload);
+}
+type IpPayload6 = Parameters<typeof sendMcast6>[4];
+
+/** Pakete des Prozesses senden (IPv4 über Multicast/Unicast, IPv6 über Link-Local). */
+function emit(rt: Rt, c: EigrpCfg, iface: Iface, dst: string | undefined, msg: EigrpMsg): void {
+  if (c.v6) {
+    xmit6(rt, iface, dst ?? EIGRP_GROUP6, { kind: 'routing', proto: 'eigrp', v: 6, msg });
+    return;
+  }
+  const payload = { kind: 'routing' as const, proto: 'eigrp' as const, msg };
+  if (dst === undefined) sendMcast(rt, iface, EIGRP_GROUP, payload);
+  else sendNbr(rt, iface, dst, payload);
+}
+
+const dp = (
+  rt: Rt,
+  c: EigrpCfg,
+  dir: 'in' | 'out',
+  ifaceId: string | undefined,
+  route: { prefix: string; plen: number },
+): boolean => distPermits(rt, c.distributeLists, dir, ifaceId, { ...route, v6: c.v6 });
 
 // ------------------------------------------------------------------ Sync
 
 export function eigrpSync(rt: Rt): void {
-  for (const c of Object.values(rt.r.eigrp)) {
+  for (const c of eigrpProcs(rt)) {
     const ifs = eigrpIfaces(rt, c);
     const ids = new Set(ifs.map((i) => i.id));
     // Nachbarn an verschwundenen/passiven Schnittstellen verwerfen
@@ -91,21 +161,21 @@ export function eigrpSync(rt: Rt): void {
     for (const id of [...c.helloIfs]) {
       const i = ifs.find((x) => x.id === id);
       if (!i || i.kind === 'loop' || isPassive(c, id)) {
-        cancelBg(rt, `rt:eigrp:hello:${c.asn}:${id}`);
+        cancelBg(rt, `${tp(c)}:hello:${c.asn}:${id}`);
         c.helloIfs = c.helloIfs.filter((x) => x !== id);
       }
     }
     for (const i of ifs) {
       if (i.kind === 'loop' || isPassive(c, i.id) || c.helloIfs.includes(i.id)) continue;
       c.helloIfs.push(i.id);
-      setBg(rt, `rt:eigrp:hello:${c.asn}:${i.id}`, 100_000 + rt.ctx.rand(SEC), HELLO * SEC);
+      setBg(rt, `${tp(c)}:hello:${c.asn}:${i.id}`, 100_000 + rt.ctx.rand(SEC), HELLO * SEC);
       rlog(rt, 'EIGRP', { key: 'eigrp.if.up', params: { iface: nameOf(rt, i.id), asn: c.asn } });
     }
   }
 }
 
 export function eigrpStop(rt: Rt): void {
-  for (const c of Object.values(rt.r.eigrp)) {
+  for (const c of eigrpProcs(rt)) {
     for (const n of Object.values(c.neighbors)) killNbr(rt, c, n, 'shutdown', true);
   }
 }
@@ -125,9 +195,9 @@ function msgBase(rt: Rt, c: EigrpCfg, op: EigrpMsg['op']): EigrpMsg {
 }
 
 function sendTo(rt: Rt, c: EigrpCfg, n: EigrpNbr, msg: EigrpMsg): void {
-  const iface = rt.node.ifaces.find((i) => i.id === n.ifaceId);
+  const iface = ifOf(rt, c, n.ifaceId);
   if (!iface) return;
-  sendNbr(rt, iface, n.ip, { kind: 'routing', proto: 'eigrp', msg });
+  emit(rt, c, iface, n.ip, msg);
   dbg(
     rt,
     'EIGRP',
@@ -161,7 +231,7 @@ function transmit(rt: Rt, c: EigrpCfg, n: EigrpNbr): void {
     init: q.init,
     routes: q.routes,
   });
-  setBg(rt, `rt:eigrp:rxmt:${c.asn}:${n.ip}`, RTO);
+  setBg(rt, `${tp(c)}:rxmt:${c.asn}:${n.ip}`, RTO);
 }
 
 function sendAck(rt: Rt, c: EigrpCfg, n: EigrpNbr, seq: number): void {
@@ -171,8 +241,8 @@ function sendAck(rt: Rt, c: EigrpCfg, n: EigrpNbr, seq: number): void {
 // ------------------------------------------------------------------ Nachbarn
 
 function killNbr(rt: Rt, c: EigrpCfg, n: EigrpNbr, why: string, silent = false): void {
-  cancelBg(rt, `rt:eigrp:hold:${c.asn}:${n.ip}`);
-  cancelBg(rt, `rt:eigrp:rxmt:${c.asn}:${n.ip}`);
+  cancelBg(rt, `${tp(c)}:hold:${c.asn}:${n.ip}`);
+  cancelBg(rt, `${tp(c)}:rxmt:${c.asn}:${n.ip}`);
   delete c.neighbors[n.ip];
   if (!silent)
     rlog(
@@ -337,7 +407,7 @@ function goActive(rt: Rt, c: EigrpCfg, k: string, t: EigrpTopo): void {
   t.active = true;
   t.waiting = targets;
   t.activeSince = rt.ctx.now;
-  setBg(rt, `rt:eigrp:sia:${c.asn}:${k}`, SIA_SEC * SEC);
+  setBg(rt, `${tp(c)}:sia:${c.asn}:${k}`, SIA_SEC * SEC);
   const q: EigrpRoute = {
     prefix: t.prefix,
     plen: t.plen,
@@ -353,7 +423,7 @@ function goActive(rt: Rt, c: EigrpCfg, k: string, t: EigrpTopo): void {
 }
 
 function finishActive(rt: Rt, c: EigrpCfg, k: string, t: EigrpTopo): void {
-  cancelBg(rt, `rt:eigrp:sia:${c.asn}:${k}`);
+  cancelBg(rt, `${tp(c)}:sia:${c.asn}:${k}`);
   t.active = false;
   t.activeSince = undefined;
   t.waiting = [];
@@ -388,7 +458,7 @@ function routeFor(
   const [prefix, plenS] = _k.split('/') as [string, string];
   const plen = Number(plenS);
   const p = t?.paths.find((x) => x.via === t.succ);
-  if (!t || !p || !distPermits(_rt, _c.distributeLists, 'out', _ifaceId, { prefix, plen }))
+  if (!t || !p || !dp(_rt, _c, 'out', _ifaceId, { prefix, plen }))
     return { prefix, plen, delay: 0, bandwidth: 0, hops: 0, unreachable: true };
   return {
     prefix,
@@ -408,7 +478,7 @@ function fullTable(rt: Rt, c: EigrpCfg, iface: Iface): EigrpRoute[] {
 function buildAdv(rt: Rt, c: EigrpCfg, iface: Iface, keys: string[]): EigrpRoute[] {
   const out: EigrpRoute[] = [];
   const summaries = new Map<string, EigrpRoute>();
-  const major = classfulNet(iface.ip);
+  const major = c.v6 ? '' : classfulNet(iface.ip);
   for (const k of keys) {
     const t = c.topology[k];
     if (!t) {
@@ -421,7 +491,7 @@ function buildAdv(rt: Rt, c: EigrpCfg, iface: Iface, keys: string[]): EigrpRoute
     const p = t.paths.find((x) => x.via === t.succ);
     if (!p) continue;
     if (p.via !== 'local' && p.ifaceId === iface.id) continue; // Split Horizon
-    if (!distPermits(rt, c.distributeLists, 'out', iface.id, t)) {
+    if (!dp(rt, c, 'out', iface.id, t)) {
       if (withdrawDenied)
         out.push({
           prefix: t.prefix,
@@ -434,7 +504,7 @@ function buildAdv(rt: Rt, c: EigrpCfg, iface: Iface, keys: string[]): EigrpRoute
       continue;
     }
     const r = routeFor(rt, c, k, t, iface.id);
-    if (c.autoSummary && t.plen > 0 && classfulNet(t.prefix) !== major) {
+    if (!c.v6 && c.autoSummary && t.plen > 0 && classfulNet(t.prefix) !== major) {
       const sp = classfulPlen(t.prefix);
       if (t.plen > sp) {
         const sk = key(classfulNet(t.prefix), sp);
@@ -454,7 +524,7 @@ function flushAdv(rt: Rt, c: EigrpCfg): void {
   const keys = [...c.advQueue];
   c.advQueue = [];
   for (const n of Object.values(c.neighbors)) {
-    const iface = rt.node.ifaces.find((i) => i.id === n.ifaceId);
+    const iface = ifOf(rt, c, n.ifaceId);
     if (!iface) continue;
     const routes = buildAdv(rt, c, iface, keys);
     if (routes.length) enqueue(rt, c, n, 'update', routes);
@@ -463,10 +533,17 @@ function flushAdv(rt: Rt, c: EigrpCfg): void {
 
 // ------------------------------------------------------------------ Empfang
 
-export function eigrpRx(rt: Rt, iface: Iface, _base: Base, ip: Ipv4Pdu, msg: EigrpMsg): void {
+export function eigrpRx(
+  rt: Rt,
+  iface: Iface,
+  _base: Base,
+  ip: Pick<Ipv4Pdu, 'src'>,
+  msg: EigrpMsg,
+  v6 = false,
+): void {
   void _base;
-  const c = rt.r.eigrp[msg.asn];
-  if (!c) return;
+  const c = procOf(rt, msg.asn, v6);
+  if (!c || !enabled(rt, c)) return;
   if (!eigrpIfaces(rt, c).some((i) => i.id === iface.id) || isPassive(c, iface.id)) return;
   if (ip.src === iface.ip) return;
   rlog(
@@ -490,10 +567,10 @@ export function eigrpRx(rt: Rt, iface: Iface, _base: Base, ip: Ipv4Pdu, msg: Eig
   }
   n.lastHeard = rt.ctx.now;
   n.holdSec = msg.holdSec;
-  setBg(rt, `rt:eigrp:hold:${c.asn}:${n.ip}`, msg.holdSec * SEC);
+  setBg(rt, `${tp(c)}:hold:${c.asn}:${n.ip}`, msg.holdSec * SEC);
   if (msg.ack && n.queue[0]?.seq === msg.ack) {
     n.queue.shift();
-    cancelBg(rt, `rt:eigrp:rxmt:${c.asn}:${n.ip}`);
+    cancelBg(rt, `${tp(c)}:rxmt:${c.asn}:${n.ip}`);
     if (n.queue.length) transmit(rt, c, n);
   }
   if (msg.op === 'hello' || msg.op === 'ack') return;
@@ -513,7 +590,7 @@ export function eigrpRx(rt: Rt, iface: Iface, _base: Base, ip: Ipv4Pdu, msg: Eig
 function applyRoute(rt: Rt, c: EigrpCfg, iface: Iface, n: EigrpNbr, r: EigrpRoute): string {
   const k = key(r.prefix, r.plen);
   const t = topoFor(c, r.prefix, r.plen);
-  if (r.unreachable || !distPermits(rt, c.distributeLists, 'in', iface.id, r))
+  if (r.unreachable || !dp(rt, c, 'in', iface.id, r))
     t.paths = t.paths.filter((p) => p.via !== n.ip);
   else setPath(t, pathFrom(rt, iface, n.ip, { ...r }));
   return k;
@@ -567,13 +644,24 @@ function rxReply(rt: Rt, c: EigrpCfg, iface: Iface, n: EigrpNbr, msg: EigrpMsg):
 
 export function eigrpRecompute(rt: Rt): boolean {
   let changed = false;
-  const known = new Set(Object.keys(rt.r.eigrp).map((a) => `eigrp:${a}`));
+  const known = new Set(eigrpProcs(rt).map(eigrpSrc));
   const orphan = rt.cfg.dynRoutes.filter((r) => r.src.startsWith('eigrp:') && !known.has(r.src));
   if (orphan.length) {
     rt.cfg.dynRoutes = rt.cfg.dynRoutes.filter((r) => !orphan.includes(r));
     changed = true;
   }
-  for (const c of Object.values(rt.r.eigrp)) {
+  const orphan6 = rt.cfg.dynRoutes6.filter((r) => r.src.startsWith('eigrp6:') && !known.has(r.src));
+  if (orphan6.length) {
+    rt.cfg.dynRoutes6 = rt.cfg.dynRoutes6.filter((r) => !orphan6.includes(r));
+    changed = true;
+  }
+  for (const c of eigrpProcs(rt)) {
+    if (!enabled(rt, c)) {
+      // abgeschaltet: keine Nachbarn, keine Topologie, keine Routen
+      if (Object.keys(c.neighbors).length || Object.keys(c.topology).length) eigrpReset(c);
+      if (installRoutes(rt, eigrpSrc(c), [], !!c.v6)) changed = true;
+      continue;
+    }
     if (syncLocals(rt, c)) changed = true;
     if (applyDistChange(rt, c)) changed = true;
     flushAdv(rt, c);
@@ -608,7 +696,7 @@ export function eigrpRecompute(rt: Rt): boolean {
         });
       }
     }
-    if (installRoutes(rt, `eigrp:${c.asn}`, routes as never)) changed = true;
+    if (installRoutes(rt, eigrpSrc(c), routes as never, !!c.v6)) changed = true;
   }
   return changed;
 }
@@ -619,9 +707,7 @@ function applyDistChange(rt: Rt, c: EigrpCfg): boolean {
   if (sig === (c.distSig ?? '[]')) return false;
   c.distSig = sig;
   for (const [k, t] of Object.entries(c.topology)) {
-    t.paths = t.paths.filter(
-      (p) => p.via === 'local' || distPermits(rt, c.distributeLists, 'in', p.ifaceId, t),
-    );
+    t.paths = t.paths.filter((p) => p.via === 'local' || dp(rt, c, 'in', p.ifaceId, t));
     evaluate(rt, c, k, t);
     queueAdv(c, k);
   }
@@ -636,28 +722,30 @@ function syncLocals(rt: Rt, c: EigrpCfg): boolean {
   const want = new Map<string, EigrpPath & { prefix: string; plen: number }>();
   const ifs = eigrpIfaces(rt, c);
   for (const i of ifs) {
-    const plen = i.kind === 'loop' ? 32 : maskLen(i.mask);
-    const prefix = i.kind === 'loop' ? i.ip : netOf(i.ip, plen);
     const delay = ifaceDelay(rt, i);
     const bandwidth = ifaceBwKbps(rt, i);
-    want.set(key(prefix, plen), {
-      prefix,
-      plen,
-      via: 'local',
-      ifaceId: i.id,
-      rd: 0,
-      dist: metricOf(bandwidth, delay),
-      delay,
-      bandwidth,
-      hops: 0,
-    });
+    for (const { prefix, plen } of localPrefixes(rt, c, i))
+      want.set(key(prefix, plen), {
+        prefix,
+        plen,
+        via: 'local',
+        ifaceId: i.id,
+        rd: 0,
+        dist: metricOf(bandwidth, delay),
+        delay,
+        bandwidth,
+        hops: 0,
+      });
   }
   const rid = eigrpRid(rt, c);
   for (const red of c.redistribute) {
-    for (const s of redistSource(rt, red, `eigrp:${c.asn}`)) {
+    const srcs = c.v6 ? redistSource6(rt, red, eigrpSrc(c)) : redistSource(rt, red, eigrpSrc(c));
+    for (const s of srcs) {
       if (
         s.plen === 0 ||
-        ifs.some((i) => netOf(i.ip, maskLen(i.mask)) === s.prefix && maskLen(i.mask) === s.plen)
+        ifs.some((i) =>
+          localPrefixes(rt, c, i).some((p) => p.prefix === s.prefix && p.plen === s.plen),
+        )
       )
         continue;
       // IOS: ohne Startmetrik sind aus OSPF/RIP/BGP übernommene Routen unerreichbar (nur connected,
@@ -722,45 +810,44 @@ const netOf = (ip: string, plen: number): string => {
 // ------------------------------------------------------------------ Timer
 
 export function eigrpTimer(rt: Rt, name: string): boolean {
-  if (!name.startsWith('rt:eigrp:')) return false;
-  const [, , kind, asnS, rest] = name.split(':');
-  const c = rt.r.eigrp[Number(asnS)];
-  if (!c) return true;
+  const v6 = name.startsWith('rt:eigrp6:');
+  if (!v6 && !name.startsWith('rt:eigrp:')) return false;
+  const parts = name.split(':');
+  const kind = parts[2];
+  // der Rest kann Doppelpunkte enthalten (IPv6-Nachbar, IPv6-Präfix)
+  const rest = parts.slice(4).join(':');
+  const c = procOf(rt, Number(parts[3]), v6);
+  if (!c || !enabled(rt, c)) return true;
   if (kind === 'hello') {
-    const iface = rt.node.ifaces.find((i) => i.id === rest);
-    if (iface && !isPassive(c, iface.id))
-      sendMcast(rt, iface, EIGRP_GROUP, {
-        kind: 'routing',
-        proto: 'eigrp',
-        msg: msgBase(rt, c, 'hello'),
-      });
+    const iface = ifOf(rt, c, rest);
+    if (iface && !isPassive(c, iface.id)) emit(rt, c, iface, undefined, msgBase(rt, c, 'hello'));
     return true;
   }
   if (kind === 'sia') {
     // rest = Präfix (`a.b.c.d/len`)
-    const t = c.topology[rest as string];
+    const t = c.topology[rest];
     if (t?.active) {
       rlog(rt, 'EIGRP', {
         key: 'eigrp.sia',
-        params: { prefix: rest as string, nbrs: t.waiting.join(', ') },
+        params: { prefix: rest, nbrs: t.waiting.join(', ') },
       });
       // Nachbarn, die nicht geantwortet haben, werden zurückgesetzt (IOS: „stuck in active“)
       for (const ip of [...t.waiting]) {
         const n = c.neighbors[ip];
         if (n) killNbr(rt, c, n, 'stuck in active');
       }
-      const again = c.topology[rest as string];
-      if (again?.active) finishActive(rt, c, rest as string, again);
+      const again = c.topology[rest];
+      if (again?.active) finishActive(rt, c, rest, again);
     }
     return true;
   }
   if (kind === 'hold') {
-    const n = c.neighbors[rest as string];
+    const n = c.neighbors[rest];
     if (n) killNbr(rt, c, n, 'holding time expired');
     return true;
   }
   if (kind === 'rxmt') {
-    const n = c.neighbors[rest as string];
+    const n = c.neighbors[rest];
     if (!n || n.queue.length === 0) return true;
     if ((n.queue[0]?.tries ?? 0) >= MAX_TRIES) {
       killNbr(rt, c, n, 'retry limit exceeded');

@@ -2,8 +2,13 @@ import type { RouterConfig, SwitchConfig } from '@netsim/engine';
 import { mgmtOf } from '@netsim/engine';
 import { asaEntryText } from './commands5';
 import { type7Encrypt } from './secrets';
+import { snmpTrapLines } from './cmdSnmp';
 
 type CliConfig = RouterConfig | SwitchConfig;
+
+/** Methodenname in `aaa authentication login …`. */
+export const aaaMethodText = (x: 'radius' | 'tacacs' | 'local'): string =>
+  x === 'radius' ? 'group radius' : x === 'tacacs' ? 'group tacacs+' : x;
 
 /** Management-Abschnitt der running-config (Benutzer, AAA, SSH, NTP, Syslog, SNMP). */
 export function mgmtGlobalLines(cfg: CliConfig): string[] {
@@ -13,7 +18,7 @@ export function mgmtGlobalLines(cfg: CliConfig): string[] {
   if (m.aaa.newModel) L.push('aaa new-model');
   if (m.aaa.methods.length > 0)
     L.push(
-      `aaa authentication login ${m.aaa.listName} ${m.aaa.methods.map((x) => (x === 'radius' ? 'group radius' : x)).join(' ')}`,
+      `aaa authentication login ${m.aaa.listName} ${m.aaa.methods.map(aaaMethodText).join(' ')}`,
     );
   for (const [name, u] of Object.entries(m.users))
     L.push(
@@ -21,6 +26,14 @@ export function mgmtGlobalLines(cfg: CliConfig): string[] {
     );
   for (const r of m.aaa.radius)
     L.push(`radius-server host ${r.host}${r.key ? ` key ${r.key}` : ''}`);
+  for (const t of m.aaa.tacacs ?? []) {
+    if (t.name) {
+      L.push(`tacacs server ${t.name}`);
+      if (t.host) L.push(` address ipv4 ${t.host}`);
+      if (t.key) L.push(` key ${t.key}`);
+      L.push('!');
+    } else L.push(`tacacs-server host ${t.host}${t.key ? ` key ${t.key}` : ''}`);
+  }
   if (m.ssh.keyBits !== undefined || m.ssh.version === 1) L.push(`ip ssh version ${m.ssh.version}`);
   for (const s of m.ntp.servers) L.push(`ntp server ${s}`);
   if (m.ntp.master !== undefined) L.push(`ntp master ${m.ntp.master}`);
@@ -31,6 +44,7 @@ export function mgmtGlobalLines(cfg: CliConfig): string[] {
     L.push(`snmp-server community ${c.name} ${c.rw ? 'RW' : 'RO'}`);
   if (m.snmp.location) L.push(`snmp-server location ${m.snmp.location}`);
   if (m.snmp.contact) L.push(`snmp-server contact ${m.snmp.contact}`);
+  L.push(...snmpTrapLines(m.snmp));
   if (L.length > 0) L.push('!');
   return L;
 }

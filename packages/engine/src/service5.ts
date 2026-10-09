@@ -28,8 +28,13 @@ export class EngineService5 extends EngineService {
   setApController(id: string, ip: string): Result<true> {
     return this.done(this.engine.p5.setApController(id, ip));
   }
-  wifiAddProfile(id: string, ssid: string, key?: string): Result<true> {
-    return this.done(this.engine.p5.wifiAddProfile(id, ssid, key));
+  wifiAddProfile(
+    id: string,
+    ssid: string,
+    key?: string,
+    cred?: { username: string; password: string },
+  ): Result<true> {
+    return this.done(this.engine.p5.wifiAddProfile(id, ssid, key, cred));
   }
   wifiRemoveProfile(id: string, ssid: string): Result<true> {
     return this.done(this.engine.p5.wifiRemoveProfile(id, ssid));

@@ -4,6 +4,46 @@ import { CHANNELS, type DeviceView, type WifiBand } from '@netsim/engine';
 import { api } from '../engine/client';
 import { useCall } from './util5';
 
+type Sec = 'open' | 'wpa2-psk' | 'wpa2-enterprise';
+const secLabel = (s: Sec, open: string): string =>
+  s === 'open' ? open : s === 'wpa2-psk' ? 'WPA2-PSK' : 'WPA2-Enterprise';
+
+/** RADIUS-Server (Adresse + Shared Secret) für WPA2-Enterprise. */
+function RadiusFields(props: {
+  suffix: string;
+  host: string;
+  secret: string;
+  disabled?: boolean;
+  onHost(v: string): void;
+  onSecret(v: string): void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <label>
+        {t('ap.radiusHost')}
+        <input
+          aria-label={`${t('ap.radiusHost')} ${props.suffix}`}
+          value={props.host}
+          disabled={props.disabled}
+          placeholder="10.0.0.10"
+          onChange={(e) => props.onHost(e.target.value)}
+        />
+      </label>
+      <label>
+        {t('ap.radiusSecret')}
+        <input
+          aria-label={`${t('ap.radiusSecret')} ${props.suffix}`}
+          type="password"
+          value={props.secret}
+          disabled={props.disabled}
+          onChange={(e) => props.onSecret(e.target.value)}
+        />
+      </label>
+    </>
+  );
+}
+
 /** Access Point: SSID, Sicherheit, Band/Kanal je Funkmodul, WLC-Adresse, assoziierte Clients. */
 export function ApPanel({ dev }: { dev: DeviceView }) {
   const { t } = useTranslation();
@@ -75,6 +115,8 @@ function RadioForm({ dev, band }: { dev: DeviceView; band: WifiBand }) {
   const [ssid, setSsid] = useState(r?.ssid ?? '');
   const [sec, setSec] = useState(r?.security ?? 'open');
   const [key, setKey] = useState(r?.key ?? '');
+  const [rHost, setRHost] = useState(r?.radius?.host ?? '');
+  const [rSecret, setRSecret] = useState(r?.radius?.secret ?? '');
   const [ch, setCh] = useState(r?.channel ?? CHANNELS[band][0]);
   const [on, setOn] = useState(r?.enabled ?? true);
   const managed = dev.p5?.ap?.managed === true;
@@ -102,10 +144,11 @@ function RadioForm({ dev, band }: { dev: DeviceView; band: WifiBand }) {
             aria-label={`${t('ap.security')} ${band}`}
             value={sec}
             disabled={managed}
-            onChange={(e) => setSec(e.target.value as 'open' | 'wpa2-psk')}
+            onChange={(e) => setSec(e.target.value as Sec)}
           >
             <option value="open">{t('ap.open')}</option>
             <option value="wpa2-psk">WPA2-PSK</option>
+            <option value="wpa2-enterprise">WPA2-Enterprise</option>
           </select>
         </label>
         {sec === 'wpa2-psk' && (
@@ -118,6 +161,16 @@ function RadioForm({ dev, band }: { dev: DeviceView; band: WifiBand }) {
               onChange={(e) => setKey(e.target.value)}
             />
           </label>
+        )}
+        {sec === 'wpa2-enterprise' && (
+          <RadiusFields
+            suffix={band}
+            host={rHost}
+            secret={rSecret}
+            disabled={managed}
+            onHost={setRHost}
+            onSecret={setRSecret}
+          />
         )}
         <label>
           {t('ap.channel')}
@@ -141,6 +194,8 @@ function RadioForm({ dev, band }: { dev: DeviceView; band: WifiBand }) {
                 ssid: managed ? r.ssid : ssid.trim(),
                 security: managed ? r.security : sec,
                 key: sec === 'wpa2-psk' ? key : undefined,
+                radius:
+                  sec === 'wpa2-enterprise' ? { host: rHost.trim(), secret: rSecret } : undefined,
                 channel: ch,
               }),
               'toast.saved',
@@ -160,8 +215,10 @@ export function WlcPanel({ dev }: { dev: DeviceView }) {
   const call = useCall();
   const wlc = dev.p5?.wlc;
   const [ssid, setSsid] = useState('');
-  const [sec, setSec] = useState<'open' | 'wpa2-psk'>('wpa2-psk');
+  const [sec, setSec] = useState<Sec>('wpa2-psk');
   const [key, setKey] = useState('');
+  const [rHost, setRHost] = useState('');
+  const [rSecret, setRSecret] = useState('');
   const [band, setBand] = useState<'both' | WifiBand>('both');
   if (!wlc) return null;
   return (
@@ -183,7 +240,7 @@ export function WlcPanel({ dev }: { dev: DeviceView }) {
             {wlc.wlans.map((w) => (
               <tr key={w.id}>
                 <td>{w.ssid}</td>
-                <td>{w.security === 'open' ? t('ap.open') : 'WPA2-PSK'}</td>
+                <td>{secLabel(w.security, t('ap.open'))}</td>
                 <td>{w.band === 'both' ? t('wlc.both') : `${w.band} GHz`}</td>
                 <td>
                   <button
@@ -208,10 +265,11 @@ export function WlcPanel({ dev }: { dev: DeviceView }) {
           <select
             aria-label={`WLAN ${t('ap.security')}`}
             value={sec}
-            onChange={(e) => setSec(e.target.value as 'open' | 'wpa2-psk')}
+            onChange={(e) => setSec(e.target.value as Sec)}
           >
             <option value="open">{t('ap.open')}</option>
             <option value="wpa2-psk">WPA2-PSK</option>
+            <option value="wpa2-enterprise">WPA2-Enterprise</option>
           </select>
         </label>
         {sec === 'wpa2-psk' && (
@@ -223,6 +281,15 @@ export function WlcPanel({ dev }: { dev: DeviceView }) {
               onChange={(e) => setKey(e.target.value)}
             />
           </label>
+        )}
+        {sec === 'wpa2-enterprise' && (
+          <RadiusFields
+            suffix="WLAN"
+            host={rHost}
+            secret={rSecret}
+            onHost={setRHost}
+            onSecret={setRSecret}
+          />
         )}
         <label>
           {t('ap.band')}
@@ -239,6 +306,8 @@ export function WlcPanel({ dev }: { dev: DeviceView }) {
                 ssid: ssid.trim(),
                 security: sec,
                 key: sec === 'wpa2-psk' ? key : undefined,
+                radius:
+                  sec === 'wpa2-enterprise' ? { host: rHost.trim(), secret: rSecret } : undefined,
                 band,
                 enabled: true,
               }),
@@ -275,6 +344,8 @@ export function WifiClient({ dev }: { dev: DeviceView }) {
   const w = dev.p5?.wifi;
   const [ssid, setSsid] = useState('');
   const [key, setKey] = useState('');
+  const [user, setUser] = useState('');
+  const [pass, setPass] = useState('');
   if (!w) return <p className="muted pad">{t('wifi.noWifi')}</p>;
   return (
     <div className="pad scroll">
@@ -304,7 +375,8 @@ export function WifiClient({ dev }: { dev: DeviceView }) {
         <ul className="ping-list">
           {w.profiles.map((p) => (
             <li key={p.ssid}>
-              {p.ssid} {p.key ? '🔒' : ''}{' '}
+              {p.ssid} {p.key ? '🔒' : ''}
+              {p.username ? ` 802.1X (${p.username})` : ''}{' '}
               <button
                 aria-label={`${t('common.remove')} ${p.ssid}`}
                 onClick={() => void call(api.wifiRemoveProfile(dev.id, p.ssid))}
@@ -329,8 +401,34 @@ export function WifiClient({ dev }: { dev: DeviceView }) {
             onChange={(e) => setKey(e.target.value)}
           />
         </label>
+        <label>
+          {t('wifi.username')}
+          <input
+            aria-label={t('wifi.username')}
+            value={user}
+            onChange={(e) => setUser(e.target.value)}
+          />
+        </label>
+        <label>
+          {t('wifi.password')}
+          <input
+            aria-label={t('wifi.password')}
+            type="password"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+          />
+        </label>
         <button
-          onClick={() => void call(api.wifiAddProfile(dev.id, ssid.trim(), key || undefined))}
+          onClick={() =>
+            void call(
+              api.wifiAddProfile(
+                dev.id,
+                ssid.trim(),
+                key || undefined,
+                user.trim() ? { username: user.trim(), password: pass } : undefined,
+              ),
+            )
+          }
         >
           {t('wifi.connect')}
         </button>

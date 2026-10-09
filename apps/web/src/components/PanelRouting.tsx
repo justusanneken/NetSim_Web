@@ -15,6 +15,8 @@ export function RoutingPanel({ dev }: { dev: DeviceView }) {
       (info.ripng?.length ?? 0) === 0 &&
       info.ospf.length === 0 &&
       info.eigrp.length === 0 &&
+      (info.pppoe?.length ?? 0) === 0 &&
+      (info.ipsec?.length ?? 0) === 0 &&
       !info.bgp &&
       info.hsrp.length === 0);
   return (
@@ -54,13 +56,29 @@ export function RoutingPanel({ dev }: { dev: DeviceView }) {
             </li>
           ))}
           {info?.eigrp.map((e) => (
-            <li key={`e${e.asn}`}>
-              EIGRP {e.asn} – {t('routing.neighbors')}: {e.neighbors.length}
+            <li key={`e${e.v6 ? 6 : 4}${e.asn}`}>
+              {e.v6 ? 'EIGRPv6' : 'EIGRP'} {e.asn} – {t('routing.neighbors')}: {e.neighbors.length}
               {e.neighbors.map((n) => (
                 <div key={n.ip} className="mono small">
                   {n.ip} {n.iface}
                 </div>
               ))}
+            </li>
+          ))}
+          {info?.ipsec?.map((s) => (
+            <li key={`sa${s.peer}${s.sel}`} data-testid="ipsec-sa">
+              IPsec {s.peer}: {t(`routing.ipsecState.${s.state}`)} ({s.sel}) – ESP{' '}
+              {t('routing.encaps')} {s.encaps} / {t('routing.decaps')} {s.decaps}
+              {s.reason ? ` – ${s.reason}` : ''}
+            </li>
+          ))}
+          {info?.pppoe?.map((p) => (
+            <li key={`ppp${p.iface}${p.sessionId}`} data-testid="pppoe-session">
+              PPPoE {p.role === 'client' ? t('routing.pppoeClient') : t('routing.pppoeServer')}{' '}
+              {p.iface} ({p.port}): {t(`routing.pppState.${p.state}`)}
+              {p.localIp ? ` – ${p.localIp} ↔ ${p.peerIp ?? '?'}` : ''}
+              {p.user ? ` – ${p.user}` : ''}
+              {p.sessionId ? ` – SID ${p.sessionId}` : ''}
             </li>
           ))}
           {info?.bgp && (

@@ -9,6 +9,7 @@ import type { RibEntry } from './rib';
 import type {
   CableType,
   DhcpClient,
+  IfaceCfg,
   HostServices,
   HttpRequest,
   SwitchPortCfg,
@@ -56,7 +57,29 @@ export interface RoutingInfo {
     vlinks?: { area: string; rid: string; up: boolean }[];
     maxPaths?: number;
   }[];
-  eigrp: { asn: number; neighbors: { ip: string; iface: string }[] }[];
+  eigrp: { asn: number; v6?: boolean; neighbors: { ip: string; iface: string }[] }[];
+  /** IPsec-SAs (Crypto Maps). */
+  ipsec?: {
+    peer: string;
+    state: string;
+    role: string;
+    sel: string;
+    encaps: number;
+    decaps: number;
+    reason?: string;
+  }[];
+  /** PPPoE-Sitzungen (Client am Dialer, Server je Virtual-Access). */
+  pppoe?: {
+    role: 'client' | 'server';
+    iface: string;
+    port: string;
+    state: string;
+    sessionId: number;
+    peerMac: string;
+    localIp?: string;
+    peerIp?: string;
+    user?: string;
+  }[];
   bgp?: {
     asn: number;
     neighbors: {
@@ -124,7 +147,7 @@ export interface DeviceView {
   ifaceList?: {
     id: string;
     name: string;
-    kind: 'phys' | 'sub' | 'svi' | 'loop' | 'tunnel';
+    kind: IfaceCfg['kind'];
     ip?: string;
     mask?: string;
     /** IPv6-Adressen (global/ULA, inkl. SLAAC). */
@@ -252,10 +275,33 @@ function addRoutingView(engine: Engine, d: Device, cfg: L3Conf, v: DeviceView): 
       });
     }
   }
-  for (const c of Object.values(r.eigrp))
+  for (const c of [...Object.values(r.eigrp), ...Object.values(r.eigrp6 ?? {})])
     info.eigrp.push({
       asn: c.asn,
+      v6: c.v6 || undefined,
       neighbors: Object.values(c.neighbors).map((n) => ({ ip: n.ip, iface: name(n.ifaceId) })),
+    });
+  for (const sa of Object.values(cfg.crypto?.sas ?? {}))
+    (info.ipsec ??= []).push({
+      peer: sa.peer,
+      state: sa.state,
+      role: sa.role,
+      sel: `${sa.sel.src} > ${sa.sel.dst}`,
+      encaps: sa.encaps,
+      decaps: sa.decaps,
+      reason: sa.reason,
+    });
+  for (const s of Object.values(cfg.ppp?.sessions ?? {}))
+    (info.pppoe ??= []).push({
+      role: s.role,
+      iface: name(s.ifaceId),
+      port: d.ports.find((p) => p.id === s.portId)?.name ?? s.portId,
+      state: s.state,
+      sessionId: s.sessionId,
+      peerMac: s.peerMac,
+      localIp: s.localIp,
+      peerIp: s.peerIp,
+      user: s.user,
     });
   if (r.bgp)
     info.bgp = {

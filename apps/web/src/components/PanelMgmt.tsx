@@ -39,6 +39,8 @@ export function MgmtPanel({ dev }: { dev: DeviceView }) {
   const [log, setLog] = useState('');
   const [comm, setComm] = useState({ name: '', rw: false });
   const [rad, setRad] = useState({ host: '', key: '' });
+  const [tac, setTac] = useState({ host: '', key: '' });
+  const [trap, setTrap] = useState({ host: '', community: 'public' });
   const [clock, setClock] = useState('');
   const transport = m?.vty.transport ?? ['ssh', 'telnet'];
   const sec = (lines: string[]) => void ios.run(lines);
@@ -310,7 +312,46 @@ export function MgmtPanel({ dev }: { dev: DeviceView }) {
       </details>
 
       <details className="svc5">
-        <summary>AAA / RADIUS</summary>
+        <summary>SNMP traps</summary>
+        <ul className="ping-list">
+          {m?.snmp.trapHosts?.map((h) => (
+            <li key={h.host}>
+              snmp-server host {h.host} version {h.version} {h.community}
+            </li>
+          ))}
+          {m?.snmp.traps && m.snmp.traps.length > 0 && (
+            <li>snmp-server enable traps {m.snmp.traps.join(' ')}</li>
+          )}
+        </ul>
+        <div className="form">
+          <input
+            aria-label="SNMP trap host"
+            placeholder="10.0.0.10"
+            value={trap.host}
+            onChange={(e) => setTrap({ ...trap, host: e.target.value })}
+          />
+          <input
+            aria-label="SNMP trap community"
+            value={trap.community}
+            onChange={(e) => setTrap({ ...trap, community: e.target.value })}
+          />
+          <button
+            onClick={() => {
+              if (!trap.host) return;
+              sec([
+                `snmp-server host ${trap.host.trim()} version 2c ${trap.community}`,
+                'snmp-server enable traps snmp linkdown linkup coldstart',
+              ]);
+              setTrap({ host: '', community: 'public' });
+            }}
+          >
+            {t('common.add')}
+          </button>
+        </div>
+      </details>
+
+      <details className="svc5">
+        <summary>AAA / RADIUS / TACACS+</summary>
         <label className="inline-check">
           <input
             type="checkbox"
@@ -347,6 +388,40 @@ export function MgmtPanel({ dev }: { dev: DeviceView }) {
                 'aaa authentication login default group radius local',
               ]);
               setRad({ host: '', key: '' });
+            }}
+          >
+            {t('common.add')}
+          </button>
+        </div>
+        <ul className="ping-list">
+          {m?.aaa.tacacs?.map((r) => (
+            <li key={`${r.name ?? ''}${r.host}`}>
+              tacacs-server host {r.host} ({r.pass ?? 0}/{r.fail ?? 0}/{r.errors ?? 0})
+            </li>
+          ))}
+        </ul>
+        <div className="form">
+          <input
+            aria-label="TACACS+ host"
+            placeholder="10.0.0.10"
+            value={tac.host}
+            onChange={(e) => setTac({ ...tac, host: e.target.value })}
+          />
+          <input
+            aria-label="TACACS+ key"
+            placeholder="key"
+            value={tac.key}
+            onChange={(e) => setTac({ ...tac, key: e.target.value })}
+          />
+          <button
+            onClick={() => {
+              if (!tac.host) return;
+              sec([
+                'aaa new-model',
+                `tacacs-server host ${tac.host.trim()} key ${tac.key}`,
+                'aaa authentication login default group tacacs+ local',
+              ]);
+              setTac({ host: '', key: '' });
             }}
           >
             {t('common.add')}

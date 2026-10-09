@@ -33,6 +33,12 @@ const MODE_SUFFIX: Record<ModeId, string> = {
   'config-ospf': '(config-router)#',
   'config-ospf6': '(config-rtr)#',
   'config-eigrp': '(config-router)#',
+  'config-eigrp6': '(config-rtr)#',
+  'config-tacacs': '(config-server-tacacs)#',
+  'config-bba': '(config-bba-group)#',
+  'config-isakmp': '(config-isakmp)#',
+  'config-trans': '(cfg-crypto-trans)#',
+  'config-crypto-map': '(config-crypto-map)#',
   'config-bgp': '(config-router)#',
   'config-obj-net': '(config-network-object)#',
   'config-route-map': '(config-route-map)#',
@@ -428,6 +434,7 @@ export class CliSession implements Shell {
     if (!ic) return;
     const before = ifaceUp(dev, dev.config, id, ic);
     ic.shutdown = shut;
+    this.engine.routingChanged(this.deviceId);
     const after = ifaceUp(dev, dev.config, id, ic);
     if (before === after) return;
     const name = ifDisplay(dev, id);

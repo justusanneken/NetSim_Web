@@ -32,6 +32,7 @@ export const TCP_PORT: Partial<Record<SvcProto, number>> = {
   telnet: 23,
   smtp: 25,
   pop3: 110,
+  tacacs: 49,
   bgp: 179,
 };
 const PORT_PROTO = new Map<number, SvcProto>(

@@ -28,6 +28,9 @@ import {
 } from './devices/host';
 import { l3Ping, l3Timer, l3Trace, routerRx, type L3Dev } from './devices/l3dev';
 import { routingResetRuntime, routingSync } from './routing';
+import { pppoeClear } from './routing/pppoe';
+import { ipsecClear } from './routing/ipsec';
+import { rtOf } from './routing/core';
 import { buildRib6, listIfaces6 } from './l3v6';
 import { hostV6 } from './devices/host';
 import { ifaceName, listIfaces, sviId, subId } from './ifaces';
@@ -232,6 +235,18 @@ export class Engine {
     if (!dev?.powered || dev.crashed) return;
     if (dev.config.kind === 'router' || dev.config.kind === 'switch')
       this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
+  }
+
+  /** `clear crypto sa`: alle IKE-/IPsec-SAs löschen. */
+  clearCrypto(deviceId: string): void {
+    const dev = this.l3(deviceId);
+    if (dev?.powered) this.withCtx(dev, (ctx) => ipsecClear(rtOf(ctx, dev)));
+  }
+
+  /** `clear pppoe all`: alle PPPoE-Sitzungen beenden (Clients wählen sich neu ein). */
+  clearPppoe(deviceId: string): void {
+    const dev = this.l3(deviceId);
+    if (dev?.powered) this.withCtx(dev, (ctx) => pppoeClear(rtOf(ctx, dev)));
   }
 
   // ------------------------------------------------------------ Topologie
@@ -551,6 +566,14 @@ export class Engine {
     }
     if (/^tu\d+$/.test(id)) {
       cfg.ifaces[id] = { kind: 'tunnel', tunnel: { mode: 'gre' } };
+      return { ok: true, value: id };
+    }
+    if (/^di\d+$/.test(id) && dev.config.kind === 'router') {
+      cfg.ifaces[id] = { kind: 'dialer', dialer: { pool: 1 }, shutdown: false };
+      return { ok: true, value: id };
+    }
+    if (/^vt\d+$/.test(id) && dev.config.kind === 'router') {
+      cfg.ifaces[id] = { kind: 'vtemplate', vtemplate: { chap: false } };
       return { ok: true, value: id };
     }
     if (sub && dev.config.kind === 'router' && dev.ports.some((p) => p.id === sub[1])) {

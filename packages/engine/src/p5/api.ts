@@ -15,7 +15,7 @@ import type {
   Wlan,
 } from '../p5types';
 import type { Device, HostConfig, Port, Result, RouterConfig, SwitchConfig } from '../types';
-import { apBss, wirelessSync } from './wifi';
+import { apBss, retryEap, wirelessSync } from './wifi';
 import { capwapTick } from './capwap';
 import { clockOf, deviceTimeMs, setDeviceTime } from './clock';
 import { connClose, connOpen, connPush, connSend } from './conn';
@@ -32,6 +32,7 @@ import {
 } from './physical';
 import { ntpPoll, ntpServersOf } from './services';
 import { syslogEmit } from './syslog';
+import { snmpTrap } from './snmptrap';
 import { udpRequest } from './udputil';
 
 const err = (error: string, params?: Record<string, string | number>): Result<never> => ({
@@ -82,6 +83,11 @@ export class Phase5 {
       if (dev.config.iot?.server) wants.push(['bg:svc:iot', 2_000_000]);
     }
     if (ntpServersOf(dev).length > 0) wants.push(['bg:svc:ntp', 2_000_000]);
+    if (dev.config.kind === 'router' || dev.config.kind === 'switch') {
+      const sn = dev.config.sys.mgmt?.snmp;
+      if (sn?.traps?.includes('coldstart') && sn.trapHosts?.length)
+        wants.push(['bg:svc:coldstart', 12_000_000]);
+    }
     if (dev.config.kind === 'host' && dev.config.iot?.script?.running)
       this.eng.withCtx(dev, (ctx) => scriptResume(ctx, dev));
     if (wants.length === 0) return;
@@ -130,6 +136,7 @@ export class Phase5 {
 
   timer(ctx: DeviceCtx, dev: Device, name: string): void {
     if (name === 'capwap') return capwapTick(ctx, dev);
+    if (name === 'coldstart') return snmpTrap(ctx, dev, 'coldstart');
     if (name.startsWith('script:')) return scriptTimer(ctx, dev, name);
     if (name === 'ntp') {
       ntpPoll(ctx, dev);
@@ -151,6 +158,10 @@ export class Phase5 {
     if (!dev.powered || (dev.config.kind !== 'router' && dev.config.kind !== 'switch')) return;
     const state = up ? 'up' : 'down';
     this.eng.withCtx(dev, (ctx) => {
+      snmpTrap(ctx, dev, up ? 'linkup' : 'linkdown', {
+        index: dev.ports.indexOf(p) + 1,
+        name: p.name,
+      });
       syslogEmit(ctx, dev, 3, 'LINK-3-UPDOWN', `Interface ${p.name}, changed state to ${state}`);
       syslogEmit(
         ctx,
@@ -180,8 +191,15 @@ export class Phase5 {
       const key = patch.key ?? r.key ?? '';
       if (key.length < 8 || key.length > 63) return err('wifi.invalidKey');
     }
+    const radius = patch.radius ?? r.radius;
+    if (
+      (patch.security ?? r.security) === 'wpa2-enterprise' &&
+      (!radius || !isValidIpv4(radius.host) || radius.secret === '')
+    )
+      return err('wifi.invalidRadius');
     Object.assign(r, patch);
     if (r.security === 'open') delete r.key;
+    if (r.security !== 'wpa2-enterprise') delete r.radius;
     wirelessSync(this.eng);
     return ok(true);
   }
@@ -197,7 +215,13 @@ export class Phase5 {
     return ok(true);
   }
 
-  wifiAddProfile(id: string, ssid: string, key?: string): Result<true> {
+  /** Profil anlegen/ersetzen; `cred`: 802.1X-Zugangsdaten für WPA2-Enterprise. */
+  wifiAddProfile(
+    id: string,
+    ssid: string,
+    key?: string,
+    cred?: { username: string; password: string },
+  ): Result<true> {
     const h = this.host(id);
     const w = h?.config.wifi;
     if (!h || !w) return err('wifi.noWifi');
@@ -205,7 +229,11 @@ export class Phase5 {
     if (key !== undefined && key !== '' && (key.length < 8 || key.length > 63))
       return err('wifi.invalidKey');
     w.profiles = w.profiles.filter((p) => p.ssid !== ssid);
-    w.profiles.unshift({ ssid, key: key === '' ? undefined : key });
+    w.profiles.unshift({
+      ssid,
+      key: key === '' ? undefined : key,
+      ...(cred?.username ? { username: cred.username, password: cred.password } : {}),
+    });
     w.status = 'idle';
     wirelessSync(this.eng);
     return ok(true);
@@ -236,8 +264,18 @@ export class Phase5 {
     if (w.ssid.trim() === '') return err('wifi.invalidSsid');
     if (w.security === 'wpa2-psk' && ((w.key ?? '').length < 8 || (w.key ?? '').length > 63))
       return err('wifi.invalidKey');
+    if (
+      w.security === 'wpa2-enterprise' &&
+      (!w.radius || !isValidIpv4(w.radius.host) || w.radius.secret === '')
+    )
+      return err('wifi.invalidRadius');
     const wid = w.id ?? Math.max(0, ...wlc.wlans.map((x) => x.id)) + 1;
-    const next: Wlan = { ...w, id: wid, key: w.security === 'open' ? undefined : w.key };
+    const next: Wlan = {
+      ...w,
+      id: wid,
+      key: w.security === 'wpa2-psk' ? w.key : undefined,
+      radius: w.security === 'wpa2-enterprise' ? w.radius : undefined,
+    };
     const i = wlc.wlans.findIndex((x) => x.id === wid);
     if (i >= 0) wlc.wlans[i] = next;
     else wlc.wlans.push(next);
@@ -265,6 +303,8 @@ export class Phase5 {
     if (!h) return err('ip.notAHost');
     Object.assign(h.config.services, structuredClone(patch));
     this.startTimers(h);
+    // geänderte RADIUS-Benutzer/-Clients: abgewiesene 802.1X-Verfahren erneut versuchen
+    if (patch.aaa) retryEap(this.eng);
     return ok(true);
   }
 

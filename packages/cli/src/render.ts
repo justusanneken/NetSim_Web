@@ -1,3 +1,10 @@
+import {
+  cryptoGlobalLines,
+  dialerLines,
+  protoGlobalLines,
+  protoIfaceLines,
+  vtemplateLines,
+} from './renderProto';
 import { renderPolicyConfig } from './showGaps';
 import { maskToPrefix, parseIpv4 } from '@netsim/protocols';
 import type {
@@ -83,6 +90,7 @@ function l3Lines(cfg: L3Cfg, c: IfaceCfg | undefined, out: string[]): void {
   if (c?.aclOut) out.push(` ip access-group ${c.aclOut} out`);
   if (c?.natSide && !(cfg as RouterConfig).fw) out.push(` ip nat ${c.natSide}`);
   if (c) routingIfaceLines(c, out);
+  if (c) protoIfaceLines(c, out);
 }
 
 const area = (a: string): string => a;
@@ -141,6 +149,7 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
     if (v6.otherConfig) out.push(' ipv6 nd other-config-flag');
     if (v6.dhcp6Server) out.push(` ipv6 dhcp server ${v6.dhcp6Server}`);
     if (v6.ripng) out.push(` ipv6 rip ${v6.ripng} enable`);
+    if (v6.eigrp !== undefined) out.push(` ipv6 eigrp ${v6.eigrp}`);
     const v = v6.ospf;
     if (v) {
       if (v.area !== undefined) out.push(` ipv6 ospf ${v.pid ?? 1} area ${area(v.area)}`);
@@ -238,14 +247,16 @@ function renderInterfaces(d: Device & { config: CliConfig }, L: string[]): void 
       }
     }
   }
-  for (const kind of ['loop', 'tunnel'] as const) {
+  for (const kind of ['loop', 'tunnel', 'dialer', 'vtemplate'] as const) {
     for (const id of sortedIfaceIds(cfg, kind).sort(
       (a, b) => Number(a.slice(2)) - Number(b.slice(2)),
     )) {
       const c = cfg.ifaces[id] as IfaceCfg;
       const out = [`interface ${ifDisplay(d, id)}`];
       if (sys.descriptions[id]) out.push(` description ${sys.descriptions[id]}`);
-      l3Lines(cfg, c, out);
+      if (kind === 'dialer') out.push(...dialerLines(c));
+      else if (kind === 'vtemplate') out.push(...vtemplateLines(d, c));
+      else l3Lines(cfg, c, out);
       if (kind === 'tunnel') {
         if (c.tunnel?.source)
           out.push(
@@ -320,6 +331,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     L.push('!');
   }
   if (sys.domainName) L.push(`ip domain-name ${sys.domainName}`, '!');
+  L.push(...protoGlobalLines(cfg), ...cryptoGlobalLines(cfg));
   L.push(...mgmtGlobalLines(cfg));
   if (cfg.kind === 'switch') {
     if (cfg.vtp.mode !== 'server') L.push(`vtp mode ${cfg.vtp.mode}`);
@@ -541,6 +553,16 @@ function renderRouting(d: Device & { config: CliConfig }, L: string[]): void {
     }
     if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
     for (const x of c.redistribute) L.push(redist6Text(x));
+    L.push('!');
+  }
+  for (const c of Object.values(r.eigrp6 ?? {})) {
+    L.push(`ipv6 router eigrp ${c.asn}`);
+    if (c.routerId) L.push(` eigrp router-id ${c.routerId}`);
+    L.push(c.shutdown ? ' shutdown' : ' no shutdown');
+    passiveLines(d, c, L);
+    if (c.variance !== 1) L.push(` variance ${c.variance}`);
+    if (c.maxPaths !== undefined) L.push(` maximum-paths ${c.maxPaths}`);
+    for (const x of c.redistribute) L.push(redistText(x, 'eigrp'));
     L.push('!');
   }
   for (const c of Object.values(r.eigrp)) {

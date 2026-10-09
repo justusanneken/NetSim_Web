@@ -6,6 +6,7 @@ import type { Device, RouterConfig, SwitchConfig } from '../types';
 import { connKey, serverPush, type SvcReply, type TcpServer } from './conn';
 import { appcOf } from './node';
 import { syslogEmit } from './syslog';
+import { tacacsAuth } from './tacacs';
 import { udpRequest } from './udputil';
 
 type CliCfg = RouterConfig | SwitchConfig;
@@ -161,6 +162,13 @@ function aaaStep(
       return checkLocal(cfg, user, pass)
         ? loginOk(ctx, node, dev, cfg, conn, user)
         : loginFail(ctx, dev, cfg, conn, user);
+    }
+    if (method === 'tacacs') {
+      const th = (m.aaa.tacacs ?? []).find((h) => h.host);
+      const wid = th && tacacsAuth(ctx, node, th, user, pass);
+      if (wid === undefined || wid === false) continue;
+      appcOf(node.cfg).aaaWait[wid] = { key: connKey(conn), user, next: i + 1, pass };
+      return undefined; // Antwort folgt nach der TACACS+-Entscheidung
     }
     const host = m.aaa.radius[0];
     if (!host) continue;

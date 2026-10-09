@@ -376,7 +376,7 @@ export function addPhase5(r: Registry<CliSession>): void {
       K('authentication', 'Authentication configuration'),
       K('login', 'Set authentication lists for logins'),
       P('list', 'word', 'WORD', 'Named authentication list (default)'),
-      R('methods', 'WORD', 'group radius | local'),
+      R('methods', 'WORD', 'group radius | group tacacs+ | local'),
     ],
     run: (s, a) => {
       const m = mg(s);
@@ -385,10 +385,10 @@ export function addPhase5(r: Registry<CliSession>): void {
         return;
       }
       const words = (a.methods as string).split(/\s+/);
-      const methods: ('radius' | 'local')[] = [];
+      const methods: ('radius' | 'tacacs' | 'local')[] = [];
       for (let i = 0; i < words.length; i++) {
-        if (words[i] === 'group' && words[i + 1] === 'radius') {
-          methods.push('radius');
+        if (words[i] === 'group' && (words[i + 1] === 'radius' || words[i + 1] === 'tacacs+')) {
+          methods.push(words[i + 1] === 'radius' ? 'radius' : 'tacacs');
           i++;
         } else if (words[i] === 'local') methods.push('local');
         else throw new CliError('% Invalid input detected');

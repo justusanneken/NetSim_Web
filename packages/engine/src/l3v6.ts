@@ -533,6 +533,7 @@ function isLocalMulticast6(n: Ip6Host, iface: Iface6, dst: Ipv6Addr): boolean {
   if (d === 'ff02::5' || d === 'ff02::6') return n.v6.forwarding;
   if (d === 'ff02::66') return Object.keys(iface.cfg.hsrp6 ?? {}).length > 0;
   if (d === 'ff02::9') return !!iface.cfg.v6?.ripng;
+  if (d === 'ff02::a') return iface.cfg.v6?.eigrp !== undefined;
   if (d === 'ff02::1:2') return !!iface.cfg.v6?.dhcp6Server;
   const sn = (a: Ipv6Addr): boolean => (normalizeIpv6(solicitedNode(a)) ?? '') === d;
   return (

@@ -1,0 +1,15 @@
+/* Ereignisfarben der Protokolle aus proto (TACACS+, PPPoE/PPP, IPsec) */
+.event.proto-TACACS {
+  border-left-color: var(--c-purple);
+  background: color-mix(in srgb, var(--c-purple) 8%, transparent);
+}
+.event.proto-PPPOE,
+.event.proto-PPP {
+  border-left-color: var(--c-teal);
+  background: color-mix(in srgb, var(--c-teal) 8%, transparent);
+}
+.event.proto-IKE,
+.event.proto-ESP {
+  border-left-color: var(--c-green);
+  background: color-mix(in srgb, var(--c-green) 8%, transparent);
+}

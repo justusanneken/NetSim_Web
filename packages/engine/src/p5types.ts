@@ -23,7 +23,13 @@ export interface ClockCfg {
 // ---------------------------------------------------------------- WLAN
 
 export type WifiBand = '2.4' | '5';
-export type WifiSecurity = 'open' | 'wpa2-psk';
+export type WifiSecurity = 'open' | 'wpa2-psk' | 'wpa2-enterprise';
+
+/** RADIUS-Server für WPA2-Enterprise (802.1X). */
+export interface RadiusRef {
+  host: Ipv4Addr;
+  secret: string;
+}
 
 export interface Radio {
   band: WifiBand;
@@ -32,6 +38,8 @@ export interface Radio {
   ssid: string;
   security: WifiSecurity;
   key?: string;
+  /** `wpa2-enterprise`: RADIUS-Server. */
+  radius?: RadiusRef;
 }
 
 export interface Wlan {
@@ -39,6 +47,8 @@ export interface Wlan {
   ssid: string;
   security: WifiSecurity;
   key?: string;
+  /** `wpa2-enterprise`: RADIUS-Server. */
+  radius?: RadiusRef;
   band: 'both' | WifiBand;
   enabled: boolean;
 }
@@ -48,6 +58,7 @@ export interface Bss {
   ssid: string;
   security: WifiSecurity;
   key?: string;
+  radius?: RadiusRef;
   band: WifiBand;
   channel: number;
 }
@@ -72,11 +83,27 @@ export interface ApCfg {
   macTable: Record<Mac, string>;
   /** Laufzeit: assoziierte Clients je Funk-Port. */
   clients: Record<string, ApClient>;
+  /** Laufzeit: 802.1X-Verfahren (Schlüssel `Client-MAC|SSID|Band`). */
+  eap?: Record<string, EapEntry>;
+}
+
+/** Stand der (vereinfachten) EAP-Authentifizierung eines Clients am AP. */
+export interface EapEntry {
+  state: 'pending' | 'ok' | 'fail';
+  /** Zugangsdaten-Signatur (Änderung ⇒ neues Verfahren). */
+  sig: string;
+  client: string;
+  user: string;
+  /** RADIUS-Anfrage-ID (pending). */
+  rid?: number;
 }
 
 export interface WifiProfile {
   ssid: string;
   key?: string;
+  /** WPA2-Enterprise: 802.1X-Zugangsdaten. */
+  username?: string;
+  password?: string;
 }
 
 export interface WifiAssoc {
@@ -88,7 +115,7 @@ export interface WifiAssoc {
   channel: number;
 }
 
-export type WifiStatus = 'idle' | 'connected' | 'auth-failed' | 'no-ap' | 'off';
+export type WifiStatus = 'idle' | 'connected' | 'authenticating' | 'auth-failed' | 'no-ap' | 'off';
 
 export interface WifiClientCfg {
   enabled: boolean;
@@ -136,6 +163,26 @@ export interface SyslogMsg {
   text: string;
 }
 
+export type SnmpTrapKind = 'linkdown' | 'linkup' | 'coldstart';
+
+export interface SnmpTrapHost {
+  host: Ipv4Addr;
+  community: string;
+  version: '1' | '2c';
+}
+
+/** Empfangener Trap (Server-Seite). */
+export interface SnmpTrapRec {
+  t: number;
+  from: Ipv4Addr;
+  host: string;
+  community: string;
+  version: string;
+  trap: string;
+  ifIndex?: number;
+  ifDescr?: string;
+}
+
 export interface SnmpCommunity {
   name: string;
   rw: boolean;
@@ -174,8 +221,17 @@ export interface ServerSvc5 {
   };
   ntp?: { enabled: boolean };
   syslog?: { enabled: boolean; messages: SyslogMsg[] };
-  snmp?: { enabled: boolean; communities: SnmpCommunity[]; location?: string; contact?: string };
+  snmp?: {
+    enabled: boolean;
+    communities: SnmpCommunity[];
+    location?: string;
+    contact?: string;
+    /** Empfangene Traps (UDP 162). */
+    traps?: SnmpTrapRec[];
+  };
   aaa?: { enabled: boolean; clients: { ip: Ipv4Addr; secret: string }[]; users: UserCred[] };
+  /** TACACS+-Dienst (TCP 49): Clients mit Schlüssel und Benutzerliste. */
+  tacacs?: { enabled: boolean; clients: { ip: Ipv4Addr; secret: string }[]; users: UserCred[] };
   iot?: { enabled: boolean; devices: Record<string, IotDevice>; rules: IotRule[] };
 }
 
@@ -292,6 +348,8 @@ export interface AppCore {
   nextReq: number;
   /** Server-seitig wartende Logins (RADIUS): Anfrage-ID → Verbindungsschlüssel. */
   aaaWait: Record<number, { key: string; user: string; pass: string; next: number }>;
+  /** AP: wartende 802.1X-Anfragen (RADIUS-Anfrage-ID → EAP-Schlüssel). */
+  eapWait?: Record<number, string>;
 }
 
 // ---------------------------------------------------------------- Management (Router/Switch/Firewall)
@@ -303,6 +361,19 @@ export interface VtySession {
   from: string;
   since: number;
   protocol: 'telnet' | 'ssh' | 'console';
+}
+
+/** TACACS+-Server eines CLI-Geräts. */
+export interface TacacsHost {
+  host: Ipv4Addr;
+  key: string;
+  /** Name bei `tacacs server NAME`; ohne Name: `tacacs-server host`. */
+  name?: string;
+  /** Laufzeit: Zähler für `show tacacs`. */
+  opens?: number;
+  pass?: number;
+  fail?: number;
+  errors?: number;
 }
 
 export interface MgmtCfg {
@@ -320,12 +391,22 @@ export interface MgmtCfg {
   ntp: { servers: Ipv4Addr[]; master?: number };
   clock: ClockCfg;
   syslog: { hosts: Ipv4Addr[]; trap: number; buffered: boolean };
-  snmp: { communities: SnmpCommunity[]; location?: string; contact?: string };
+  snmp: {
+    communities: SnmpCommunity[];
+    location?: string;
+    contact?: string;
+    /** `snmp-server host A [version 2c] COMMUNITY`. */
+    trapHosts?: SnmpTrapHost[];
+    /** `snmp-server enable traps …`: freigeschaltete Trap-Typen. */
+    traps?: SnmpTrapKind[];
+  };
   aaa: {
     newModel: boolean;
     radius: { host: Ipv4Addr; key: string }[];
+    /** `tacacs-server host A key K` bzw. `tacacs server NAME` (TCP 49). */
+    tacacs?: TacacsHost[];
     /** `aaa authentication login default group radius local`. */
-    methods: ('radius' | 'local')[];
+    methods: ('radius' | 'tacacs' | 'local')[];
     listName: string;
   };
   /** Laufzeit: offene Sitzungen (Console nicht enthalten). */
