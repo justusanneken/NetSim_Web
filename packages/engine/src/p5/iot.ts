@@ -4,6 +4,7 @@ import type { Device, HostConfig } from '../types';
 import { ipNodeOf } from './node';
 import type { SvcRx } from './services';
 import { udpReply, udpRequest } from './udputil';
+import { scriptReport } from './script/iotscript';
 
 const hostOf = (d: Device): HostConfig | undefined =>
   d.config.kind === 'host' ? d.config : undefined;
@@ -53,12 +54,14 @@ export function iotTick(ctx: DeviceCtx, dev: Device): void {
     });
     return;
   }
+  const value = iotValue(iot, ctx.now);
   udpRequest(ctx, node, {
     dst: iot.server,
     proto: 'iot',
     op: 'report',
-    args: { name, value: iotValue(iot, ctx.now), state: iot.state },
+    args: { name, value, state: iot.state },
   });
+  scriptReport(ctx, dev, name, value);
 }
 
 /** IoT-Nachrichten: Server (`register`, `report`) und Geräte (`set`). */
@@ -113,6 +116,7 @@ export function iotHandler(r: SvcRx): boolean {
     if (d.role !== 'sensor') d.state = msg.args.state === 'on' ? 'on' : 'off';
     udpReply(r.ctx, r.node, r.iface, r.ip, r.udp, msg, 'ack');
     if (d.role !== 'actuator') applyRules(r, name, Number(msg.args.value));
+    if (d.role !== 'actuator') scriptReport(r.ctx, dev, name, Number(msg.args.value));
     return true;
   }
   return false;

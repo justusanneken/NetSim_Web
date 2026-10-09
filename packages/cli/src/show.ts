@@ -155,6 +155,8 @@ export function showIpRoute(e: Engine, d: D, target?: string, proto?: string): s
   const where = (r: RibEntry): string => {
     const ifn = r.ifaceId ? ifDisplay(d, r.ifaceId) : '';
     if (r.type === 'C' || r.type === 'L') return `is directly connected, ${ifn}`;
+    if (r.type === 'B' && r.bgpNextHop)
+      return `[${r.ad}/${r.metric}] via ${r.bgpNextHop}, ${clock(e.state.now - (r.since ?? 0))}`;
     if (r.nextHop) {
       const age = r.type === 'S' ? '' : `, ${clock(e.state.now - (r.since ?? 0))}, ${ifn}`;
       return `[${r.ad}/${r.metric}] via ${r.nextHop}${age}`;
@@ -237,7 +239,7 @@ function showRouteEntry(e: Engine, d: D, rib: RibEntry[], target: string): strin
   paths.forEach((p, i) => {
     const ifn = p.ifaceId ? ifDisplay(d, p.ifaceId) : '';
     out.push(
-      `${i === 0 ? '  * ' : '    '}${p.nextHop ? (p.type === 'S' ? p.nextHop : `${p.nextHop}, from ${p.nextHop}, ${clock(e.state.now - (p.since ?? 0))} ago, via ${ifn}`) : `directly connected, via ${ifn}`}`,
+      `${i === 0 ? '  * ' : '    '}${p.nextHop ? (p.type === 'S' ? p.nextHop : `${p.bgpNextHop ?? p.nextHop}, from ${p.bgpNextHop ?? p.nextHop}, ${clock(e.state.now - (p.since ?? 0))} ago, via ${ifn}`) : `directly connected, via ${ifn}`}`,
     );
     out.push(
       `      Route metric is ${p.metric}, traffic share count is ${p.share !== undefined ? Math.max(1, Math.round(p.share / minShare)) : 1}`,

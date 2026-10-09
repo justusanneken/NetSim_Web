@@ -14,6 +14,17 @@ import type { AppConn } from '../p5types';
 import type { Device } from '../types';
 import { appcOf } from './node';
 
+/**
+ * Gemeinsames, wiederverwendbares simuliertes TCP für Geräte mit IP-Stack (Host, Router, Switch, Firewall).
+ *
+ * - Verbindungstabelle je Gerät: `appc.conns` (Schlüssel `lport>raddr:rport`), reines JSON.
+ * - Dreiwege-Handshake, echte Sequenz-/Bestätigungsnummern, Nachrichtenstrom (`SvcPdu` je Segment).
+ * - Zuverlässigkeit: Retransmission mit Timeout (RTO 1 s, verdoppelt bis 8 s) und begrenzten Wiederholungen,
+ *   Duplikat-/Lückenerkennung beim Empfang, kumulative ACKs.
+ * - Abbau per FIN bzw. RST (auch für Daten auf unbekannten Verbindungen).
+ * - Alle Segmente laufen durch den normalen IP-Stack (ACL, NAT, Firewall sehen sie).
+ */
+
 /** Reservierte TCP-Ports der Dienste. */
 export const TCP_PORT: Partial<Record<SvcProto, number>> = {
   ftp: 21,
@@ -21,6 +32,7 @@ export const TCP_PORT: Partial<Record<SvcProto, number>> = {
   telnet: 23,
   smtp: 25,
   pop3: 110,
+  bgp: 179,
 };
 const PORT_PROTO = new Map<number, SvcProto>(
   Object.entries(TCP_PORT).map(([p, n]) => [n as number, p as SvcProto]),
@@ -30,25 +42,40 @@ const SYN_RTO_US = 1_000_000;
 const MAX_SYN_RETRIES = 3;
 const REQ_TIMEOUT_US = 8_000_000;
 const WINDOW = 8192;
+/** Retransmission: Start-RTO 1 s, verdoppelt bis 8 s; nach 5 Wiederholungen (≈ 31 s) bricht die Verbindung ab. */
+export const RTX_RTO_US = 1_000_000;
+const RTX_MAX_RTO_US = 8_000_000;
+export const RTX_MAX_TRIES = 5;
 
 export type SvcReply =
-  { op: string; args?: SvcPdu['args']; body?: string; close?: boolean } | undefined;
+  | {
+      /** Leer = keine Anwendungsdaten (z. B. SYN-ACK ohne Banner). */
+      op: string;
+      args?: SvcPdu['args'];
+      body?: string;
+      close?: boolean;
+      bgp?: SvcPdu['bgp'];
+      encrypted?: boolean;
+    }
+  | undefined;
 
-/** Serverseitiges Verhalten eines TCP-Dienstes. */
-/** Meldet Abschluss (`reply`) bzw. Fehler (`fail`) einer Client-Verbindung an die Anwendung. */
+/** Meldet Öffnen (`open`), Nachricht (`reply`) bzw. Ende/Fehler (`fail`) einer Client-Verbindung an die Anwendung. */
 export type ClientHook = (
   ctx: DeviceCtx,
   node: IpNode,
   c: AppConn,
-  event: 'reply' | 'fail',
+  event: 'open' | 'reply' | 'fail',
 ) => void;
 
+/** Serverseitiges Verhalten eines TCP-Dienstes. */
 export interface TcpServer {
   /** Banner (→ SYN-ACK) oder `'refuse'` (→ RST). */
   accept(ctx: DeviceCtx, dev: Device, node: IpNode, conn: AppConn): SvcReply | 'refuse';
   handle(ctx: DeviceCtx, dev: Device, node: IpNode, conn: AppConn, msg: SvcPdu): SvcReply;
   closed?(ctx: DeviceCtx, dev: Device, conn: AppConn): void;
 }
+
+export type TcpServers = Partial<Record<SvcProto, TcpServer>>;
 
 const flags = (f: Partial<TcpFlags>): TcpFlags => ({
   syn: false,
@@ -62,6 +89,10 @@ const flags = (f: Partial<TcpFlags>): TcpFlags => ({
 const keyOf = (lport: number, raddr: Ipv4Addr, rport: number): string =>
   `${lport}>${raddr}:${rport}`;
 export const connKey = (c: AppConn): string => keyOf(c.lport, c.raddr, c.rport);
+
+/** Timername einer Verbindung (Hintergrund-Timer für BGP). */
+const tn = (c: AppConn, kind: 'syn' | 'areq' | 'rtx'): string =>
+  `${c.bg ? 'bg:' : ''}svc:${kind}:${connKey(c)}`;
 
 function seg(
   ctx: DeviceCtx,
@@ -88,13 +119,82 @@ function seg(
   ipSend(ctx, node, pkt);
 }
 
-const svcMsg = (proto: SvcProto, r: NonNullable<SvcReply>): SvcPdu => ({
-  kind: 'svc',
-  proto,
-  op: r.op,
-  args: r.args ?? {},
-  body: r.body,
-});
+/** Lokale Adresse einer Verbindung (explizit, sonst Adresse der Ausgangsschnittstelle). */
+function localOf(node: IpNode, c: AppConn): Ipv4Addr | undefined {
+  return c.laddr ?? node.lookup(c.raddr)?.iface.ip;
+}
+
+/** Segment auf einer Verbindung senden. */
+function out(
+  ctx: DeviceCtx,
+  node: IpNode,
+  c: AppConn,
+  f: Partial<TcpFlags>,
+  seq: number,
+  ack: number,
+  app?: SvcPdu,
+): boolean {
+  const src = localOf(node, c);
+  if (!src) return false;
+  if (f.ack) c.sentAck = ack;
+  seg(ctx, node, src, c.raddr, c, f, seq, ack, app);
+  return true;
+}
+
+const svcMsg = (proto: SvcProto, r: NonNullable<SvcReply>): SvcPdu | undefined =>
+  r.op === ''
+    ? undefined
+    : {
+        kind: 'svc',
+        proto,
+        op: r.op,
+        args: r.args ?? {},
+        body: r.body,
+        bgp: r.bgp,
+        encrypted: r.encrypted ?? (proto === 'ssh' || undefined),
+      };
+
+// ---------------------------------------------------------------- Zuverlässige Datenübertragung
+
+/** Anwendungsnachricht zuverlässig senden (Retransmission bis zur Bestätigung). */
+export function sendData(
+  ctx: DeviceCtx,
+  node: IpNode,
+  c: AppConn,
+  msg: SvcPdu | undefined,
+  fin = false,
+): boolean {
+  const len = (msg ? pduSize(msg) : 0) + (fin ? 1 : 0);
+  if (!out(ctx, node, c, { ack: true, psh: !!msg, fin }, c.seq, c.ack, msg)) return false;
+  (c.rtx ??= []).push({ seq: c.seq, len, fin: fin || undefined, msg });
+  c.seq += len;
+  if (c.rtx.length === 1) {
+    c.rto = RTX_RTO_US;
+    c.tries = 0;
+    ctx.setTimer(tn(c, 'rtx'), c.rto);
+  }
+  return true;
+}
+
+/** Bestätigungsnummer des Gegenübers verarbeiten: bestätigte Segmente aus der Warteschlange entfernen. */
+function ackIn(ctx: DeviceCtx, c: AppConn, ack: number): void {
+  if (!c.rtx?.length) return;
+  const before = c.rtx.length;
+  c.rtx = c.rtx.filter((r) => r.seq + r.len > ack);
+  if (c.rtx.length === before) return;
+  c.tries = 0;
+  c.rto = RTX_RTO_US;
+  if (c.rtx.length === 0) ctx.cancelTimer(tn(c, 'rtx'));
+  else ctx.setTimer(tn(c, 'rtx'), RTX_RTO_US);
+}
+
+function pureAck(ctx: DeviceCtx, node: IpNode, c: AppConn): void {
+  out(ctx, node, c, { ack: true }, c.seq, c.ack);
+}
+
+function tcpLog(ctx: DeviceCtx, key: string, params: Record<string, string | number>): void {
+  ctx.log({ kind: 'info', proto: 'TCP', status: 'info', msg: { key, params } });
+}
 
 // ---------------------------------------------------------------- Client
 
@@ -102,7 +202,7 @@ const svcMsg = (proto: SvcProto, r: NonNullable<SvcReply>): SvcPdu => ({
 export function connOpen(
   ctx: DeviceCtx,
   node: IpNode,
-  o: { dst: Ipv4Addr; proto: SvcProto; port?: number },
+  o: { dst: Ipv4Addr; proto: SvcProto; port?: number; src?: Ipv4Addr; bg?: boolean },
 ): { ok: true; key: string; id: number } | { ok: false; error: string } {
   const core = appcOf(node.cfg);
   const hop = node.lookup(o.dst);
@@ -121,17 +221,19 @@ export function connOpen(
     ack: 0,
     retries: 0,
     replySeq: 0,
-    waiting: true,
+    waiting: !o.bg,
+    laddr: o.src ?? hop.iface.ip,
+    bg: o.bg || undefined,
   };
   const key = connKey(c);
   core.conns[key] = c;
-  sendSyn(ctx, node, c, hop.iface.ip);
+  sendSyn(ctx, node, c);
   return { ok: true, key, id: c.id };
 }
 
-function sendSyn(ctx: DeviceCtx, node: IpNode, c: AppConn, src: Ipv4Addr): void {
-  seg(ctx, node, src, c.raddr, c, { syn: true }, c.seq, 0);
-  ctx.setTimer(`svc:syn:${connKey(c)}`, SYN_RTO_US);
+function sendSyn(ctx: DeviceCtx, node: IpNode, c: AppConn): void {
+  out(ctx, node, c, { syn: true }, c.seq, 0);
+  ctx.setTimer(tn(c, 'syn'), SYN_RTO_US);
 }
 
 /** Anfrage auf einer offenen Verbindung senden; die Antwort landet in `conn.reply`. */
@@ -145,19 +247,29 @@ export function connSend(
 ): boolean {
   const c = appcOf(node.cfg).conns[key];
   if (c?.state !== 'open' || c.role !== 'c') return false;
-  const hop = node.lookup(c.raddr);
-  if (!hop) {
+  if (!node.lookup(c.raddr)) {
     c.state = 'failed';
     c.err = 'conn.unreachable';
     return false;
   }
-  const msg: SvcPdu = { kind: 'svc', proto: c.proto, op, args, body };
+  const msg = svcMsg(c.proto, { op, args, body });
   c.waiting = true;
   c.reply = undefined;
-  seg(ctx, node, hop.iface.ip, c.raddr, c, { ack: true, psh: true }, c.seq, c.ack, msg);
-  c.seq += pduSize(msg);
-  ctx.setTimer(`svc:areq:${key}`, REQ_TIMEOUT_US);
+  sendData(ctx, node, c, msg);
+  // Telnet/SSH verlassen sich auf die Retransmission (Abbruch nach ≈ 31 s), die übrigen Dienste auf ein 8-s-Zeitlimit
+  if (c.proto !== 'telnet' && c.proto !== 'ssh') ctx.setTimer(tn(c, 'areq'), REQ_TIMEOUT_US);
   return true;
+}
+
+/** Nachricht auf einer offenen Verbindung (Client oder Server) zuverlässig senden, ohne Antwort zu erwarten. */
+export function connPush(
+  ctx: DeviceCtx,
+  node: IpNode,
+  c: AppConn,
+  r: NonNullable<SvcReply>,
+): boolean {
+  if (c.state !== 'open') return false;
+  return sendData(ctx, node, c, svcMsg(c.proto, r), !!r.close);
 }
 
 /** Antwort des Servers auf eine Anfrage nachträglich senden (z. B. nach RADIUS-Antwort). */
@@ -167,21 +279,13 @@ export function serverPush(
   c: AppConn,
   r: NonNullable<SvcReply>,
 ): void {
-  const hop = node.lookup(c.raddr);
-  if (!hop) return;
-  const msg = svcMsg(c.proto, r);
-  seg(
-    ctx,
-    node,
-    hop.iface.ip,
-    c.raddr,
-    c,
-    { ack: true, psh: true, fin: r.close },
-    c.seq,
-    c.ack,
-    msg,
-  );
-  c.seq += pduSize(msg);
+  sendData(ctx, node, c, svcMsg(c.proto, r), !!r.close);
+}
+
+function dropTimers(ctx: DeviceCtx, c: AppConn): void {
+  ctx.cancelTimer(tn(c, 'areq'));
+  ctx.cancelTimer(tn(c, 'syn'));
+  ctx.cancelTimer(tn(c, 'rtx'));
 }
 
 /** Verbindung beenden (FIN). */
@@ -189,47 +293,81 @@ export function connClose(ctx: DeviceCtx, node: IpNode, key: string): void {
   const core = appcOf(node.cfg);
   const c = core.conns[key];
   if (!c) return;
-  const hop = node.lookup(c.raddr);
-  if (c.state === 'open' && hop) {
+  if (c.state === 'open') {
     const msg: SvcPdu = { kind: 'svc', proto: c.proto, op: 'quit', args: {} };
-    seg(ctx, node, hop.iface.ip, c.raddr, c, { ack: true, fin: true }, c.seq, c.ack, msg);
+    out(ctx, node, c, { ack: true, fin: true }, c.seq, c.ack, msg);
   }
-  ctx.cancelTimer(`svc:areq:${key}`);
-  ctx.cancelTimer(`svc:syn:${key}`);
+  dropTimers(ctx, c);
   delete core.conns[key];
 }
 
-/** Timer `syn:<key>` / `areq:<key>`. */
-export function connTimer(ctx: DeviceCtx, node: IpNode, name: string, hook?: ClientHook): boolean {
+/** Verbindung abbrechen (RST), z. B. wenn die Anwendung die Sitzung verwirft. */
+export function connAbort(ctx: DeviceCtx, node: IpNode, key: string): void {
+  const core = appcOf(node.cfg);
+  const c = core.conns[key];
+  if (!c) return;
+  if (c.state === 'open' || c.state === 'syn-sent')
+    out(ctx, node, c, { rst: true, ack: true }, c.seq, c.ack);
+  dropTimers(ctx, c);
+  delete core.conns[key];
+}
+
+function failClient(
+  ctx: DeviceCtx,
+  node: IpNode,
+  c: AppConn,
+  err: string,
+  hook: ClientHook | undefined,
+): void {
+  c.state = 'failed';
+  c.err = err;
+  c.waiting = false;
+  dropTimers(ctx, c);
+  hook?.(ctx, node, c, 'fail');
+}
+
+/** Timer `syn:<key>` / `areq:<key>` / `rtx:<key>`. */
+export function connTimer(
+  ctx: DeviceCtx,
+  node: IpNode,
+  name: string,
+  hook?: ClientHook,
+  servers?: TcpServers,
+): boolean {
   const core = appcOf(node.cfg);
   if (name.startsWith('syn:')) {
     const c = core.conns[name.slice(4)];
     if (c?.state !== 'syn-sent') return true;
-    if (++c.retries > MAX_SYN_RETRIES) {
-      c.state = 'failed';
-      c.err = 'conn.timeout';
-      c.waiting = false;
-      hook?.(ctx, node, c, 'fail');
-    } else {
-      const hop = node.lookup(c.raddr);
-      if (hop) sendSyn(ctx, node, c, hop.iface.ip);
-      else {
-        c.state = 'failed';
-        c.err = 'conn.unreachable';
-        c.waiting = false;
-        hook?.(ctx, node, c, 'fail');
-      }
-    }
+    if (++c.retries > MAX_SYN_RETRIES) failClient(ctx, node, c, 'conn.timeout', hook);
+    else if (node.lookup(c.raddr)) sendSyn(ctx, node, c);
+    else failClient(ctx, node, c, 'conn.unreachable', hook);
     return true;
   }
   if (name.startsWith('areq:')) {
     const c = core.conns[name.slice(5)];
-    if (c?.waiting && c.state === 'open') {
-      c.state = 'failed';
-      c.err = 'conn.timeout';
-      c.waiting = false;
-      hook?.(ctx, node, c, 'fail');
+    if (c?.waiting && c.state === 'open') failClient(ctx, node, c, 'conn.timeout', hook);
+    return true;
+  }
+  if (name.startsWith('rtx:')) {
+    const key = name.slice(4);
+    const c = core.conns[key];
+    if (!c?.rtx?.length || c.state !== 'open') return true;
+    c.tries = (c.tries ?? 0) + 1;
+    if (c.tries > RTX_MAX_TRIES) {
+      tcpLog(ctx, 'tcp.abort', { peer: c.raddr, port: c.rport });
+      if (c.role === 'c') failClient(ctx, node, c, 'conn.timeout', hook);
+      else {
+        servers?.[c.proto]?.closed?.(ctx, ctx.device, c);
+        dropTimers(ctx, c);
+        delete core.conns[key];
+      }
+      return true;
     }
+    c.rto = Math.min((c.rto ?? RTX_RTO_US) * 2, RTX_MAX_RTO_US);
+    tcpLog(ctx, 'tcp.retransmit', { peer: c.raddr, port: c.rport, n: c.tries });
+    for (const r of c.rtx)
+      out(ctx, node, c, { ack: true, psh: !!r.msg, fin: !!r.fin }, r.seq, c.ack, r.msg);
+    ctx.setTimer(tn(c, 'rtx'), c.rto);
     return true;
   }
   return false;
@@ -241,11 +379,11 @@ export function connTimer(ctx: DeviceCtx, node: IpNode, name: string, hook?: Cli
 export function tcpRxSvc(
   ctx: DeviceCtx,
   node: IpNode,
-  iface: Iface,
+  _iface: Iface,
   base: Base,
   ip: Ipv4Pdu,
   t: TcpPdu,
-  servers: Partial<Record<SvcProto, TcpServer>>,
+  servers: TcpServers,
   hook?: ClientHook,
 ): boolean {
   const core = appcOf(node.cfg);
@@ -261,51 +399,68 @@ export function tcpRxSvc(
     ctx.log({ ...base, kind: status === 'drop' ? 'drop' : 'rx', status, msg: { key: k, params } });
   const self = ip.dst;
   const me = { lport: t.dstPort, rport: t.srcPort };
+  if (c && t.flags.ack && !t.flags.syn && !t.flags.rst) ackIn(ctx, c, t.ack);
 
   // --- Client-Verbindung
   if (c?.role === 'c') {
     if (c.state === 'syn-sent') {
       if (t.flags.rst) {
-        ctx.cancelTimer(`svc:syn:${key}`);
-        c.state = 'failed';
-        c.err = 'conn.refused';
-        c.waiting = false;
         log('tcp.refused', 'drop', { port: t.srcPort });
-        hook?.(ctx, node, c, 'fail');
+        failClient(ctx, node, c, 'conn.refused', hook);
         return true;
       }
       if (t.flags.syn && t.flags.ack) {
-        ctx.cancelTimer(`svc:syn:${key}`);
+        ctx.cancelTimer(tn(c, 'syn'));
         c.state = 'open';
         c.seq = t.ack;
         c.ack = t.seq + 1;
         c.banner = app;
         c.waiting = false;
         log('tcp.established', 'ok', { peer: ip.src, port: t.srcPort });
-        seg(ctx, node, self, ip.src, me, { ack: true }, c.seq, c.ack);
+        out(ctx, node, c, { ack: true }, c.seq, c.ack);
+        hook?.(ctx, node, c, 'open');
         if (c.first) connSend(ctx, node, key, c.first.op, c.first.args, c.first.body);
         return true;
       }
       return true;
     }
-    if (c.state === 'open' && app) {
-      c.reply = app;
-      c.replySeq++;
-      c.waiting = false;
-      c.ack = t.seq + pduSize(app);
-      ctx.cancelTimer(`svc:areq:${key}`);
-      log('svc.reply', 'ok', { proto: app.proto.toUpperCase(), op: app.op });
-      hook?.(ctx, node, c, 'reply');
-      if (t.flags.fin) c.state = 'closed';
+    if (c.state === 'open') {
+      if (t.flags.rst) {
+        failClient(ctx, node, c, 'conn.closed', hook);
+        return true;
+      }
+      if (t.flags.syn && t.flags.ack) {
+        pureAck(ctx, node, c); // SYN-ACK wiederholt: unser ACK ging verloren
+        return true;
+      }
+      if (app || t.flags.fin) {
+        if (t.seq !== c.ack) {
+          pureAck(ctx, node, c); // Duplikat oder Lücke: aktuelle Bestätigung wiederholen
+          return true;
+        }
+        const quit = app?.op === 'quit'; // FIN der Gegenseite (connClose) ohne Nutzdaten
+        if (app) {
+          c.ack = t.seq + pduSize(app);
+          if (!quit) c.reply = app;
+          c.replySeq++;
+          c.waiting = false;
+          ctx.cancelTimer(tn(c, 'areq'));
+          if (!quit) log('svc.reply', 'ok', { proto: app.proto.toUpperCase(), op: app.op });
+        }
+        if (t.flags.fin) {
+          c.ack += 1;
+          c.state = 'closed';
+          c.err = 'conn.closed';
+          c.waiting = false;
+          ctx.cancelTimer(tn(c, 'areq'));
+        }
+        if (app && !quit) hook?.(ctx, node, c, 'reply');
+        else hook?.(ctx, node, c, 'fail');
+        if (core.conns[key] === c && c.sentAck !== c.ack) pureAck(ctx, node, c);
+      }
       return true;
     }
-    if (t.flags.rst || t.flags.fin) {
-      c.state = t.flags.rst ? 'failed' : 'closed';
-      c.err = 'conn.closed';
-      c.waiting = false;
-      ctx.cancelTimer(`svc:areq:${key}`);
-      hook?.(ctx, node, c, 'fail');
-    }
+    if (t.flags.rst || t.flags.fin) failClient(ctx, node, c, 'conn.closed', hook);
     return true;
   }
 
@@ -314,25 +469,35 @@ export function tcpRxSvc(
     const server = servers[c.proto];
     if (t.flags.fin || t.flags.rst) {
       server?.closed?.(ctx, dev, c);
+      dropTimers(ctx, c);
       delete core.conns[key];
       log('tcp.closed', 'info', { peer: ip.src });
       if (t.flags.fin && !t.flags.rst)
-        seg(ctx, node, self, ip.src, me, { ack: true, fin: true }, c.seq, t.seq + 1);
+        seg(ctx, node, c.laddr ?? self, ip.src, me, { ack: true, fin: true }, c.seq, t.seq + 1);
+      return true;
+    }
+    if (t.flags.syn && !t.flags.ack) {
+      // SYN wiederholt: SYN-ACK noch einmal senden (solange noch nichts Weiteres gesendet wurde)
+      if (c.rtx === undefined)
+        out(ctx, node, c, { syn: true, ack: true }, c.seq - 1, c.ack, c.banner);
       return true;
     }
     if (app && server) {
+      if (t.seq !== c.ack) {
+        pureAck(ctx, node, c);
+        return true;
+      }
       c.ack = t.seq + pduSize(app);
       log('svc.request', 'ok', { proto: app.proto.toUpperCase(), op: app.op });
       const r = server.handle(ctx, dev, node, c, app);
       if (r) {
-        const msg = svcMsg(c.proto, r);
-        seg(ctx, node, self, ip.src, me, { ack: true, psh: true, fin: r.close }, c.seq, c.ack, msg);
-        c.seq += pduSize(msg);
+        sendData(ctx, node, c, svcMsg(c.proto, r), !!r.close);
         if (r.close) {
           server.closed?.(ctx, dev, c);
+          dropTimers(ctx, c);
           delete core.conns[key];
         }
-      }
+      } else if (core.conns[key] === c && c.sentAck !== c.ack) pureAck(ctx, node, c);
       return true;
     }
     return true;
@@ -340,7 +505,17 @@ export function tcpRxSvc(
 
   // --- Neue Verbindung zu einem Dienst-Port
   const proto = PORT_PROTO.get(t.dstPort);
-  if (!proto || !(t.flags.syn && !t.flags.ack)) return false;
+  if (!proto || !(t.flags.syn && !t.flags.ack)) {
+    if (!t.flags.syn && (PORT_PROTO.has(t.dstPort) || PORT_PROTO.has(t.srcPort))) {
+      // RST/FIN/reines ACK auf eine nicht (mehr) bestehende Dienstverbindung: still verwerfen
+      if (!app || t.flags.rst || t.flags.fin) return true;
+      // Daten für eine unbekannte Verbindung (Gegenstelle neu gestartet/Sitzung verworfen): RST
+      log('tcp.rst', 'drop', { port: t.dstPort });
+      seg(ctx, node, self, ip.src, me, { rst: true, ack: true }, t.ack, t.seq + pduSize(app));
+      return true;
+    }
+    return false;
+  }
   const server = servers[proto];
   const conn: AppConn = {
     id: core.nextConn++,
@@ -355,6 +530,8 @@ export function tcpRxSvc(
     retries: 0,
     replySeq: 0,
     waiting: false,
+    laddr: self,
+    bg: proto === 'bgp' || undefined,
   };
   const banner = server ? server.accept(ctx, dev, node, conn) : 'refuse';
   if (banner === 'refuse' || !banner) {
@@ -364,8 +541,8 @@ export function tcpRxSvc(
   }
   core.conns[key] = conn;
   log('tcp.syn', 'ok', { peer: ip.src, port: t.dstPort });
-  const msg = svcMsg(proto, banner);
-  seg(ctx, node, self, ip.src, me, { syn: true, ack: true }, conn.seq, conn.ack, msg);
+  conn.banner = svcMsg(proto, banner);
+  out(ctx, node, conn, { syn: true, ack: true }, conn.seq, conn.ack, conn.banner);
   conn.seq += 1;
   return true;
 }

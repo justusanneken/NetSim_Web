@@ -314,7 +314,7 @@ export interface EigrpCfg {
 
 // ---------------------------------------------------------------- BGP
 
-export type BgpState = 'idle' | 'connect' | 'opensent' | 'openconfirm' | 'established';
+export type BgpState = 'idle' | 'connect' | 'active' | 'opensent' | 'openconfirm' | 'established';
 
 export interface BgpPath {
   prefix: string;
@@ -353,6 +353,8 @@ export interface BgpNbrCfg {
   activate6?: boolean;
   // ---- Laufzeit
   state: BgpState;
+  /** Schlüssel der TCP-Verbindung (Port 179) in `appc.conns`, solange eine besteht. */
+  connKey?: string;
   routerId?: string;
   holdSec: number;
   lastRx: number;

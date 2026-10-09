@@ -8,6 +8,7 @@ import { openRemote } from './remote';
 import { type7Decrypt } from './secrets';
 import { CliError, type CliSession } from './session';
 import * as show5 from './show5';
+import { showTcpBrief } from './showTcp';
 import { resolveIface } from './ifnames';
 import { waitFor } from './util';
 
@@ -582,6 +583,13 @@ export function addPhase5(r: Registry<CliSession>): void {
       ['associations', 'NTP associations'],
     ],
     (s) => s.outLines(show5.showNtpAssociations(s.device)),
+  );
+  sh(
+    [
+      ['tcp', 'Status of TCP connections'],
+      ['brief', 'Brief display of TCP connections'],
+    ],
+    (s) => s.outLines(showTcpBrief(s.device)),
   );
   sh([['users', 'Display information about terminal lines']], (s) =>
     s.outLines(show5.showUsers(s.engine, s.device, s.remote ? s.remote.vty : -1)),

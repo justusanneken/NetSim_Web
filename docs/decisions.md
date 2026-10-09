@@ -103,3 +103,14 @@ Redistribution ruft `evalRouteMap` in `redistSource(6)` auf. `distribute-list` f
 macht der ABR mit der höchsten Router-ID im NSSA-Bereich und setzt dafür das ASBR-Bit. Ein Fehler im Flooding (Typ 5 wurde in gemischten LSUs nicht in andere Bereiche weitergegeben) wurde dabei behoben. 28. **Virtual Links** sind Pseudo-Schnittstellen `vl-<RID>` (Area 0, Point-to-Point) mit Unicast-Verkehr durch die Transit-Area; Next Hops zum Peer stammen aus dem SPF der Transit-Area (Backbone wird zuletzt berechnet). 29. **HSRP-Modell:** Gruppen sind `Slot`s (Schnittstelle + Gruppe + Familie); IPv6-Gruppen liegen in `IfaceCfg.hsrp6`, die Version in `IfaceCfg.hsrpVersion`. Die virtuelle IPv6-Adresse wird über `Node6.vips`
 lokal zugestellt und per NA mit der virtuellen MAC beantwortet. 30. **DAD:** Adressen sind `tentative` (nicht in `Iface6.addrs`), bis der 1-s-Timer ohne Konflikt abläuft; der Zustand liegt in `IpCore.dad`. Router stoßen DAD in `routingSync`, Hosts in `hostV6` und bei RA an. 31. **Uhr:** `SysConfig.clock` speichert Basiszeit + virtuellen Zeitpunkt des Setzens; Anzeige und `debug`-Stempel rechnen daraus (`packages/cli/src/clock.ts`). 33. **Fixes-Runde:** Event-Log begrenzt mit monotonen Ids (`logOffset`), Firewall-NAT je Regel mit Schnittstellenpaar (`NatRule/NatEntry.fromIf/toIf`; `natSide` bleibt nur für Router-NAT),
 WLAN-Roaming im selben SSID behält das DHCP-Lease (INIT-REBOOT, Zustand `rebooting`), NTP-Verlust nach 4 verpassten Abfragen (Details in `simplifications.md`).
+
+## TCP / BGP / Telnet / IoT-Skripte
+
+33. **Ein TCP für alle Dienste:** statt eines zweiten Stacks wurde der Phase-5-Dienst-Transport (`p5/conn.ts`) zu einem zuverlässigen Nachrichtenstrom ausgebaut
+    (Retransmission, Duplikaterkennung, RST/FIN). BGP, Telnet, SSH, FTP, SMTP, POP3 nutzen ihn; neue Dienste registrieren nur `TcpServer` + Port.
+34. **BGP-Nachrichten im `SvcPdu`** (`proto: 'bgp'`, Feld `bgp`) statt eines eigenen TCP-Anwendungstyps; der `RoutingPdu`-Typ `bgp` bleibt nur als Typ erhalten.
+35. **Eingehende ACL für lokal zugestellten TCP-Verkehr** (BGP/Telnet/SSH zum Router): die ACL-Auswertung ist dazu in `aclInPermits` (l3.ts) ausgelagert.
+36. **Telnet/SSH-Ausführung bleibt lokal:** die Ziel-CLI läuft weiter als `CliSession` im Worker; über das Netz gehen Zeile (`line`) und Ausgabe (`out`) – so bleiben
+    vty-Limits, AAA, `terminal monitor` und Session-Abbau unverändert (siehe `simplifications.md`).
+37. **IoT-Skripte ohne `eval`:** eigener Interpreter statt `new Function` (Prototyp-Ausbrüche), Zustand als JSON (Variablen des Hauptteils) und stille Neuauswertung
+    pro Aktivierung, damit Snapshots/Step-Back/`.nsim` ohne Closures funktionieren.
