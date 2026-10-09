@@ -405,7 +405,8 @@ export interface HttpRequest {
 
 export interface DhcpClient {
   enabled: boolean;
-  state: 'off' | 'init' | 'selecting' | 'requesting' | 'probing' | 'bound' | 'renewing';
+  state:
+    'off' | 'init' | 'selecting' | 'requesting' | 'probing' | 'bound' | 'renewing' | 'rebooting';
   xid: number;
   server?: Ipv4Addr;
   offered?: { ip: Ipv4Addr; mask: string; router?: Ipv4Addr; dns?: Ipv4Addr[]; leaseSec: number };
