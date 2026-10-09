@@ -39,5 +39,19 @@
   "ppp.down": "{{iface}}: PPP-Verbindung beendet ({{reason}}).",
   "ppp.aborted": "{{iface}}: PPPoE-Einwahl abgebrochen ({{reason}}).",
   "ppp.authFailed": "{{iface}}: CHAP-Authentifizierung für „{{user}}“ fehlgeschlagen.",
-  "ppp.poolEmpty": "PPPoE: Adresspool „{{pool}}“ ist leer oder nicht vorhanden."
+  "ppp.poolEmpty": "PPPoE: Adresspool „{{pool}}“ ist leer oder nicht vorhanden.",
+  "routing.ipsecState.up": "SA steht",
+  "routing.ipsecState.connecting": "IKE läuft",
+  "routing.ipsecState.failed": "fehlgeschlagen",
+  "routing.encaps": "verschlüsselt",
+  "routing.decaps": "entschlüsselt",
+  "ipsec.ikeStart": "IKE: Aushandlung mit {{peer}} gestartet (ISAKMP/IPsec, UDP 500).",
+  "ipsec.ikeFailed": "IKE mit {{peer}} fehlgeschlagen: {{reason}}.",
+  "ipsec.ikeRejected": "IKE-Anfrage von {{peer}} abgelehnt: {{reason}}.",
+  "ipsec.saUp": "IPsec-SA mit {{peer}} steht (SPI 0x{{spi}}).",
+  "ipsec.encap": "Paket für {{peer}} ESP-verschlüsselt (SPI 0x{{spi}}).",
+  "ipsec.decap": "ESP-Paket von {{peer}} entschlüsselt (SPI 0x{{spi}}).",
+  "ipsec.noSa": "Crypto-Map-Verkehr für {{peer}} verworfen: noch keine IPsec-SA.",
+  "ipsec.badSpi": "ESP-Paket von {{src}} mit unbekanntem SPI 0x{{spi}} verworfen.",
+  "ipsec.badSelector": "Entschlüsseltes Paket {{src}} → {{dst}} passt nicht zur SA und wurde verworfen."
 }

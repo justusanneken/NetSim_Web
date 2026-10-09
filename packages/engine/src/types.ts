@@ -1,3 +1,4 @@
+import type { CryptoCfg } from './ipsecTypes';
 import type { BbaGroup, DialerCfg, LocalPool, PppRuntime, VTemplateCfg } from './pppTypes';
 import type { HsrpCfg, OspfIfCfg, RoutingCfg, TunnelCfg } from './routing/types';
 import type {
@@ -657,6 +658,8 @@ export interface L3Cfg extends IpCore {
   ipPools?: Record<string, LocalPool>;
   /** Laufzeit: PPPoE-Sitzungen. */
   ppp?: PppRuntime;
+  /** IPsec/IKE: Policies, Schlüssel, Transform-Sets, Crypto Maps, SAs. */
+  crypto?: CryptoCfg;
 }
 
 export interface RouterConfig extends L3Cfg {

@@ -28,7 +28,10 @@ export type ModeId =
   | 'config-rip6'
   | 'config-eigrp6'
   | 'config-tacacs'
-  | 'config-bba';
+  | 'config-bba'
+  | 'config-isakmp'
+  | 'config-trans'
+  | 'config-crypto-map';
 export type ParamType =
   'word' | 'int' | 'ip' | 'mask' | 'iface' | 'vlans' | 'mac' | 'wildcard' | 'ipv6' | 'prefix6';
 export type Family = 'router' | 'switch' | 'switch-l3' | 'firewall';

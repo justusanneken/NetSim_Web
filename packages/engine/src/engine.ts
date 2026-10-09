@@ -29,6 +29,7 @@ import {
 import { l3Ping, l3Timer, l3Trace, routerRx, type L3Dev } from './devices/l3dev';
 import { routingResetRuntime, routingSync } from './routing';
 import { pppoeClear } from './routing/pppoe';
+import { ipsecClear } from './routing/ipsec';
 import { rtOf } from './routing/core';
 import { buildRib6, listIfaces6 } from './l3v6';
 import { hostV6 } from './devices/host';
@@ -234,6 +235,12 @@ export class Engine {
     if (!dev?.powered || dev.crashed) return;
     if (dev.config.kind === 'router' || dev.config.kind === 'switch')
       this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
+  }
+
+  /** `clear crypto sa`: alle IKE-/IPsec-SAs löschen. */
+  clearCrypto(deviceId: string): void {
+    const dev = this.l3(deviceId);
+    if (dev?.powered) this.withCtx(dev, (ctx) => ipsecClear(rtOf(ctx, dev)));
   }
 
   /** `clear pppoe all`: alle PPPoE-Sitzungen beenden (Clients wählen sich neu ein). */

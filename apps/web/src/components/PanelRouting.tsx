@@ -16,6 +16,7 @@ export function RoutingPanel({ dev }: { dev: DeviceView }) {
       info.ospf.length === 0 &&
       info.eigrp.length === 0 &&
       (info.pppoe?.length ?? 0) === 0 &&
+      (info.ipsec?.length ?? 0) === 0 &&
       !info.bgp &&
       info.hsrp.length === 0);
   return (
@@ -62,6 +63,13 @@ export function RoutingPanel({ dev }: { dev: DeviceView }) {
                   {n.ip} {n.iface}
                 </div>
               ))}
+            </li>
+          ))}
+          {info?.ipsec?.map((s) => (
+            <li key={`sa${s.peer}${s.sel}`} data-testid="ipsec-sa">
+              IPsec {s.peer}: {t(`routing.ipsecState.${s.state}`)} ({s.sel}) – ESP{' '}
+              {t('routing.encaps')} {s.encaps} / {t('routing.decaps')} {s.decaps}
+              {s.reason ? ` – ${s.reason}` : ''}
             </li>
           ))}
           {info?.pppoe?.map((p) => (

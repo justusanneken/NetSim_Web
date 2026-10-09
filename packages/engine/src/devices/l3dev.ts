@@ -6,6 +6,7 @@ import { listIfaces } from '../ifaces';
 import { ifaceFrameRx, ipTimer, type IpNode, type XmitIface } from '../l3';
 import { buildRib, lookupRib, lookupRibPaths, pickPath } from '../rib';
 import { greXmit } from '../routing/gre';
+import { cryptoXmit } from '../routing/ipsec';
 import { pppoeRx, pppoeXmit } from '../routing/pppoe';
 import { hsrpVips } from '../routing/hsrp';
 import { routingTimer } from '../routing';
@@ -14,6 +15,9 @@ import type { Device, IfaceCfg, Result, RouterConfig, SwitchConfig } from '../ty
 import { switchOriginate, type SwitchDev } from './switch';
 
 export type L3Dev = Device & { config: RouterConfig | SwitchConfig };
+
+const ifaceIp = (node: IpNode, id: string): string =>
+  node.ifaces.find((i) => i.id === id)?.ip ?? '0.0.0.0';
 
 export const ROUTER_ARP_TTL_US = 14_400_000_000;
 export const ROUTER_TTL = 255;
@@ -72,6 +76,11 @@ export function l3Node(ctx: DeviceCtx, dev: L3Dev): IpNode {
         pppoeXmit(c, node, iface, frame);
         return;
       }
+      if (
+        iface.cfg.cryptoMap &&
+        cryptoXmit(c, node, { ...iface, ip: ifaceIp(node, iface.id) }, frame)
+      )
+        return;
       if (iface.kind === 'svi') {
         switchOriginate(c, dev as SwitchDev, iface.vlan ?? 1, frame);
       } else if (iface.kind === 'sub') {

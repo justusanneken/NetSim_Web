@@ -758,7 +758,7 @@ function udpIn(
   const udp = ip.payload;
   if (udp.kind !== 'udp') return;
   const app = udp.app;
-  if (app?.kind === 'rip' || app?.kind === 'hsrp') {
+  if (app?.kind === 'rip' || app?.kind === 'hsrp' || app?.kind === 'ike') {
     if (node.l3) routingRx(ctx, node, iface, base, ip);
     return;
   }

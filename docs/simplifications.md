@@ -286,3 +286,13 @@
   stehender Sitzung; die Default-Route kommt per `ip route 0.0.0.0 0.0.0.0 Dialer1` oder `ppp ipcp route default`. IP-Verkehr in der Sitzung wird in der Ereignisliste als IP-Paket
   der Dialer-Schnittstelle gezeigt (die PPPoE-Kapselung zeigen nur Discovery-/PPP-Frames). Virtual-Access-Schnittstellen sind nicht konfigurierbar (nur über die Vorlage). Cloud/DSL-Modem
   reichen die Frames transparent weiter.
+- **IPsec (Crypto Maps):** Site-to-Site über `crypto map` an der WAN-Schnittstelle. IKE ist **ein** Austausch (Anfrage → Accept/Reject, UDP 500) für IKE- und IPsec-SA gemeinsam:
+  der Initiator sendet seine beste ISAKMP-Policy (niedrigste Nummer: Verschlüsselung, Hash, DH-Gruppe), einen Digest des Pre-Shared Keys (kein Klartext), das Transform-Set und die
+  Verkehrsauswahl (die passende ACL-Zeile) sowie seinen SPI. Der Responder lehnt mit Grund ab bei: unbekanntem Peer, keiner passenden Policy (Policy-Authentifizierung muss `pre-share`
+  sein – Default ist wie bei IOS `rsa-sig`), abweichendem Schlüssel (`authentication failed`), anderem Transform-Set oder fehlender gespiegelter ACL-Zeile (`proxy identities not
+supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolgt frühestens nach 8 s beim nächsten passenden Paket. Während des Aufbaus (und bei fehlgeschlagener SA)
+  werden passende Pakete verworfen (die ersten Pings gehen verloren, wie in der Praxis). Je ACL-Zeile entsteht ein SA-Paar. ESP (IP-Protokoll 50, Tunnelmodus) kapselt das ganze
+  Originalpaket; die Nutzlast ist im Inspektor und in Ereignislisten nur als „verschlüsselt“ sichtbar (Transitgeräte sehen nur äußere Adressen, SPI, Sequenz), an den Endpunkten steht
+  „decrypted …“ im Log. Keine echte Kryptografie, kein Lifetime-/Rekey-Ablauf (SAs bleiben bis `clear crypto sa`, Reload oder Link-/Strom-Aus), kein Replay-Fenster, kein NAT-T, kein
+  IKEv2, keine Transport-Mode-Wirkung (wird gespeichert), kein DPD, **keine VTI** (`tunnel mode ipsec`) und keine IPsec-Profile; Crypto Maps sind an physischen/Sub-Schnittstellen möglich,
+  nicht am Dialer. Entschlüsselte Pakete laufen danach durch die normale Eingangsverarbeitung der Schnittstelle (ACL-in, Weiterleitung).

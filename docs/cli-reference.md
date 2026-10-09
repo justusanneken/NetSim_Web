@@ -171,3 +171,7 @@ Telnet/SSH: fällt der Pfad während der Sitzung aus, endet sie nach ≈ 31 s mi
 `pppoe-client dial-pool-number N`, `ip route 0.0.0.0 0.0.0.0 Dialer N`. Server: `bba-group pppoe NAME` (`virtual-template N`), `interface Virtual-Template N` (`ip unnumbered IF`,
 `peer default ip address pool P`, `ppp authentication chap`), `ip local pool P START [END]`, am Port `pppoe enable [group NAME]`, `username X password Y`.
 Anzeige/Betrieb: `show pppoe session`, `show ip interface brief` (Dialer/Virtual-Access), `clear pppoe all`.
+
+**IPsec (Crypto Map):** `crypto isakmp policy N` (`encryption des|3des|aes`, `hash md5|sha`, `authentication pre-share|rsa-sig`, `group 1|2|5`, `lifetime S`), `crypto isakmp key K address A [MASK]`,
+`crypto ipsec transform-set NAME esp-… [esp-…]` (`mode tunnel|transport`), `crypto map NAME SEQ ipsec-isakmp` (`set peer A`, `set transform-set T`, `match address ACL`, `set pfs groupN`,
+`set security-association lifetime seconds S`), an der Schnittstelle `crypto map NAME`; `show crypto isakmp sa|policy`, `show crypto ipsec sa|transform-set`, `show crypto map`, `clear crypto sa|isakmp`.

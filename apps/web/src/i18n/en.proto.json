@@ -39,5 +39,19 @@
   "ppp.down": "{{iface}}: PPP link terminated ({{reason}}).",
   "ppp.aborted": "{{iface}}: PPPoE dial-in aborted ({{reason}}).",
   "ppp.authFailed": "{{iface}}: CHAP authentication for “{{user}}” failed.",
-  "ppp.poolEmpty": "PPPoE: address pool “{{pool}}” is empty or does not exist."
+  "ppp.poolEmpty": "PPPoE: address pool “{{pool}}” is empty or does not exist.",
+  "routing.ipsecState.up": "SA up",
+  "routing.ipsecState.connecting": "IKE in progress",
+  "routing.ipsecState.failed": "failed",
+  "routing.encaps": "encrypted",
+  "routing.decaps": "decrypted",
+  "ipsec.ikeStart": "IKE: negotiation with {{peer}} started (ISAKMP/IPsec, UDP 500).",
+  "ipsec.ikeFailed": "IKE with {{peer}} failed: {{reason}}.",
+  "ipsec.ikeRejected": "IKE request from {{peer}} rejected: {{reason}}.",
+  "ipsec.saUp": "IPsec SA with {{peer}} established (SPI 0x{{spi}}).",
+  "ipsec.encap": "Packet for {{peer}} ESP-encrypted (SPI 0x{{spi}}).",
+  "ipsec.decap": "ESP packet from {{peer}} decrypted (SPI 0x{{spi}}).",
+  "ipsec.noSa": "Crypto-map traffic for {{peer}} dropped: no IPsec SA yet.",
+  "ipsec.badSpi": "ESP packet from {{src}} with unknown SPI 0x{{spi}} dropped.",
+  "ipsec.badSelector": "Decrypted packet {{src}} → {{dst}} does not match the SA and was dropped."
 }

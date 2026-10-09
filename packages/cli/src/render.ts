@@ -1,4 +1,10 @@
-import { dialerLines, protoGlobalLines, protoIfaceLines, vtemplateLines } from './renderProto';
+import {
+  cryptoGlobalLines,
+  dialerLines,
+  protoGlobalLines,
+  protoIfaceLines,
+  vtemplateLines,
+} from './renderProto';
 import { renderPolicyConfig } from './showGaps';
 import { maskToPrefix, parseIpv4 } from '@netsim/protocols';
 import type {
@@ -325,7 +331,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     L.push('!');
   }
   if (sys.domainName) L.push(`ip domain-name ${sys.domainName}`, '!');
-  L.push(...protoGlobalLines(cfg));
+  L.push(...protoGlobalLines(cfg), ...cryptoGlobalLines(cfg));
   L.push(...mgmtGlobalLines(cfg));
   if (cfg.kind === 'switch') {
     if (cfg.vtp.mode !== 'server') L.push(`vtp mode ${cfg.vtp.mode}`);

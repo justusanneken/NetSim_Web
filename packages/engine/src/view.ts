@@ -58,6 +58,16 @@ export interface RoutingInfo {
     maxPaths?: number;
   }[];
   eigrp: { asn: number; v6?: boolean; neighbors: { ip: string; iface: string }[] }[];
+  /** IPsec-SAs (Crypto Maps). */
+  ipsec?: {
+    peer: string;
+    state: string;
+    role: string;
+    sel: string;
+    encaps: number;
+    decaps: number;
+    reason?: string;
+  }[];
   /** PPPoE-Sitzungen (Client am Dialer, Server je Virtual-Access). */
   pppoe?: {
     role: 'client' | 'server';
@@ -270,6 +280,16 @@ function addRoutingView(engine: Engine, d: Device, cfg: L3Conf, v: DeviceView): 
       asn: c.asn,
       v6: c.v6 || undefined,
       neighbors: Object.values(c.neighbors).map((n) => ({ ip: n.ip, iface: name(n.ifaceId) })),
+    });
+  for (const sa of Object.values(cfg.crypto?.sas ?? {}))
+    (info.ipsec ??= []).push({
+      peer: sa.peer,
+      state: sa.state,
+      role: sa.role,
+      sel: `${sa.sel.src} > ${sa.sel.dst}`,
+      encaps: sa.encaps,
+      decaps: sa.decaps,
+      reason: sa.reason,
     });
   for (const s of Object.values(cfg.ppp?.sessions ?? {}))
     (info.pppoe ??= []).push({
