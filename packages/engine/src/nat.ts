@@ -17,6 +17,22 @@ const DEFAULT_TIMEOUT_US = {
   ip: 300_000_000,
 };
 
+/** Firewall-Regel (mit Schnittstellenpaar)? Router-NAT-Regeln tragen kein Paar. */
+const paired = (r: NatRule): boolean => r.fromIf !== undefined && r.toIf !== undefined;
+
+/** Passt die Regel zum Weg `inIf → outIf`? Regeln ohne Paar gelten immer (Router: natSide steuert den Aufruf). */
+const ruleFits = (r: NatRule, inIf: string | undefined, outIf: string): boolean =>
+  !paired(r) || (r.fromIf === inIf && r.toIf === outIf);
+
+const entryFits = (e: NatEntry, inIf: string | undefined, outIf: string): boolean =>
+  e.fromIf === undefined || (e.fromIf === inIf && e.toIf === outIf);
+
+/** Ist die Schnittstelle bei einer Firewall-Regel die gemappte (Outside-)Seite / die reale (Inside-)Seite? */
+export const natMappedAt = (l3: L3Cfg, ifaceId: string): boolean =>
+  l3.nat.rules.some((r) => r.toIf === ifaceId);
+export const natRealAt = (l3: L3Cfg, ifaceId: string): boolean =>
+  l3.nat.rules.some((r) => r.fromIf === ifaceId);
+
 export function natPurge(nat: NatCfg, now: number): void {
   if (nat.table.some((e) => e.expiresAt <= now))
     nat.table = nat.table.filter((e) => e.expiresAt > now);
@@ -85,6 +101,7 @@ function createDynamic(
     outside: { ip: ip.dst, port: k.dport },
     kind: 'dynamic',
     expiresAt: now + timeoutUs(nat, k.proto),
+    ...(rule.fromIf !== undefined ? { fromIf: rule.fromIf, toIf: rule.toIf } : {}),
   };
 }
 
@@ -94,6 +111,7 @@ export function natInside2Outside(
   ip: Ipv4Pdu,
   out: Iface,
   now: number,
+  inIf?: string,
 ): { pkt: Ipv4Pdu; entry?: NatEntry; blocked?: boolean } {
   const nat = l3.nat;
   natPurge(nat, now);
@@ -105,10 +123,12 @@ export function natInside2Outside(
       x.insideLocal.ip === ip.src &&
       x.insideLocal.port === k.sport &&
       x.outside.ip === ip.dst &&
-      (x.proto === 'icmp' || x.outside.port === k.dport),
+      (x.proto === 'icmp' || x.outside.port === k.dport) &&
+      entryFits(x, inIf, out.id),
   );
   if (!e) {
     for (const r of nat.rules) {
+      if (!ruleFits(r, inIf, out.id)) continue;
       if (r.kind === 'static') {
         if (r.local !== ip.src) continue;
         if (r.proto && (r.proto !== k.proto || (r.lport !== undefined && r.lport !== k.sport)))
@@ -120,6 +140,7 @@ export function natInside2Outside(
           outside: { ip: ip.dst, port: k.dport },
           kind: 'static',
           expiresAt: FOREVER,
+          ...(r.fromIf !== undefined ? { fromIf: r.fromIf, toIf: r.toIf } : {}),
         };
       } else {
         const c = createDynamic(l3, r, ip, out, now);
@@ -147,6 +168,7 @@ export function natOutside2Inside(
   l3: L3Cfg,
   ip: Ipv4Pdu,
   now: number,
+  inIf?: string,
 ): { pkt: Ipv4Pdu; entry?: NatEntry } {
   const nat = l3.nat;
   natPurge(nat, now);
@@ -158,11 +180,13 @@ export function natOutside2Inside(
       x.insideGlobal.ip === ip.dst &&
       x.insideGlobal.port === k.dport &&
       x.outside.ip === ip.src &&
-      (x.proto === 'icmp' || x.outside.port === k.sport),
+      (x.proto === 'icmp' || x.outside.port === k.sport) &&
+      (x.toIf === undefined || x.toIf === inIf),
   );
   if (!e) {
     for (const r of nat.rules) {
       if (r.kind !== 'static' || r.global !== ip.dst) continue;
+      if (paired(r) && r.toIf !== inIf) continue;
       if (r.proto && (r.proto !== k.proto || (r.gport !== undefined && r.gport !== k.dport)))
         continue;
       e = {
@@ -172,6 +196,7 @@ export function natOutside2Inside(
         outside: { ip: ip.src, port: k.sport },
         kind: 'static',
         expiresAt: FOREVER,
+        ...(r.fromIf !== undefined ? { fromIf: r.fromIf, toIf: r.toIf } : {}),
       };
       nat.table.push(e);
       break;
@@ -188,7 +213,7 @@ export function natOutside2Inside(
 }
 
 /** Gibt es eine Rückübersetzung (Tabelle oder Static-Regel) für ein Paket an `ip.dst`? */
-export function natHasInbound(l3: L3Cfg, ip: Ipv4Pdu, now: number): boolean {
+export function natHasInbound(l3: L3Cfg, ip: Ipv4Pdu, now: number, inIf?: string): boolean {
   if (ip.fragOffset > 0) return false;
   natPurge(l3.nat, now);
   const k = l4Of(ip);
@@ -198,12 +223,14 @@ export function natHasInbound(l3: L3Cfg, ip: Ipv4Pdu, now: number): boolean {
         x.proto === k.proto &&
         x.insideGlobal.ip === ip.dst &&
         x.insideGlobal.port === k.dport &&
-        x.outside.ip === ip.src,
+        x.outside.ip === ip.src &&
+        (x.toIf === undefined || x.toIf === inIf),
     ) ||
     l3.nat.rules.some(
       (r) =>
         r.kind === 'static' &&
         r.global === ip.dst &&
+        (!paired(r) || r.toIf === inIf) &&
         (!r.proto || (r.proto === k.proto && (r.gport === undefined || r.gport === k.dport))),
     )
   );

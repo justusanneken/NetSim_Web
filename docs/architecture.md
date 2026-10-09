@@ -19,7 +19,7 @@ packages/cli        Parser, CliSession (IOS), HostShell (Windows), Terminal (Zei
   Kollisionsstatus – Grundlage für Carrier Sense, Kollisionserkennung und (ab Phase 2) die Animation.
 - **Geräteverhalten** = Funktionen in `src/devices/*`, die über `DeviceCtx` mit der Engine sprechen
   (Senden mit Verzögerung, Timer, Log, RNG). Kein Gerät kennt die Queue direkt.
-- **Log** (`LogEntry`): je Hop ein Eintrag mit Zeit, letztem/aktuellem Gerät, Protokoll-Tag, Status und
+- **Log** (`LogEntry`): auf `maxLogEntries` begrenzt (älteste Einträge fallen weg, Ids bleiben monoton; `logOffset`/`logLength`); je Hop ein Eintrag mit Zeit, letztem/aktuellem Gerät, Protokoll-Tag, Status und
   i18n-Nachricht + optional Frame (für den Inspektor).
 - **Zeitsteuerung** (`SimController`): `tick(wallMs)` treibt Realtime/Auto-Capture; `step()` läuft bis zum
   nächsten Log-Eintrag; Verlauf für Step Back.
@@ -29,7 +29,7 @@ packages/cli        Parser, CliSession (IOS), HostShell (Windows), Terminal (Zei
 ## Web-App
 
 - Der Worker veröffentlicht höchstens ~30× pro Sekunde ein `ViewModel`; das Log wird inkrementell per
-  `getLog(from)` nachgeladen (`logEpoch` erkennt Step-Back/Reset).
+  `getLog(from)` nachgeladen (`logEpoch` erkennt Step-Back/Reset, `logStart` den getrimmten Anfang; ein Id-Fenster `logBase` im Store).
 - Konva-Canvas: Geräte (eigene Strich-Icons als SVG-Pfade, gleiche Pfade in Palette und Canvas), Links mit
   Link-Lights; Pan (Werkzeug/Mausrad), Zoom (Strg+Mausrad), Drag & Drop aus der Palette.
 - Event-Liste virtualisiert (`react-window`), Filter je Protokoll-Tag.

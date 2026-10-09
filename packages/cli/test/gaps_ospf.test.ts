@@ -72,6 +72,38 @@ describe('Lücken: OSPF-Bereichstypen und Authentifizierung im CLI', () => {
     expect(r2.run('configure terminal', 'router ospf 1', 'area 0 stub')).toContain('Backbone');
   });
 
+  it('no area N entfernt alle Bereichseinstellungen, aber keine network-Anweisungen', () => {
+    const { e, r2 } = areas();
+    r2.run(
+      'configure terminal',
+      'router ospf 1',
+      'area 1 nssa no-summary',
+      'area 1 default-cost 7',
+      'area 1 authentication message-digest',
+      'area 1 range 10.4.0.0 255.255.0.0',
+      'area 1 virtual-link 9.9.9.9',
+      'area 2 virtual-link 8.8.8.8',
+      'area 0 authentication',
+      'end',
+    );
+    let cfg = r2.run('show running-config');
+    expect(cfg).toContain(' area 1 nssa no-summary');
+    expect(cfg).toContain(' area 1 range 10.4.0.0 255.255.0.0');
+    const out = r2.run('configure terminal', 'router ospf 1', 'no area 1', 'end');
+    expect(out).not.toContain('%');
+    cfg = roundTrip(e, r2);
+    expect(cfg).not.toMatch(/ area 1 (nssa|default-cost|authentication|range|virtual-link)/);
+    // andere Bereiche und network-Anweisungen bleiben
+    expect(cfg).toContain(' area 2 virtual-link 8.8.8.8');
+    expect(cfg).toContain(' area 0 authentication');
+    expect(cfg).toContain(' network 10.0.24.0 0.0.0.255 area 1');
+    // idempotent, auch für unbekannte Areas
+    expect(
+      r2.run('configure terminal', 'router ospf 1', 'no area 1', 'no area 7', 'end'),
+    ).not.toContain('%');
+    expect(r2.run('configure terminal', 'router ospf 1', 'area 1')).toContain('% Incomplete');
+  });
+
   it('Schnittstellen-Authentifizierung: Befehle, Hello-Verwurf bei falschem Schlüssel', () => {
     const { e, r1, r2 } = areas();
     r1.run(

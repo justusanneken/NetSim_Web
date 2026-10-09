@@ -18,9 +18,10 @@ import type { Device, HostConfig, Port, Result, RouterConfig, SwitchConfig } fro
 import { apBss, wirelessSync } from './wifi';
 import { capwapTick } from './capwap';
 import { clockOf, deviceTimeMs, setDeviceTime } from './clock';
-import { connClose, connOpen, connSend } from './conn';
+import { connClose, connOpen, connPush, connSend } from './conn';
 import { svcTimer } from './dispatch';
 import { iotTick } from './iot';
+import { newScript, scriptResume, scriptStart, scriptStop, scriptTimer } from './script/iotscript';
 import { appcOf, ipNodeOf } from './node';
 import {
   ensureLocation,
@@ -81,6 +82,8 @@ export class Phase5 {
       if (dev.config.iot?.server) wants.push(['bg:svc:iot', 2_000_000]);
     }
     if (ntpServersOf(dev).length > 0) wants.push(['bg:svc:ntp', 2_000_000]);
+    if (dev.config.kind === 'host' && dev.config.iot?.script?.running)
+      this.eng.withCtx(dev, (ctx) => scriptResume(ctx, dev));
     if (wants.length === 0) return;
     this.eng.withCtx(dev, (ctx) => {
       for (const [name, delay] of wants) ctx.setTimer(name, delay);
@@ -127,6 +130,7 @@ export class Phase5 {
 
   timer(ctx: DeviceCtx, dev: Device, name: string): void {
     if (name === 'capwap') return capwapTick(ctx, dev);
+    if (name.startsWith('script:')) return scriptTimer(ctx, dev, name);
     if (name === 'ntp') {
       ntpPoll(ctx, dev);
       if (ntpServersOf(dev).length > 0) ctx.setTimer('bg:svc:ntp', NTP_INTERVAL_US);
@@ -391,6 +395,44 @@ export class Phase5 {
     });
   }
 
+  /**
+   * Telnet/SSH-Sitzung: Ausgabe der Zielgerät-CLI als TCP-Segment (`out`) vom Server zurück zum Client senden.
+   * `devId`/`key` bezeichnen die Server-Verbindung (`banner.args.dev` / `banner.args.sk`).
+   */
+  pushOut(devId: string, key: string, text: string): boolean {
+    const d = this.dev(devId);
+    if (!d?.powered) return false;
+    return this.eng.withCtx(d, (ctx) => {
+      const node = ipNodeOf(ctx, d);
+      const cfg = d.config;
+      const c =
+        cfg.kind === 'host' || cfg.kind === 'router' || cfg.kind === 'switch'
+          ? appcOf(cfg).conns[key]
+          : undefined;
+      return node && c ? connPush(ctx, node, c, { op: 'out', body: text }) : false;
+    });
+  }
+
+  /**
+   * Eine Telnet/SSH-Verbindung, deren Pfad ausgefallen ist, gegenstellenseitig abräumen (die vty-Leitung wird
+   * freigegeben – vereinfachter exec-timeout), nachdem der Client sie nach der Retransmission aufgegeben hat.
+   */
+  abortRemote(id: string, key: string): void {
+    const c = this.dev(id)?.config;
+    if (!c || !('appc' in c)) return;
+    const conn = c.appc?.conns[key];
+    if (!conn) return;
+    const peer = this.cli(String(conn.banner?.args.dev ?? ''));
+    const sk = String(conn.banner?.args.sk ?? '');
+    const sconn = peer?.config.appc?.conns[sk];
+    if (peer && sconn) {
+      delete peer.config.appc?.conns[sk];
+      const m = peer.config.sys.mgmt;
+      if (m && sconn.vty !== undefined) m.sessions = m.sessions.filter((x) => x.line !== sconn.vty);
+    }
+    this.close(id, key);
+  }
+
   close(id: string, key: string): void {
     const d = this.dev(id);
     if (!d) return;
@@ -452,6 +494,11 @@ export class Phase5 {
     for (const h of [...(patch.ntp?.servers ?? []), ...(patch.syslog?.hosts ?? [])])
       if (!isValidIpv4(h)) return err('ip.invalidIp');
     Object.assign(m, structuredClone(patch));
+    // `no ntp server`: ein entfernter Zeitgeber verliert sofort seine Synchronisation
+    if (m.clock.syncedTo !== undefined && !m.ntp.servers.includes(m.clock.syncedTo)) {
+      m.clock.syncedTo = undefined;
+      m.clock.stratum = 16;
+    }
     this.startTimers(d);
     return ok(true);
   }
@@ -469,6 +516,28 @@ export class Phase5 {
     if (serverChanged) iot.registered = false;
     this.startTimers(h);
     if (h.powered && iot.server) this.eng.withCtx(h, (ctx) => iotTick(ctx, h));
+    return ok(true);
+  }
+
+  /** Programmtext eines IoT-/SBC-Geräts setzen (ein laufendes Programm wird angehalten). */
+  setIotScript(id: string, code: string): Result<true> {
+    const h = this.host(id);
+    if (!h?.config.iot) return err('iot.notIot');
+    if (code.length > 20_000) return err('iot.script.tooLong');
+    const iot = h.config.iot;
+    iot.script ??= newScript();
+    if (iot.script.running) this.runIotScript(id, false);
+    iot.script.code = code;
+    return ok(true);
+  }
+
+  /** Programm starten bzw. anhalten (Run/Stop). */
+  runIotScript(id: string, run: boolean): Result<true> {
+    const h = this.host(id);
+    if (!h?.config.iot) return err('iot.notIot');
+    if (!h.powered) return err('dev.off');
+    h.config.iot.script ??= newScript();
+    this.eng.withCtx(h, (ctx) => (run ? scriptStart(ctx, h) : scriptStop(ctx, h)));
     return ok(true);
   }
 

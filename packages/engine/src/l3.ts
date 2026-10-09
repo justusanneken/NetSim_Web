@@ -25,7 +25,7 @@ import { onEchoReply, onIcmpError } from './diag';
 import { dhcpRx } from './svc/dhcp';
 import { dnsRx } from './svc/dns';
 import type { Iface } from './ifaces';
-import { natHasInbound, natInside2Outside, natOutside2Inside } from './nat';
+import { natHasInbound, natInside2Outside, natMappedAt, natOutside2Inside, natRealAt } from './nat';
 import type { Node6 } from './l3v6';
 import { routingRx } from './routing';
 import { tcpRx } from './svc/tcp';
@@ -346,8 +346,14 @@ function arpRx(ctx: DeviceCtx, node: IpNode, iface: Iface, base: Base, a: ArpPdu
     const proxy =
       !vip &&
       a.targetIp !== iface.ip &&
-      iface.cfg.natSide === 'outside' &&
-      (node.l3?.nat.rules.some((r) => r.kind === 'static' && r.global === a.targetIp) ?? false);
+      (iface.cfg.natSide === 'outside' || (node.l3 ? natMappedAt(node.l3, iface.id) : false)) &&
+      (node.l3?.nat.rules.some(
+        (r) =>
+          r.kind === 'static' &&
+          r.global === a.targetIp &&
+          (r.toIf === undefined || r.toIf === iface.id),
+      ) ??
+        false);
     if (a.targetIp !== iface.ip && !vip && !proxy) {
       ctx.log({
         ...base,
@@ -418,14 +424,16 @@ function ipRx(
   if (
     node.l3 &&
     node.forwarding &&
-    iface.cfg.natSide === 'outside' &&
+    (iface.cfg.natSide === 'outside' || natMappedAt(node.l3, iface.id)) &&
     node.l3.nat.rules.length > 0 &&
-    natHasInbound(node.l3, ip, ctx.now)
+    natHasInbound(node.l3, ip, ctx.now, iface.id)
   ) {
     forward(ctx, node, iface, base, ip);
     return;
   }
   if (isLocalIp(node, ip.dst) || bcast) {
+    // TCP zum Gerät selbst (BGP, Telnet, SSH …) unterliegt der eingehenden ACL wie Durchgangsverkehr
+    if (!bcast && ip.payload.kind === 'tcp' && !aclInPermits(ctx, node, iface, base, ip)) return;
     deliverLocal(ctx, node, iface, base, ip, frame, bcast && !isLocalIp(node, ip.dst));
     return;
   }
@@ -441,30 +449,44 @@ function ipRx(
   forward(ctx, node, iface, base, ip);
 }
 
+/** Eingehende ACL der Schnittstelle (Durchgangs- und an das Gerät gerichteter TCP-Verkehr); `false` = verworfen. */
+function aclInPermits(
+  ctx: DeviceCtx,
+  node: IpNode,
+  ifaceIn: Iface,
+  base: Base,
+  ip: Ipv4Pdu,
+): boolean {
+  const l3 = node.l3;
+  if (!l3 || !ifaceIn.cfg.aclIn) return true;
+  const r = aclEval(l3.acls[ifaceIn.cfg.aclIn], ip);
+  if (r.action !== 'deny') return true;
+  ctx.log({
+    ...base,
+    kind: 'drop',
+    proto: 'ACL',
+    status: 'drop',
+    msg: {
+      key: 'acl.deny',
+      params: { acl: ifaceIn.cfg.aclIn, dir: 'in', src: ip.src, dst: ip.dst },
+    },
+  });
+  sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.admin, ip, ifaceIn.ip);
+  return false;
+}
+
 function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn: Ipv4Pdu): void {
   const l3 = node.l3;
   let ip = ipIn;
   // 1) Eingehende ACL
-  if (l3 && ifaceIn.cfg.aclIn) {
-    const r = aclEval(l3.acls[ifaceIn.cfg.aclIn], ip);
-    if (r.action === 'deny') {
-      ctx.log({
-        ...base,
-        kind: 'drop',
-        proto: 'ACL',
-        status: 'drop',
-        msg: {
-          key: 'acl.deny',
-          params: { acl: ifaceIn.cfg.aclIn, dir: 'in', src: ip.src, dst: ip.dst },
-        },
-      });
-      sendIcmpError(ctx, node, 'dest-unreachable', ICMP_UNREACH.admin, ip, ifaceIn.ip);
-      return;
-    }
-  }
+  if (!aclInPermits(ctx, node, ifaceIn, base, ip)) return;
   // 2) NAT outside → inside (vor dem Routing)
-  if (l3 && ifaceIn.cfg.natSide === 'outside' && l3.nat.rules.length > 0) {
-    const r = natOutside2Inside(l3, ip, ctx.now);
+  if (
+    l3 &&
+    (ifaceIn.cfg.natSide === 'outside' || natMappedAt(l3, ifaceIn.id)) &&
+    l3.nat.rules.length > 0
+  ) {
+    const r = natOutside2Inside(l3, ip, ctx.now, ifaceIn.id);
     if (r.entry) {
       ctx.log({
         ...base,
@@ -506,12 +528,24 @@ function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn:
     const v = fwPermit(ctx, node, ifaceIn, hop.iface, ip, base);
     if (!v) return;
     // Rückverkehr einer von außen aufgebauten Verbindung wird (außer bei Static NAT) nicht dynamisch übersetzt
-    fwReturn = v === 'ret' && !l3.nat.rules.some((r) => r.kind === 'static' && r.local === ip.src);
+    fwReturn =
+      v === 'ret' &&
+      !l3.nat.rules.some(
+        (r) =>
+          r.kind === 'static' &&
+          r.local === ip.src &&
+          (r.fromIf === undefined || (r.fromIf === ifaceIn.id && r.toIf === hop.iface.id)),
+      );
   }
   let out: Ipv4Pdu = { ...structuredClone(ip), ttl: ip.ttl - 1 };
   // 3) NAT inside → outside (nach dem Routing)
-  if (l3 && !fwReturn && ifaceIn.cfg.natSide === 'inside' && hop.iface.cfg.natSide === 'outside') {
-    const r = natInside2Outside(l3, out, hop.iface, ctx.now);
+  if (
+    l3 &&
+    !fwReturn &&
+    ((ifaceIn.cfg.natSide === 'inside' && hop.iface.cfg.natSide === 'outside') ||
+      (natRealAt(l3, ifaceIn.id) && natMappedAt(l3, hop.iface.id)))
+  ) {
+    const r = natInside2Outside(l3, out, hop.iface, ctx.now, ifaceIn.id);
     if (r.blocked) {
       ctx.log({
         ...base,

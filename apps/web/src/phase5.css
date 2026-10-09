@@ -183,3 +183,51 @@ button.link {
   border-left-color: var(--c-purple);
   background: color-mix(in srgb, var(--c-purple) 8%, transparent);
 }
+
+/* Programmierung (IoT/SBC) */
+.program {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+.program-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.program-editor {
+  flex: 1 1 50%;
+  min-height: 140px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  tab-size: 2;
+  resize: none;
+  padding: 8px;
+}
+.program-console-head {
+  font-weight: 600;
+}
+.program-console {
+  flex: 1 1 30%;
+  min-height: 80px;
+  margin: 0;
+  overflow: auto;
+  padding: 8px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: var(--bg-alt, rgba(127, 127, 127, 0.12));
+  white-space: pre-wrap;
+}
+.prog-status.error {
+  color: var(--danger, #c0392b);
+  font-weight: 600;
+}
+.prog-status.running {
+  font-weight: 600;
+}

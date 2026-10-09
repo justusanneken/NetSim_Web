@@ -71,6 +71,7 @@ export const mailClientHook: ClientHook = (ctx: DeviceCtx, node: IpNode, c: AppC
   const fail = (key: string, params?: Record<string, string | number>): void => {
     mail.status = { key, params };
   };
+  if (event === 'open') return;
   if (event === 'fail') {
     fail(c.err === 'conn.refused' ? 'mail.refused' : 'mail.timeout');
     return;

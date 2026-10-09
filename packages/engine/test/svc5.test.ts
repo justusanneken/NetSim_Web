@@ -81,6 +81,47 @@ describe('NTP / Uhr', () => {
   });
 });
 
+describe('NTP: Verlust und Weitergabe', () => {
+  it('Client wird nach 4 unbeantworteten Abfragen unsynchronisiert und synchronisiert sich neu', () => {
+    const { e, r1, pc, srv } = lab();
+    must(e.p5.setServices(srv, { ntp: { enabled: true } }));
+    must(e.p5.setHostNtp(pc, '10.0.1.10'));
+    e.p5.setMgmt(r1, { ntp: { servers: ['10.0.1.10'] } });
+    run(e, 10);
+    const clk = mgmtOf(rcfg(e, r1).sys).clock;
+    expect(clk.syncedTo).toBe('10.0.1.10');
+    expect(host(e, pc).clock?.syncedTo).toBe('10.0.1.10');
+    // Server verschwindet
+    must(e.p5.setServices(srv, { ntp: { enabled: false } }));
+    run(e, 64 * 3);
+    expect(clk.syncedTo).toBe('10.0.1.10'); // noch toleriert
+    run(e, 64 * 3);
+    expect(clk.syncedTo).toBeUndefined();
+    expect(clk.stratum).toBe(16);
+    expect(host(e, pc).clock?.syncedTo).toBeUndefined();
+    expect(e.log.some((l) => l.msg.key === 'svc.ntp.lost')).toBe(true);
+    // Server kommt zurück ⇒ erneute Synchronisation
+    must(e.p5.setServices(srv, { ntp: { enabled: true } }));
+    run(e, 70);
+    expect(clk.syncedTo).toBe('10.0.1.10');
+  });
+
+  it('synchronisierter Router ohne ntp master liefert Zeit an andere (Stratum +1)', () => {
+    const { e, r1, pc, srv } = lab();
+    must(e.p5.setServices(srv, { ntp: { enabled: true } }));
+    e.p5.setMgmt(r1, { ntp: { servers: ['10.0.1.10'] } });
+    run(e, 10);
+    expect(mgmtOf(rcfg(e, r1).sys).ntp.master).toBeUndefined();
+    must(e.p5.setHostNtp(pc, '10.0.0.1'));
+    run(e, 70);
+    expect(host(e, pc).clock?.syncedTo).toBe('10.0.0.1');
+    expect(host(e, pc).clock?.stratum).toBe(3);
+    // unsynchronisiert und ohne master: kein Server
+    e.p5.setMgmt(r1, { ntp: { servers: [] } });
+    expect(mgmtOf(rcfg(e, r1).sys).clock.syncedTo).toBeUndefined();
+  });
+});
+
 describe('Syslog', () => {
   it('Server empfängt Link-down-Meldungen', () => {
     const { e, r1, srv, pc } = lab();

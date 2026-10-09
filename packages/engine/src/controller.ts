@@ -69,10 +69,10 @@ export class SimController {
   /** Vorwärts bis zum nächsten sichtbaren Ereignis (Log-Eintrag). */
   step(): boolean {
     const e = this.engine;
-    const before = e.log.length;
+    const before = e.logLength;
     const snap = e.snapshot();
     let processed = 0;
-    while (e.log.length === before && e.queueLength > 0 && processed < 10_000) {
+    while (e.logLength === before && e.queueLength > 0 && processed < 10_000) {
       e.step();
       processed++;
     }
@@ -146,7 +146,8 @@ export class SimController {
       autoCapture: this.autoCapture,
       devices: buildDevices(e),
       links: buildLinks(e),
-      logLength: e.log.length,
+      logLength: e.logLength,
+      logStart: e.logOffset,
       logEpoch: this.epoch,
       queueLength: e.queueLength,
       canStepBack: this.history.length > 0,

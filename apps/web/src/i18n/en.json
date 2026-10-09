@@ -226,6 +226,7 @@
   "dhcp.gotOffer": "DHCP client: OFFER {{ip}} from {{server}}.",
   "dhcp.gotAck": "DHCP client: ACK for {{ip}}.",
   "dhcp.gotNak": "DHCP client: NAK received – restarting.",
+  "dhcp.reboot": "DHCP client: confirming lease for {{ip}} after roaming (INIT-REBOOT).",
   "dhcp.renewed": "DHCP client: lease for {{ip}} renewed.",
   "dhcp.bound": "DHCP client: bound to {{ip}}.",
   "dhcp.expired": "DHCP client: lease expired – requesting again.",
