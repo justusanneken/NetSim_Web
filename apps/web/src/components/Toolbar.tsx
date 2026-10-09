@@ -1,10 +1,12 @@
 import { useTranslation } from 'react-i18next';
 import { useStore, type Tool } from '../store';
+import { useUx } from '../ux/ux';
 
 const TOOLS: { id: Tool; key: string; icon: string }[] = [
   { id: 'select', key: 'tool.select', icon: '↖' },
   { id: 'hand', key: 'tool.hand', icon: '✋' },
   { id: 'cable', key: 'tool.cable', icon: '⌇' },
+  { id: 'note', key: 'tool.note', icon: '🗒' },
   { id: 'pdu', key: 'tool.pdu', icon: '✉' },
   { id: 'delete', key: 'tool.delete', icon: '✕' },
 ];
@@ -15,6 +17,8 @@ export function Toolbar() {
   const setTool = useStore((s) => s.setTool);
   const sv = useStore((s) => s.stageView);
   const setStageView = useStore((s) => s.setStageView);
+  const snap = useUx((u) => u.snap);
+  const toggleSnap = useUx((u) => u.toggleSnap);
   const hint = useStore((s) => {
     if (s.placing) return t('hint.placing');
     if (s.tool === 'cable')
@@ -27,6 +31,7 @@ export function Toolbar() {
           : t('hint.cableA');
     if (s.tool === 'pdu') return s.pduSource ? t('hint.pduB') : t('hint.pduA');
     if (s.tool === 'delete') return t('hint.delete');
+    if (s.tool === 'note') return t('ux.hint.note');
     return '';
   });
   const zoom = (f: number) =>
@@ -69,9 +74,21 @@ export function Toolbar() {
       <button
         className="tool"
         title={t('view.zoomReset')}
+        aria-label={t('view.zoomReset')}
         onClick={() => setStageView({ x: 0, y: 0, scale: 1 })}
       >
         1:1
+      </button>
+      <span className="sep" />
+      <button
+        className={`tool${snap ? ' active' : ''}`}
+        aria-pressed={snap}
+        title={t('ux.snap')}
+        aria-label={t('ux.snap')}
+        onClick={toggleSnap}
+      >
+        <span aria-hidden>⌗</span>
+        <span className="tool-label">{t('ux.snap')}</span>
       </button>
       {hint && (
         <span className="hint" role="status">
