@@ -452,6 +452,11 @@ export class Phase5 {
     for (const h of [...(patch.ntp?.servers ?? []), ...(patch.syslog?.hosts ?? [])])
       if (!isValidIpv4(h)) return err('ip.invalidIp');
     Object.assign(m, structuredClone(patch));
+    // `no ntp server`: ein entfernter Zeitgeber verliert sofort seine Synchronisation
+    if (m.clock.syncedTo !== undefined && !m.ntp.servers.includes(m.clock.syncedTo)) {
+      m.clock.syncedTo = undefined;
+      m.clock.stratum = 16;
+    }
     this.startTimers(d);
     return ok(true);
   }

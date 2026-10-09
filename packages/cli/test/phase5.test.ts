@@ -172,6 +172,17 @@ describe('CLI Phase 5: NTP, Uhr, Syslog, SNMP, AAA', () => {
     expect(run('clock set 99:00:00 8 Oct 2026')).toContain('% Invalid');
   });
 
+  it('show ntp status: nach Ausfall des Servers wieder unsynchronisiert', () => {
+    const { e, srv, run } = lab();
+    must(e.p5.setServices(srv, { ntp: { enabled: true } }));
+    run('configure terminal', 'ntp server 10.0.1.10', 'end');
+    sec(e, 10);
+    expect(run('show ntp status')).toContain('Clock is synchronized, stratum 2');
+    must(e.p5.setServices(srv, { ntp: { enabled: false } }));
+    sec(e, 64 * 6);
+    expect(run('show ntp status')).toContain('Clock is unsynchronized');
+  });
+
   it('logging host / trap / buffered, snmp-server, aaa, radius-server werden in der running-config gerendert', () => {
     const { run } = lab();
     run(
