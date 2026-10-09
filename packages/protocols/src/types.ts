@@ -21,6 +21,7 @@ export const IP_PROTO = {
   udp: 17,
   gre: 47,
   esp: 50,
+  ahp: 51,
   icmp6: 58,
   eigrp: 88,
   ospf: 89,

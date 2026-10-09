@@ -103,7 +103,8 @@
 - **TCP/HTTP:** vereinfachtes TCP (SYN/SYN-ACK, ein Request, Antwort + FIN, RST); keine Retransmission-Fenster, kein TLS
   (HTTPS ist nur ein Port-/Schemaflag). Seiten sind kurze Texte.
 - **NAT:** Timeouts per `ip nat translation timeout` für UDP/TCP/IP gemeinsam (ICMP fest 60 s); ALG/FTP fehlt.
-- **ACL:** `log`-Schlüsselwort wird akzeptiert, aber nicht gezählt; kein `object-group`, keine Zeitbereiche.
+- **ACL:** `log`-Schlüsselwort wird akzeptiert, aber nicht gezählt; kein `object-group`, keine Zeitbereiche. Protokolle: `ip`, `icmp`, `tcp`, `udp`,
+  `esp`, `ahp`, `gre`, `ospf`, `eigrp` (keine Protokollnummern); Portnamen u. a. `bgp`, `tacacs`, `isakmp`, `non500-isakmp`, `snmptrap`.
 
 ## Phase 4
 
@@ -224,8 +225,9 @@
   (`conn.timeout`), Abbau per FIN bzw. RST (Daten auf unbekannter Verbindung zu/von einem Dienst-Port werden mit RST beantwortet). Kein
   Fenster/Slow Start, keine Segmentierung großer Nachrichten (IP-Fragmentierung übernimmt), keine TIME_WAIT/Half-Close-Zustände, keine
   Selective-ACKs. Der HTTP-Pfad der Hosts (`svc/tcp.ts`) bleibt das einfache Modell. Ports: FTP 21, SSH 22, Telnet 23, SMTP 25, POP3 110, BGP 179.
-- **Segmente laufen durch den IP-Stack:** ausgehende ACL, NAT, Firewall (Zustandsverfolgung) sehen sie. Neu: die **eingehende ACL** gilt jetzt auch
-  für TCP, das an das Gerät selbst gerichtet ist (BGP/Telnet/SSH zum Router), nicht nur für Durchgangsverkehr.
+- **Segmente laufen durch den IP-Stack:** ausgehende ACL, NAT, Firewall (Zustandsverfolgung) sehen sie. Die **eingehende ACL** gilt wie bei IOS auch
+  für Unicast an das Gerät selbst (BGP/Telnet/SSH/TACACS+-Antworten, IKE, ESP, Ping, TFTP …), nicht nur für Durchgangsverkehr; Broadcast und
+  Multicast (Routing-Protokoll-Hellos, DHCP, HSRP) bleiben – abweichend von IOS – ungefiltert.
 - **BGP über TCP:** Zustände Idle → Connect (SYN in Arbeit) → Active (Verbindung gescheitert/passiv wartend) → OpenSent → OpenConfirm → Established.
   Der Aufbau läuft alle 5 s (Tick) nach Konfiguration; die Gegenseite nimmt nur Verbindungen von konfigurierten, nicht abgeschalteten Nachbarn an
   (sonst RST). **Collision-Detection vereinfacht:** baut ein Router gleichzeitig auf, gewinnt die Verbindung der Seite mit der höheren Quelladresse

@@ -53,24 +53,41 @@ const PORT_NAMES: Record<number, string> = {
   22: 'ssh',
   23: 'telnet',
   25: 'smtp',
+  49: 'tacacs',
   53: 'domain',
   80: 'www',
   110: 'pop3',
+  179: 'bgp',
   443: '443',
 };
-const portText = (p: number): string => PORT_NAMES[p] ?? String(p);
-const portMatch = (m: PortMatch | undefined): string =>
+/** UDP-Portnamen wie IOS (`show running-config`). */
+const UDP_PORT_NAMES: Record<number, string> = {
+  53: 'domain',
+  67: 'bootps',
+  68: 'bootpc',
+  69: 'tftp',
+  123: 'ntp',
+  161: 'snmp',
+  162: 'snmptrap',
+  500: 'isakmp',
+  514: 'syslog',
+  4500: 'non500-isakmp',
+};
+const portText = (p: number, udp: boolean): string =>
+  (udp ? UDP_PORT_NAMES[p] : PORT_NAMES[p]) ?? String(p);
+const portMatch = (m: PortMatch | undefined, udp: boolean): string =>
   !m
     ? ''
     : m.op === 'range'
-      ? ` range ${portText(m.a)} ${portText(m.b ?? m.a)}`
-      : ` ${m.op} ${portText(m.a)}`;
+      ? ` range ${portText(m.a, udp)} ${portText(m.b ?? m.a, udp)}`
+      : ` ${m.op} ${portText(m.a, udp)}`;
 
 /** Textform eines ACL-Eintrags (ohne Sequenznummer). */
 export function aclEntryText(e: AclEntry, type: 'standard' | 'extended'): string {
   if (type === 'standard') return `${e.action} ${addr(e.src)}`;
   return (
-    `${e.action} ${e.proto} ${addr(e.src)}${portMatch(e.srcPort)} ${addr(e.dst)}${portMatch(e.dstPort)}` +
+    `${e.action} ${e.proto} ${addr(e.src)}${portMatch(e.srcPort, e.proto === 'udp')} ` +
+    `${addr(e.dst)}${portMatch(e.dstPort, e.proto === 'udp')}` +
     `${e.established ? ' established' : ''}${e.log ? ' log' : ''}`
   );
 }

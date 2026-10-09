@@ -121,7 +121,7 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Module einstecken/entfernen (nur ausgeschaltet), Power-Taste, Gehäuse-Platzhalter                                                                                                  | 5     | fertig                                                       | `engine › fw › Module…`, `web e2e › phase5`                                                   |
 | Physical View (Stadt → Gebäude → Raum → Rack, Gerätezuordnung, Reichweite nach Gebäude/Raum), Umschalter Logical/Physical                                                          | 5     | fertig (Listen-/Kastenansicht, keine Kabellängen/Dämpfung)   | `engine › fw › Physical View`, `engine › wifi › Strom aus…`, `web e2e › phase5`               |
 | GUI: Palette, Icons, Panels (AP, WLC, Server-Dienste, Verwaltung, Firewall, Cloud, IoT), Desktop-Apps (PC Wireless, E-Mail, MIB, IoT, Firewall, Dateien), i18n de/en               | 5     | fertig                                                       | `web e2e › phase5`, `web › i18n`                                                              |
-| Skript-Sandbox für IoT (nur JS-Teilmenge, Python offen), IPsec, QoS, SPAN, PPP/CHAP                                                                                                | 5     | nicht umgesetzt                                              | –                                                                                             |
+| Python für IoT, QoS, SPAN (Skript-Sandbox, IPsec und PPP/CHAP siehe unten)                                                                                                         | 5     | nicht umgesetzt                                              | –                                                                                             |
 
 ## Spätere Phasen (Auszug)
 
@@ -134,13 +134,13 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 
 ## TCP, BGP, Telnet/SSH, IoT-Skripte
 
-| Anforderung                                                                                                                            | Phase | Status | Test                                                           |
-| -------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------ | -------------------------------------------------------------- |
-| Gemeinsames TCP (Handshake, Seq/Ack, Retransmission mit Backoff, Abbruch, FIN/RST, Verbindungstabelle, `show tcp brief`)               | 6     | fertig | `engine › tcp › Gemeinsames TCP`, `cli › tcp_bgp`              |
-| Segmente durchlaufen ACL (jetzt auch eingehend zum Gerät selbst), NAT, Firewall                                                        | 6     | fertig | `cli › tcp_bgp › ACL`                                          |
-| BGP über TCP 179 (Connect/Active, Collision, Pfadverlust per TCP/Hold-Timer), Cease bei `no neighbor`, BGP-Next-Hop in `show ip route` | 6     | fertig | `engine › tcp › BGP über TCP`, `cli › qa_bgp`, `cli › tcp_bgp` |
-| Telnet/SSH-Sitzung als TCP-Segmente, Stillstand und Timeout bei Pfadausfall, SSH als verschlüsselt markiert                            | 6     | fertig | `cli › tcp_remote`, `web e2e › tcp`                            |
-| IoT-/SBC-Programme (sandboxed JS-Teilmenge, virtuelle Timer, Schrittgrenze), Tab „Programmierung“                                      | 6     | fertig | `engine › iotscript`, `web e2e › tcp`                          |
+| Anforderung                                                                                                                            | Phase | Status | Test                                                             |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ----- | ------ | ---------------------------------------------------------------- |
+| Gemeinsames TCP (Handshake, Seq/Ack, Retransmission mit Backoff, Abbruch, FIN/RST, Verbindungstabelle, `show tcp brief`)               | 6     | fertig | `engine › tcp › Gemeinsames TCP`, `cli › tcp_bgp`                |
+| Segmente durchlaufen ACL (jetzt auch eingehend zum Gerät selbst), NAT, Firewall                                                        | 6     | fertig | `cli › tcp_bgp › ACL`, `cli › qa2_vpnacl`, `cli › qa2_lifecycle` |
+| BGP über TCP 179 (Connect/Active, Collision, Pfadverlust per TCP/Hold-Timer), Cease bei `no neighbor`, BGP-Next-Hop in `show ip route` | 6     | fertig | `engine › tcp › BGP über TCP`, `cli › qa_bgp`, `cli › tcp_bgp`   |
+| Telnet/SSH-Sitzung als TCP-Segmente, Stillstand und Timeout bei Pfadausfall, SSH als verschlüsselt markiert                            | 6     | fertig | `cli › tcp_remote`, `web e2e › tcp`                              |
+| IoT-/SBC-Programme (sandboxed JS-Teilmenge, virtuelle Timer, Schritt-/Speichergrenzen), Tab „Programmierung“                           | 6     | fertig | `engine › iotscript`, `engine › qa2_script`, `web e2e › tcp`     |
 
 ## GUI-Abnahme: FTP, Mail, Cloud/Modem, Designs
 
