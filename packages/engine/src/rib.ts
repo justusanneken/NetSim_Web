@@ -44,8 +44,11 @@ export function buildRib(cfg: L3Cfg, ifaces: Iface[]): RibEntry[] {
   for (const i of ifaces) {
     const plen = maskToPrefix(i.mask);
     if (plen === undefined) continue;
-    rib.push({ type: 'C', prefix: networkOf(i.ip, plen), plen, ad: 0, metric: 0, ifaceId: i.id });
-    rib.push({ type: 'L', prefix: i.ip, plen: 32, ad: 0, metric: 0, ifaceId: i.id });
+    // Virtual-Access (ip unnumbered): die geliehene Adresse gehört der Quellschnittstelle, keine eigene C/L-Route
+    if (i.kind !== 'vaccess') {
+      rib.push({ type: 'C', prefix: networkOf(i.ip, plen), plen, ad: 0, metric: 0, ifaceId: i.id });
+      rib.push({ type: 'L', prefix: i.ip, plen: 32, ad: 0, metric: 0, ifaceId: i.id });
+    }
     // PPPoE: Host-Route zur Gegenstelle; optional Default-Route (`ppp ipcp route default`)
     if (i.peerIp)
       rib.push({ type: 'C', prefix: i.peerIp, plen: 32, ad: 0, metric: 0, ifaceId: i.id });

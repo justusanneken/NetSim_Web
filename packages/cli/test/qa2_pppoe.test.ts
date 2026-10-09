@@ -80,6 +80,15 @@ describe('QA2: PPPoE-Lebenszyklus', () => {
     expect(cpe.run('ping 198.51.100.10')).toContain('Success rate is 100 percent');
   });
 
+  it('BRAS: die geliehene Adresse (ip unnumbered) erzeugt keine zweite Connected-Route', () => {
+    const { e, bras } = lab();
+    sec(e, 15);
+    const rt = bras.s.input('show ip route');
+    expect(rt).toMatch(/C\s+203\.0\.113\.100\/32 is directly connected, Virtual-Access1/);
+    expect(rt).toMatch(/C\s+203\.0\.113\.1\/32 is directly connected, Loopback0/);
+    expect(rt).not.toMatch(/203\.0\.113\.1\/32 is directly connected, Virtual-Access1/);
+  });
+
   it('shutdown/no shutdown am Dialer', () => {
     const { e, cpe } = lab();
     sec(e, 15);
