@@ -11,8 +11,10 @@ import type {
 import { api, proxy } from './engine/client';
 import { isEndDevice } from './deviceKinds';
 import { syncLogWindow } from './logSync';
+import { resetUiDoc } from './ux/uiDoc';
+import { useUx } from './ux/ux';
 
-export type Tool = 'select' | 'hand' | 'cable' | 'delete' | 'pdu';
+export type Tool = 'select' | 'hand' | 'cable' | 'delete' | 'pdu' | 'note';
 export type CableChoice = CableType | 'auto';
 export type Theme = 'light' | 'dark';
 export type ViewMode = 'logical' | 'physical';
@@ -333,6 +335,8 @@ export const useStore = create<UiState>((set, get) => ({
 
   async newTopology() {
     await api.clear();
+    resetUiDoc();
+    useUx.getState().setSelected([]);
     set({ selectedDevice: null, selectedLink: null, selectedLog: null });
   },
 }));

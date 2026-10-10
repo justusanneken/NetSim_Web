@@ -301,3 +301,12 @@ supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolg
   IKEv2, keine Transport-Mode-Wirkung (wird gespeichert), kein DPD, **keine VTI** (`tunnel mode ipsec`) und keine IPsec-Profile; Crypto Maps sind an physischen/Sub-Schnittstellen und am Dialer
   einer PPPoE-Einwahl möglich, nicht am Virtual-Template. Nach einem Neustart der Gegenstelle bleibt die alte SA der anderen Seite bestehen (kein DPD, keine
   Lebensdauer): erst ein von der neu gestarteten Seite aufgebautes IKE oder `clear crypto sa` stellt das VPN wieder her. Entschlüsselte Pakete laufen danach durch die normale Eingangsverarbeitung der Schnittstelle (ACL-in, Weiterleitung).
+
+## UX (Phase 6)
+
+- **Gruppen/Cluster** sind ein beschrifteter Rahmen um Geräte (ein Gerät gehört zu höchstens einer Gruppe); Ziehen am Rahmen verschiebt die Mitglieder. Kein Einklappen zu einem Symbol.
+- **Hintergrundbild:** ein Bild, links oben bei (0, 0), wird auf höchstens 2000 px Kantenlänge verkleinert, Deckkraft einstellbar; keine Skalierung/Verschiebung.
+- **Notizen:** feste Breite, einfacher Text, keine Formatierung oder Pfeile.
+- **Equivalent IOS Commands:** Diff-Heuristik der running-config; Ersetzungen bekannter Befehle (`ip address`, `hostname`, …) erzeugen kein `no`, bei Sonderfällen kann die Folge von der handgeschriebenen IOS-Reihenfolge abweichen.
+- **Touch:** Tippen, langer Druck (Kontextmenü), Pinch/Zwei-Finger-Pan; Rubberband per Ein-Finger-Ziehen im Auswahlwerkzeug.
+- **Axe-Prüfung** schließt `color-contrast` aus dem dynamischen Lauf aus (Canvas nicht prüfbar); Kontraste der Tokens sind in `theme.test.ts` abgesichert.

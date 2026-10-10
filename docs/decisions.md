@@ -124,3 +124,10 @@ WLAN-Roaming im selben SSID behält das DHCP-Lease (INIT-REBOOT, Zustand `reboot
 36. **PPPoE/PPP:** neue Schnittstellenarten `dialer`, `vtemplate`, `vaccess`; Sitzungen als Laufzeitzustand `L3Cfg.ppp`, IP-Schnittstellen erscheinen nur bei stehender Sitzung (`pppIfaces`). PPPoE-Frames werden vor der Schnittstellenzuordnung in `routerRx` abgefangen.
 37. **IPsec:** Crypto-Map-Prüfung im `xmit` der Schnittstelle (`cryptoXmit`), ESP als IP-Nutzlast mit verborgenem `inner`, IKE als ein Austausch; SAs sind Laufzeitzustand in `L3Cfg.crypto.sas`. Kein VTI.
 38. **Neue Protokoll-Tags** `TACACS`, `PPPOE`, `PPP`, `IKE`, `ESP`; Farben in `apps/web/src/proto.css` (Tokens), Übersetzungen in `i18n/{de,en}.proto.json`.
+
+## UX-Erweiterungen (Phase 6, „ux“)
+
+39. **UI-Dokument getrennt von der Engine:** Notizen, Gruppen, Hintergrundbild und Geräte-Attribute liegen in `apps/web/src/ux/uiDoc.ts` (zustand), nicht in der Engine; Persistenz speichert sie über `exportUiDoc`/`importUiDoc` und bindet `snapshotUiDoc`/`restoreUiDoc`/`onUiDocChange` in Undo ein. Geräte-Positionen bleiben `DeviceView.pos`; jede Mehrfachbewegung läuft durch `moveDevices` (`ux/actions.ts`).
+40. **„Equivalent IOS Commands“ allgemein als Diff:** statt jedes GUI-Formular Befehle erzeugen zu lassen, vergleicht `EquivalentIos` die running-config (`runningConfig` im Worker) vor und nach einer Änderung (`ux/iosDiff.ts`). Das deckt GUI- und CLI-Änderungen gleichermaßen ab.
+41. **Tastatur-Alternative zur Arbeitsfläche ist die Geräteliste:** Aktivieren eines Eintrags verhält sich wie ein Klick auf das Gerät (Werkzeug-abhängig). Konva-Objekte selbst sind nicht fokussierbar.
+42. **Fokusfalle als Hook** (`ux/useFocusTrap.ts`) und gemeinsamer `Modal` für alle neuen Dialoge.

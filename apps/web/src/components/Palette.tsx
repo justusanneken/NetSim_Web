@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { SUPPORTED_TYPES, type DeviceType } from '@netsim/engine';
 import { deviceColor, ICON_PATHS } from '../icons';
 import { useStore, type CableChoice } from '../store';
+import { placeAtFreeSpot } from '../ux/actions';
 
 const CATEGORIES: { id: string; devices: DeviceType[] }[] = [
   { id: 'end', devices: ['pc', 'laptop', 'server', 'tablet', 'smartphone', 'printer'] },
@@ -63,7 +64,10 @@ export function Palette() {
                 className={`palette-item${placing === d ? ' active' : ''}`}
                 draggable
                 onDragStart={(e) => e.dataTransfer.setData('application/x-netsim-device', d)}
-                onClick={() => setPlacing(placing === d ? null : d)}
+                onClick={(e) =>
+                  // Tastatur (detail 0): sofort an freier Stelle platzieren; Maus: Platzier-Modus
+                  e.detail === 0 ? void placeAtFreeSpot(d) : setPlacing(placing === d ? null : d)
+                }
                 title={t('palette.placeHint')}
               >
                 <DeviceIcon type={d} />

@@ -9,9 +9,11 @@ import deProto from '../src/i18n/de.proto.json';
 import enProto from '../src/i18n/en.proto.json';
 import deT from '../src/i18n/de.tcp.json';
 import enT from '../src/i18n/en.tcp.json';
+import deUx from '../src/i18n/de.ux.json';
+import enUx from '../src/i18n/en.ux.json';
 
-const de: Record<string, string> = { ...de0, ...de5, ...deT, ...deProto };
-const en: Record<string, string> = { ...en0, ...en5, ...enT, ...enProto };
+const de: Record<string, string> = { ...de0, ...de5, ...deT, ...deProto, ...deUx };
+const en: Record<string, string> = { ...en0, ...en5, ...enT, ...enProto, ...enUx };
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const f of readdirSync(dir)) {
