@@ -155,6 +155,26 @@ export class Engine {
     } else this.log.length = Math.min(this.log.length, keep);
   }
 
+  /** Ersetzt den gesamten Zustand (`.nsim`-Import, Undo) und baut den Laufzeitzustand neu auf. */
+  loadState(state: EngineState): void {
+    this.state = state;
+    this.switchSig.clear();
+    for (const d of Object.values(state.devices)) {
+      const c = d.config;
+      if ((c.kind === 'router' || c.kind === 'switch') && c.sys.mgmt) c.sys.mgmt.logBuffer = [];
+      if (c.kind === 'host') {
+        // WLAN-Assoziationen sind Laufzeit: Clients verbinden sich nach dem Laden neu
+        if (c.wifi) {
+          c.wifi.assoc = undefined;
+          c.wifi.status = c.wifi.enabled ? 'idle' : 'off';
+        }
+        if (c.ap) c.ap.clients = {};
+      }
+    }
+    this.resetRuntime();
+    this.p5.wirelessSync();
+  }
+
   /** Setzt Zeit, Queue, Log und Laufzeitzustand zurück; Topologie und Konfiguration bleiben. */
   resetRuntime(): void {
     const s = this.state;
@@ -169,54 +189,57 @@ export class Engine {
       link.busyUntil = 0;
       link.lastActivityT = -1;
     }
-    for (const dev of Object.values(s.devices)) {
-      delete dev.crashed;
-      const cfg = dev.config;
-      if (cfg.kind === 'host' || cfg.kind === 'router' || cfg.kind === 'switch') {
-        resetIpRuntime(cfg);
-        cfg.pings = [];
-        cfg.traces = [];
-        cfg.nextPingId = 1;
-        cfg.nextTraceId = 1;
-        cfg.nextIpId = 1;
-      }
-      if (cfg.kind === 'host') {
-        cfg.tcp = {};
-        cfg.requests = [];
-        cfg.dnsPending = {};
-        cfg.dnsResults = {};
-        cfg.dnsCache = {};
-        cfg.dhcpClient.state = cfg.dhcpClient.enabled ? 'init' : 'off';
-      } else if (cfg.kind === 'router' || cfg.kind === 'switch') {
-        cfg.nat.table = [];
-        routingResetRuntime(cfg);
-        if (cfg.kind === 'switch') {
-          cfg.macTable = {};
-          cfg.stp.instances = {};
-        }
-      } else if (cfg.kind === 'hub') cfg.busyUntil = 0;
-      this.p5.powerOff(dev);
-      for (const p of dev.ports) {
-        p.txBusyUntil = 0;
-        p.counters = {
-          inPkts: 0,
-          outPkts: 0,
-          inBytes: 0,
-          outBytes: 0,
-          inErrors: 0,
-          outErrors: 0,
-          collisions: 0,
-        };
-      }
-    }
+    for (const dev of Object.values(s.devices)) this.resetDeviceRuntime(dev);
     this.log.length = 0;
     this.logOffset = 0;
     this.refreshLinks();
     for (const dev of Object.values(s.devices)) this.startTimers(dev);
   }
 
+  /** Laufzeitzustand eines einzelnen Geräts zurücksetzen (Konfiguration bleibt). */
+  resetDeviceRuntime(dev: Device): void {
+    delete dev.crashed;
+    const cfg = dev.config;
+    if (cfg.kind === 'host' || cfg.kind === 'router' || cfg.kind === 'switch') {
+      resetIpRuntime(cfg);
+      cfg.pings = [];
+      cfg.traces = [];
+      cfg.nextPingId = 1;
+      cfg.nextTraceId = 1;
+      cfg.nextIpId = 1;
+    }
+    if (cfg.kind === 'host') {
+      cfg.tcp = {};
+      cfg.requests = [];
+      cfg.dnsPending = {};
+      cfg.dnsResults = {};
+      cfg.dnsCache = {};
+      cfg.dhcpClient.state = cfg.dhcpClient.enabled ? 'init' : 'off';
+    } else if (cfg.kind === 'router' || cfg.kind === 'switch') {
+      cfg.nat.table = [];
+      routingResetRuntime(cfg);
+      if (cfg.kind === 'switch') {
+        cfg.macTable = {};
+        cfg.stp.instances = {};
+      }
+    } else if (cfg.kind === 'hub') cfg.busyUntil = 0;
+    this.p5.powerOff(dev);
+    for (const p of dev.ports) {
+      p.txBusyUntil = 0;
+      p.counters = {
+        inPkts: 0,
+        outPkts: 0,
+        inBytes: 0,
+        outBytes: 0,
+        inErrors: 0,
+        outErrors: 0,
+        collisions: 0,
+      };
+    }
+  }
+
   /** Hintergrund-Timer (STP, VTP) eines Geräts starten. */
-  private startTimers(dev: Device): void {
+  startTimers(dev: Device): void {
     if (dev.config.kind === 'switch' && dev.powered) {
       this.withCtx(dev, (ctx) => switchStart(ctx, dev as SwitchDev));
     }

@@ -128,7 +128,8 @@ export function addPppoe(r: Registry<CliSession>): void {
     });
   }
   r.add({
-    modes: IFM,
+    // Nicht im Subinterface-Modus: dort gehört `encapsulation` zu `encapsulation dot1Q <vlan>` (Router-on-a-Stick)
+    modes: ['config-if', 'config-if-range'],
     only: 'router',
     negatable: true,
     slots: [

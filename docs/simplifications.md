@@ -326,3 +326,12 @@ supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolg
 - **NTP-Authentifizierung:** Digest wird als Zeichenkette verglichen (kein echtes MD5); `ntp authentication-key` wird als Typ 7 gerendert.
 - **SSH:** Standardversion nach Schlüsselerzeugung ist „1.99“, funktional wird immer SSHv2 gesprochen.
 - **Syslog:** Console-/Monitor-Level werden gespeichert und angezeigt, filtern die auf das Terminal ausgegebenen Meldungen aber nicht.
+
+## Persistenz (Phase 6, persist)
+
+- `.nsim` speichert den Entwurf, nicht den Laufzeitzustand: Nach dem Öffnen (und nach Undo) beginnt die virtuelle Zeit bei 0, Log, ARP-/MAC-Tabellen, DHCP-Leases und Routing-Nachbarschaften werden neu aufgebaut (Konvergenzzeit wie nach einem Neustart).
+- Undo setzt die Laufzeit zurück (siehe oben) und verwirft den Simulations-Schritt-zurück-Verlauf. Es gibt keine Gruppierung mehrerer Aktionen zu einem Schritt außer innerhalb einer Dienstmethode.
+- Terminal-Eingaben in Host-Shells (z. B. `ipconfig`) sind nicht rückgängig machbar; für Router/Switch zählt die `running-config`-Änderung.
+- Kopieren/Einfügen arbeitet mit der Auswahl der Oberfläche (aktuell ein Gerät; Mehrfachauswahl über `setSelectionProvider`), nicht mit der System-Zwischenablage. HSRP-Virtuell-IPs und statische NAT-Adressen kopierter Router werden nicht umgeschrieben.
+- Importvalidierung der Gerätekonfiguration prüft Struktur und Grundtypen gegen die Standardkonfiguration, nicht jeden Wertebereich; inhaltlich unsinnige Werte fängt der Gerätefehlerschutz der Engine ab (Gerät „crashed“).
+- Autosave und zuletzt verwendete Dateien liegen im Browser (IndexedDB); ohne Speicherzugriff (privates Fenster) entfallen sie ohne Fehlermeldung.

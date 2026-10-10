@@ -4,6 +4,16 @@ import { setLang, type Lang } from '../i18n';
 import { download, logToCsv } from '../format';
 import { useStore } from '../store';
 import {
+  copySelection,
+  fileOpen,
+  fileSave,
+  openBytes,
+  pasteClipboard,
+  redo,
+  undo,
+} from '../persist/actions';
+import { usePersist } from '../persist/state';
+import {
   alignSelected,
   distributeSelected,
   fitView,
@@ -26,6 +36,7 @@ export function MenuBar() {
   const [open, setOpen] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const s = useStore();
+  const ps = usePersist();
   const ux = useUx();
   const menuKeys = useMenuKeys(ref, open, setOpen);
 
@@ -47,8 +58,14 @@ export function MenuBar() {
   const menus: Record<string, Item[]> = {
     file: [
       { label: t('menu.new'), onClick: () => void s.newTopology() },
-      later('menu.open'),
-      later('menu.save'),
+      { label: `${t('menu.open')} (Ctrl+O)`, onClick: fileOpen },
+      { label: `${t('menu.save')} (Ctrl+S)`, onClick: () => void fileSave() },
+      { label: `${t('menu.saveAs')} (Ctrl+Shift+S)`, onClick: () => void fileSave(true) },
+      { label: t('menu.templates'), onClick: () => usePersist.setState({ templatesOpen: true }) },
+      ...ps.recents.map((r) => ({
+        label: `${t('menu.recent')}: ${r.name}`,
+        onClick: () => void openBytes(r.bytes, r.name),
+      })),
       {
         label: t('menu.exportCsv'),
         onClick: () => download('events.csv', logToCsv(t, s.log), 'text/csv'),
@@ -56,8 +73,18 @@ export function MenuBar() {
       },
     ],
     edit: [
-      later('menu.undo'),
-      later('menu.redo'),
+      { label: `${t('menu.undo')} (Ctrl+Z)`, onClick: () => void undo(), disabled: ps.undo === 0 },
+      { label: `${t('menu.redo')} (Ctrl+Y)`, onClick: () => void redo(), disabled: ps.redo === 0 },
+      {
+        label: `${t('menu.copy')} (Ctrl+C)`,
+        onClick: copySelection,
+        disabled: !s.selectedDevice,
+      },
+      {
+        label: `${t('menu.paste')} (Ctrl+V)`,
+        onClick: () => void pasteClipboard(),
+        disabled: ps.clipboard.length === 0,
+      },
       {
         label: t('menu.delete'),
         onClick: () => void s.deleteSelected(),

@@ -190,3 +190,8 @@ Anzeige/Betrieb: `show pppoe session`, `show ip interface brief` (Dialer/Virtual
 **Management:** `logging buffered [SIZE] [LEVEL]`, `logging console|monitor [LEVEL]`, `ntp authenticate`, `ntp authentication-key N md5 KEY [7]`, `ntp trusted-key N`, `ntp server IP key N`, `ip ssh time-out S`, `ip ssh authentication-retries N`, `snmp-server group G v3 noauth|auth|priv`, `snmp-server user U G v3 [auth md5|sha PW [priv aes 128|des PW]]`, `show snmp group|user`.
 
 **QoS:** `class-map [match-all|match-any] NAME` (`match dscp V…`, `match access-group [name] ACL`, `match protocol P`, `match any`), `policy-map NAME` (`class NAME|class-default` mit `set dscp V`, `bandwidth …`, `priority …`, `police …`, `queue-limit …`, `shape …`), Schnittstelle `service-policy input|output NAME`, `show class-map [NAME]`, `show policy-map [NAME]`, `show policy-map interface [IF]`.
+
+## Persistenz-Änderungen
+
+- `encapsulation dot1Q <vlan>` im Subinterface-Modus funktionierte nicht (der PPPoE-Befehl `encapsulation ppp` verdeckte ihn, zudem verglich der Parser Schlüsselwörter mit Großbuchstaben nie). Behoben; Router-on-a-Stick per CLI ist über die Vorlage `router-on-a-stick` getestet.
+- Die Vorlagen (`Datei → Vorlagen`) sind reine IOS-Konfigurationen und lassen sich in den Terminals per `show running-config` nachlesen.

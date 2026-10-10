@@ -25,7 +25,7 @@ function positions(ids?: string[]): Record<string, Pt> {
  * Pfeiltasten – die Persistenz kann hier einen Undo-Schritt bündeln.
  */
 export async function moveDevices(moves: Record<string, Pt>): Promise<void> {
-  await Promise.all(Object.entries(moves).map(([id, p]) => api.moveDevice(id, p)));
+  await api.moveMany(moves);
 }
 
 export function selection(): string[] {
@@ -81,7 +81,7 @@ export async function deleteSelection(): Promise<void> {
   }
   const ids = ux.selectedIds;
   if (ids.length > 1) {
-    await Promise.all(ids.map((id) => api.removeDevice(id)));
+    await api.removeMany(ids);
     ux.setSelected([]);
     useStore.getState().selectDevice(null);
     return;
