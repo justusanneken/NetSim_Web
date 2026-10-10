@@ -80,13 +80,16 @@ export function addMgmtExtras(r: Registry<CliSession>): void {
       NTP,
       K('authentication-key', 'Authentication key for trusted time sources'),
       P('id', 'int', '<1-4294967295>', 'Key number', [1, 4294967295]),
-      K('md5', 'MD5 authentication'),
-      P('key', 'word', 'WORD', 'MD5 key'),
+      // optional, damit `no ntp authentication-key N` (wie IOS) ohne Schlüssel angenommen wird
+      opt({ ...K('md5', 'MD5 authentication'), name: 'md5' }),
+      opt(P('key', 'word', 'WORD', 'MD5 key')),
       opt(P('enc', 'int', '<0-7>', 'Encryption type (7 = hidden)', [0, 7])),
     ],
     run: (s, a) => {
       const n = mg(s).ntp;
       const id = Number(a.id);
+      if (a.id === undefined || (!s.negated && (a.md5 === undefined || a.key === undefined)))
+        throw new CliError('% Incomplete command.');
       if (s.negated) {
         if (n.keys) delete n.keys[id];
         return;

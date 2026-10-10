@@ -204,9 +204,11 @@ export function addPhase5(r: Registry<CliSession>): void {
       K('ip', 'Global IP configuration subcommands'),
       K('ssh', 'Configure ssh options'),
       K('version', 'Set protocol version'),
-      choice('v', ['1', 'Protocol version 1'], ['2', 'Protocol version 2']),
+      // optional: `no ip ssh version` ohne Nummer wie bei IOS
+      opt(choice('v', ['1', 'Protocol version 1'], ['2', 'Protocol version 2'])),
     ],
     run: (s, a) => {
+      if (!s.negated && a.v === undefined) throw new CliError('% Incomplete command.');
       mg(s).ssh.version = s.negated ? 2 : (Number(a.v) as 1 | 2);
       mg(s).ssh.explicit = !s.negated;
     },
@@ -316,10 +318,15 @@ export function addPhase5(r: Registry<CliSession>): void {
       P('lvl', 'word', 'LEVEL', 'Logging severity level (0-7 or name)'),
     ],
     run: (s, a) => {
+      if (s.negated) {
+        // `no logging trap` (ohne Stufe) setzt wie IOS auf informational zurück
+        mg(s).syslog.trap = 6;
+        return;
+      }
       const l = a.lvl as string;
       const n = /^\d$/.test(l) ? Number(l) : SEVERITY_NAMES.findIndex((x) => x.startsWith(l));
       if (n < 0 || n > 7) throw new CliError('% Invalid input detected');
-      mg(s).syslog.trap = s.negated ? 6 : n;
+      mg(s).syslog.trap = n;
     },
   });
   r.add({

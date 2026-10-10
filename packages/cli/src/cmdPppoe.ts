@@ -233,10 +233,13 @@ export function addPppoe(r: Registry<CliSession>): void {
     slots: [
       K('ppp', 'Point-to-Point Protocol'),
       K('authentication', 'Set authentication method'),
-      choice(
-        'm',
-        ['chap', 'Challenge Handshake Authentication Protocol (CHAP)'],
-        ['pap', 'Password Authentication Protocol (PAP)'],
+      // optional, damit `no ppp authentication` (IOS) ohne Methode gilt
+      opt(
+        choice(
+          'm',
+          ['chap', 'Challenge Handshake Authentication Protocol (CHAP)'],
+          ['pap', 'Password Authentication Protocol (PAP)'],
+        ),
       ),
       opt(
         choice(
@@ -248,6 +251,7 @@ export function addPppoe(r: Registry<CliSession>): void {
       ),
     ],
     run: (s, a) => {
+      if (!s.negated && a.m === undefined) throw new CliError('% Incomplete command.');
       withIface(s, (ic) => {
         if (ic.serial) {
           const list = [a.m, a.m2].filter((x) => x === 'chap' || x === 'pap') as ('chap' | 'pap')[];

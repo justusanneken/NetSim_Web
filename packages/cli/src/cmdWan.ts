@@ -104,7 +104,8 @@ export function addWan(r: Registry<CliSession>): void {
       K('pap', 'PAP authentication'),
       K('sent-username', 'Set PAP username and password to send'),
       P('user', 'word', 'WORD', 'Username'),
-      K('password', 'Set PAP password'),
+      // optional (benannt), damit `no ppp pap sent-username` wie bei IOS gilt
+      opt({ ...K('password', 'Set PAP password'), name: 'pwkw' }),
       opt(P('lead', 'word', '0|7', 'Encryption type / password')),
       opt(P('pw', 'word', 'LINE', 'Password')),
     ],
@@ -116,7 +117,7 @@ export function addWan(r: Registry<CliSession>): void {
           return;
         }
         const pw = a.pw ?? a.lead;
-        if (pw === undefined) throw new CliError('% Incomplete command.');
+        if (pw === undefined || a.pwkw === undefined) throw new CliError('% Incomplete command.');
         sc.papUser = a.user as string;
         sc.papPass = pw;
       });

@@ -445,6 +445,7 @@ export function addPhase3(r: Registry<CliSession>): void {
   r.add({
     modes: CF,
     only: 'switch',
+    negatable: true,
     slots: [
       K('errdisable', 'Error disable'),
       K('recovery', 'Configure errdisable recovery'),
@@ -453,7 +454,8 @@ export function addPhase3(r: Registry<CliSession>): void {
     ],
     run: (s, a) => {
       const cfg = s.device.config;
-      if (cfg.kind === 'switch') cfg.errdisableRecovery.intervalSec = Number(a.sec);
+      if (cfg.kind === 'switch')
+        cfg.errdisableRecovery.intervalSec = s.negated ? 300 : Number(a.sec);
     },
   });
   r.add({
@@ -642,7 +644,8 @@ export function addPhase3(r: Registry<CliSession>): void {
       K('spanning-tree', 'Spanning Tree Subsystem'),
       K('portfast', 'Enable an interface to move directly to forwarding on link up'),
     ],
-    run: (s) => swPorts(s, () => ({ portfast: !s.negated })),
+    // `no spanning-tree portfast` stellt den Standard her (auch ein `portfast disable` entfällt)
+    run: (s) => swPorts(s, () => ({ portfast: !s.negated, portfastOff: false })),
   });
   r.add({
     modes: IF,
