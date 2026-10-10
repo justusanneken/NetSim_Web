@@ -107,6 +107,8 @@ export class Engine {
   readonly p5 = new Phase5(this);
   /** Signatur der zuletzt verarbeiteten Switch-Konfiguration (löst STP-Neuaufbau aus). */
   private readonly switchSig = new Map<string, string>();
+  /** Lehr-Werkzeuge (Szenarien, geplante PDUs): Timer `teach:<name>` werden hierhin gemeldet (nicht Teil des Zustands). */
+  teachTimer?: (dev: Device, name: string) => void;
 
   constructor(opts: EngineOptions = {}) {
     const seed = opts.seed ?? 1;
@@ -1573,6 +1575,10 @@ export class Engine {
     }
     if (name.startsWith('svc:')) {
       this.withCtx(dev, (ctx) => this.p5.timer(ctx, dev, name.slice(4)));
+      return;
+    }
+    if (name.startsWith('teach:')) {
+      this.teachTimer?.(dev, name.slice(6));
       return;
     }
     if (cfg.kind === 'host') this.withCtx(dev, (ctx) => hostTimer(ctx, cfg, name));

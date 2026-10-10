@@ -5,10 +5,11 @@ import {
   HostShell,
   ShellStack,
   Terminal,
+  exampleActivities,
   renderRunningConfig,
   type Shell,
 } from '@netsim/cli';
-import { EngineService5, type ViewModel } from '@netsim/engine';
+import { TeachService, type ViewModel } from '@netsim/engine';
 import { Persistence } from './persistGlue';
 import type { UndoInfo } from './undo';
 
@@ -21,7 +22,7 @@ interface TermEntry {
 const MAX_TRANSCRIPT = 60_000;
 
 /** Fester Default-Seed ⇒ reproduzierbare Läufe (siehe docs/decisions.md). */
-class WorkerService extends EngineService5 {
+class WorkerService extends TeachService {
   private subscriber: Subscriber | undefined;
   private readonly terms = new Map<string, TermEntry>();
   /** Persistenz: .nsim, Vorlagen, Copy/Paste, Undo/Redo (umhüllt alle ändernden Methoden). */
@@ -38,6 +39,22 @@ class WorkerService extends EngineService5 {
       last = now;
       if (this.consumeDirty()) this.subscriber?.(this.getView());
     }, 33);
+  }
+
+  /** Mitgelieferte Beispielaufgaben (Titel zweisprachig). */
+  exampleList(): { id: string; title: unknown; description: unknown; difficulty?: number }[] {
+    return exampleActivities().map((a) => ({
+      id: a.meta.id,
+      title: a.meta.title,
+      description: a.meta.description,
+      difficulty: a.meta.difficulty,
+    }));
+  }
+
+  exampleLoad(id: string) {
+    const a = exampleActivities().find((x) => x.meta.id === id);
+    if (!a) return { ok: false as const, error: 'activity.err.none' };
+    return this.activityLoad(a);
   }
 
   subscribe(cb: Subscriber): void {

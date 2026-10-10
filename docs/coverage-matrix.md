@@ -212,3 +212,17 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Datei → Neu/Öffnen/Speichern (Strg+S/O), Zuletzt, Fehlermeldungen                                                                               | fertig | `e2e › persist`                                    |
 | Autosave und Wiederherstellung nach Absturz                                                                                                     | fertig | `e2e › persist`                                    |
 | 14 Vorlagen (SOHO, VLAN+Trunk, Router-on-a-Stick, OSPF, NAT/PAT, DHCP-Relay, STP-Ring, EtherChannel, ACL, WLAN, HSRP, IPv6/OSPFv3, eBGP, IPsec) | fertig | `cli › templates`                                  |
+
+## Szenarien, Aufgabenmodus, Challenge Me (teach)
+
+| Spezifikation                                                                                        | Stand  | Test                                                                |
+| ---------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------- |
+| Simple PDU / Complex PDU (Protokoll, Port, Quell-IP, Nutzlast, Zeit, Wiederholung)                   | fertig | `engine › teach_pdu`, `engine › teach_scenario`, `e2e › teach`      |
+| PDU-Liste mit Successful/Failed, Rerun, Delete                                                       | fertig | `engine › teach_scenario`, `e2e › teach`                            |
+| Mehrere Szenarien je Topologie (anlegen, wechseln, löschen, Beschreibung), `.nsim`-Feld `scenarios`  | fertig | `engine › teach_scenario`, `e2e › teach`                            |
+| Aufgabenmodus `.nsact` (zlib + Zod), Start-/Antwortnetz, Gewichte, Hinweise, Schritte, Zeitlimit     | fertig | `engine › teach_activity`, `engine › teach_scenario`, `e2e › teach` |
+| Prüfungen als Zustandsprädikate (Gerät, IP, VLAN, Route, Config semantisch, Ping, Dienst, OSPF Full) | fertig | `engine › teach_checks`, `cli › teach_activities`                   |
+| Fortschrittsprozent, Ergebnis je Prüfung, „Prüfen“, optionaler Live-Fortschritt                      | fertig | `e2e › teach` (Prüfen), `engine › teach_scenario`                   |
+| Autorenoberfläche (Prüfungen per Formular, aus Antwortnetz ableiten, Export), Sperroptionen          | fertig | `engine › teach_activity` (Ableiten), `web › teach` (Formular)      |
+| Fünf Beispielaufgaben (VLAN/Trunk, Router-on-a-Stick, OSPF, PAT, ACL), de/en                         | fertig | `cli › teach_activities`, `e2e › teach` (ACL)                       |
+| Challenge Me (Entscheidung je Schicht, Erklärung, Punktestand)                                       | fertig | `engine › teach_challenge`, `e2e › teach`                           |

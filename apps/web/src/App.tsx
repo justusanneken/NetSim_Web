@@ -15,6 +15,10 @@ import { Toolbar } from './components/Toolbar';
 import { PersistUi } from './persist/PersistUi';
 import { sim, useStore } from './store';
 import { translateMsg } from './format';
+import { ActivityPanel } from './teach/ActivityPanel';
+import { AuthorDialog } from './teach/AuthorDialog';
+import { PduDialog } from './teach/PduDialog';
+import { PduPanel } from './teach/PduPanel';
 import { deleteSelection, selectAll } from './ux/actions';
 import { BackgroundDialog } from './ux/BackgroundDialog';
 import { ContextMenu } from './ux/ContextMenu';
@@ -88,6 +92,8 @@ export function App() {
         )}
         <PortPicker />
         <DeviceDialog />
+        <PduDialog />
+        <AuthorDialog />
         <PersistUi />
         <ContextMenu />
         <NetworkInfo />
@@ -113,6 +119,14 @@ export function App() {
         <details open>
           <summary>{t('panel.title')}</summary>
           <DevicePanel />
+        </details>
+        <details>
+          <summary>{t('scenario.title')}</summary>
+          <PduPanel />
+        </details>
+        <details id="activity-details">
+          <summary>{t('activity.title')}</summary>
+          <ActivityPanel />
         </details>
         <details open>
           <summary>{t('inspector.title')}</summary>

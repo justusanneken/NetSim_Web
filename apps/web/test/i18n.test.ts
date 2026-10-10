@@ -9,6 +9,8 @@ import deProto from '../src/i18n/de.proto.json';
 import enProto from '../src/i18n/en.proto.json';
 import deT from '../src/i18n/de.tcp.json';
 import enT from '../src/i18n/en.tcp.json';
+import deTeach from '../src/i18n/de.teach.json';
+import enTeach from '../src/i18n/en.teach.json';
 import dePersist from '../src/i18n/de.persist.json';
 import enPersist from '../src/i18n/en.persist.json';
 
@@ -26,6 +28,7 @@ const de: Record<string, string> = {
   ...dePersist,
   ...deUx,
   ...deCcna,
+  ...deTeach,
 };
 const en: Record<string, string> = {
   ...en0,
@@ -35,6 +38,7 @@ const en: Record<string, string> = {
   ...enPersist,
   ...enUx,
   ...enCcna,
+  ...enTeach,
 };
 
 function walk(dir: string, out: string[] = []): string[] {

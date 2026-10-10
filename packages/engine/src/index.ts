@@ -75,5 +75,6 @@ export {
 export { isPortfast, isBpduguard, recoveryOn } from './devices/switch';
 export { acl6Eval } from './acl6';
 export { qosOf, defaultQos, KNOWN_PROTOCOLS } from './qos';
+export * from './teach';
 export * from './nsim';
 export * from './clone';

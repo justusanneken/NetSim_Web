@@ -277,7 +277,7 @@ export class Registry<C> {
       }
       let chosen: { pos: Pos<C>; j: number; word?: string }[] = kwHits;
       if (kwHits.length > 0) {
-        const exact = kwHits.filter((h) => h.word === low);
+        const exact = kwHits.filter((h) => h.word.toLowerCase() === low);
         if (exact.length > 0) chosen = exact;
         const words = new Set(chosen.map((h) => (h as { word: string }).word));
         if (words.size > 1) {

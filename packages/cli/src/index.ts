@@ -12,6 +12,7 @@ export { ShellStack } from './shellstack';
 export type { ShellNest } from './shell';
 export { RemoteLoginShell, deviceByIp } from './remote';
 export { FtpShell } from './ftpshell';
+export { exampleActivities } from './activities';
 export {
   TEMPLATES,
   templateById,

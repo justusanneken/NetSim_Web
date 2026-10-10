@@ -1,0 +1,276 @@
+/* Lehr-Werkzeuge: Szenarien/PDU-Liste, Aufgabenmodus, Autor, Challenge Me (nur Farb-Tokens) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.nowrap {
+  white-space: nowrap;
+}
+button.primary {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-color: var(--accent-bg);
+}
+
+.pdu-panel,
+.activity-panel {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pdu-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.pdu-row input[type='text'],
+.pdu-row input:not([type]),
+.pdu-row select {
+  flex: 1;
+  min-width: 80px;
+}
+.pdu-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pdu-block textarea,
+.author-body textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  resize: vertical;
+}
+.pdu-status.successful {
+  color: var(--ok);
+}
+.pdu-status.failed {
+  color: var(--bad);
+}
+.pdu-status.pending,
+.pdu-status.unsent {
+  color: var(--muted);
+}
+table.pdu-list td,
+table.pdu-list th {
+  vertical-align: top;
+}
+
+.pdu-dialog {
+  height: auto;
+  max-height: 92vh;
+  width: min(520px, 94vw);
+}
+.pdu-form {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  overflow: auto;
+}
+.pdu-form label,
+.author-body .fld {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pdu-form fieldset,
+.author-body fieldset {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pdu-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--panel-2);
+}
+
+/* Aufgabe (Teilnehmer) */
+.act-title {
+  margin: 0;
+  font-size: 15px;
+}
+.act-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.act-progress .bar {
+  flex: 1;
+  min-width: 100px;
+  height: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.act-progress .fill {
+  height: 100%;
+  background: var(--ok);
+  transition: width 0.2s;
+}
+.act-progress .timer.low {
+  color: var(--bad);
+  font-weight: 600;
+}
+.act-steps {
+  margin: 4px 0 4px 18px;
+  padding: 0;
+}
+.act-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.act-check {
+  padding: 3px 6px;
+  border-left: 3px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 4px;
+}
+.act-check.pass {
+  border-left-color: var(--ok);
+}
+.act-check.fail {
+  border-left-color: var(--bad);
+}
+.act-check .mark {
+  display: inline-block;
+  width: 1.2em;
+  font-weight: 700;
+}
+.act-check.pass .mark {
+  color: var(--ok);
+}
+.act-check.fail .mark {
+  color: var(--bad);
+}
+
+/* Autor */
+.author-dialog {
+  width: min(920px, 96vw);
+  height: min(760px, 92vh);
+}
+.author-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.author-check {
+  flex: 1 1 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--panel-2);
+}
+.author-check-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.author-check-head .icon-btn {
+  margin-left: auto;
+}
+.author-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.author-fields .fld {
+  flex: 1 1 140px;
+}
+.author-fields .fld.wide {
+  flex: 1 1 100%;
+}
+.author-body .chk,
+.pdu-row .chk,
+.challenge-bar .chk {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Challenge Me */
+.challenge-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.challenge-bar .score {
+  font-weight: 600;
+}
+.challenge-quiz {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 8px;
+}
+fieldset.cq {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+fieldset.cq.right {
+  border-color: var(--ok);
+}
+fieldset.cq.wrong {
+  border-color: var(--bad);
+}
+fieldset.cq .layer {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.cq-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.cq-opt.is-correct {
+  background: var(--row-sel);
+}
+.cq-explain {
+  margin-top: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--panel-2);
+}
+fieldset.cq.right .cq-explain strong {
+  color: var(--ok);
+}
+fieldset.cq.wrong .cq-explain strong {
+  color: var(--bad);
+}
