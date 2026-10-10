@@ -123,6 +123,38 @@ export function addWan(r: Registry<CliSession>): void {
     },
   });
 
+  // ------------------------------------------------------------ EIGRP-Timer je Schnittstelle
+  for (const [word, help, key] of [
+    ['hello-interval', 'Configures EIGRP-IPv4 hello interval', 'hello'],
+    ['hold-time', 'Configures EIGRP-IPv4 hold time', 'hold'],
+  ] as const) {
+    r.add({
+      modes: IFM,
+      only: 'router',
+      negatable: true,
+      slots: [
+        K('ip', 'Interface Internet Protocol config commands'),
+        K(word, help),
+        K('eigrp', 'EIGRP-IPv4 interface subcommands'),
+        P('asn', 'int', '<1-65535>', 'Autonomous system number', [1, 65535]),
+        P('sec', 'int', '<1-65535>', 'Seconds', [1, 65535]),
+      ],
+      run: (s, a) => {
+        for (const id of targets(s)) {
+          s.engine.ensureIface(s.deviceId, id);
+          const ic = l3c(s).ifaces[id];
+          if (!ic) continue;
+          const t = ((ic.eigrpTimers ??= {})[Number(a.asn)] ??= {});
+          t[key] = s.negated ? undefined : Number(a.sec);
+          if (t.hello === undefined && t.hold === undefined) delete ic.eigrpTimers?.[Number(a.asn)];
+        }
+        // Hello-Timer neu aufbauen
+        for (const p of Object.values(l3c(s).routing.eigrp)) p.helloIfs = [];
+        touch(s);
+      },
+    });
+  }
+
   // ------------------------------------------------------------ show
   const SHOW = K('show', 'Show running system information');
   r.add({

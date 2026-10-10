@@ -123,6 +123,10 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
   if (c.bandwidth !== undefined) out.push(` bandwidth ${c.bandwidth}`);
   if (c.delay !== undefined) out.push(` delay ${c.delay}`);
   if (c.ripSplitHorizon === false) out.push(' no ip split-horizon');
+  for (const [asn, t] of Object.entries(c.eigrpTimers ?? {})) {
+    if (t.hello !== undefined) out.push(` ip hello-interval eigrp ${asn} ${t.hello}`);
+    if (t.hold !== undefined) out.push(` ip hold-time eigrp ${asn} ${t.hold}`);
+  }
   const o = c.ospf;
   if (o) {
     if (o.area !== undefined) out.push(` ip ospf ${o.pid ?? 1} area ${area(o.area)}`);

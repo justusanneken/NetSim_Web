@@ -652,6 +652,8 @@ export interface IfaceCfg {
   ripSplitHorizon?: boolean;
   /** Serial-Port: Kapselung, Taktrate, PPP. */
   serial?: SerialCfg;
+  /** EIGRP: `ip hello-interval eigrp ASN S` / `ip hold-time eigrp ASN S` je AS. */
+  eigrpTimers?: Record<number, { hello?: number; hold?: number }>;
 }
 export interface V6IfCfg {
   /** `ipv6 enable`: Link-Local ohne globale Adresse. */

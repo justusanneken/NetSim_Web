@@ -168,7 +168,7 @@ export function eigrpSync(rt: Rt): void {
     for (const i of ifs) {
       if (i.kind === 'loop' || isPassive(c, i.id) || c.helloIfs.includes(i.id)) continue;
       c.helloIfs.push(i.id);
-      setBg(rt, `${tp(c)}:hello:${c.asn}:${i.id}`, 100_000 + rt.ctx.rand(SEC), HELLO * SEC);
+      setBg(rt, `${tp(c)}:hello:${c.asn}:${i.id}`, 100_000 + rt.ctx.rand(SEC), helloOf(i, c) * SEC);
       rlog(rt, 'EIGRP', { key: 'eigrp.if.up', params: { iface: nameOf(rt, i.id), asn: c.asn } });
     }
   }
@@ -190,8 +190,20 @@ export function eigrpReset(c: EigrpCfg): void {
 
 // ------------------------------------------------------------------ Senden (zuverlässig)
 
-function msgBase(rt: Rt, c: EigrpCfg, op: EigrpMsg['op']): EigrpMsg {
-  return { op, asn: c.asn, routerId: eigrpRid(rt, c), holdSec: HOLD, seq: 0, ack: 0 };
+/** Hello-/Hold-Zeit der Schnittstelle (Default 5/15 s; `ip hello-interval|hold-time eigrp`). */
+const helloOf = (i: Iface, c: EigrpCfg): number => i.cfg.eigrpTimers?.[c.asn]?.hello ?? HELLO;
+const holdOf = (i: Iface | undefined, c: EigrpCfg): number =>
+  i?.cfg.eigrpTimers?.[c.asn]?.hold ?? HOLD;
+
+function msgBase(rt: Rt, c: EigrpCfg, op: EigrpMsg['op'], iface?: Iface): EigrpMsg {
+  return {
+    op,
+    asn: c.asn,
+    routerId: eigrpRid(rt, c),
+    holdSec: holdOf(iface, c),
+    seq: 0,
+    ack: 0,
+  };
 }
 
 function sendTo(rt: Rt, c: EigrpCfg, n: EigrpNbr, msg: EigrpMsg): void {
@@ -820,7 +832,8 @@ export function eigrpTimer(rt: Rt, name: string): boolean {
   if (!c || !enabled(rt, c)) return true;
   if (kind === 'hello') {
     const iface = ifOf(rt, c, rest);
-    if (iface && !isPassive(c, iface.id)) emit(rt, c, iface, undefined, msgBase(rt, c, 'hello'));
+    if (iface && !isPassive(c, iface.id))
+      emit(rt, c, iface, undefined, msgBase(rt, c, 'hello', iface));
     return true;
   }
   if (kind === 'sia') {
