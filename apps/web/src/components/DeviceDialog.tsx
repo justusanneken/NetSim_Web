@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DeviceConfig, HostIpConfig } from './DevicePanel';
 import { HostIpv6 } from './PanelRouting';
@@ -18,6 +18,8 @@ import {
 import { WifiClient } from './PanelWireless';
 import { ProgramTab } from './PanelProgram';
 import { lockApps, lockTabs, useTeach } from '../teach/teachStore';
+import { AttributesTab } from '../ux/AttributesTab';
+import { useFocusTrap } from '../ux/useFocusTrap';
 
 /** Geräte-Dialog mit Tabs: Config, CLI (Router/Switch), Desktop (Hosts). */
 export function DeviceDialog() {
@@ -26,6 +28,8 @@ export function DeviceDialog() {
   const dev = useStore((s) => s.view?.devices.find((d) => d.id === s.dialog?.deviceId));
   const setTab = useStore((s) => s.setDialogTab);
   const close = useStore((s) => s.closeDialog);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef, !!dialog);
 
   useEffect(() => {
     if (!dialog) return;
@@ -42,10 +46,10 @@ export function DeviceDialog() {
   const end = isEndDevice(dev);
   const locks = useTeach.getState().activity?.locks;
   const tabs0 = end
-    ? ['desktop', 'config', ...(dev.p5?.iot ? ['program'] : []), 'physical']
+    ? ['desktop', 'config', ...(dev.p5?.iot ? ['program'] : []), 'physical', 'attributes']
     : hasCli(dev)
-      ? ['config', 'cli', 'physical']
-      : ['config', 'physical'];
+      ? ['config', 'cli', 'physical', 'attributes']
+      : ['config', 'physical', 'attributes'];
   const tabs = lockTabs(tabs0, locks);
   const apps0: { id: string; label: string }[] = [
     { id: 'ip', label: 'desktop.ip' },
@@ -64,7 +68,14 @@ export function DeviceDialog() {
 
   return (
     <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={dev.name}>
+      <div
+        ref={dialogRef}
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={dev.name}
+        tabIndex={-1}
+      >
         <div className="dialog-head">
           <strong>{dev.name}</strong>
           <span className="muted">{dev.model}</span>
@@ -86,12 +97,14 @@ export function DeviceDialog() {
           </button>
         </div>
         <div className="dialog-body">
-          {!dev.powered && tab !== 'config' && tab !== 'physical' ? (
+          {!dev.powered && tab !== 'config' && tab !== 'physical' && tab !== 'attributes' ? (
             <p className="warn pad">{t('dev.off')}</p>
           ) : tab === 'config' ? (
             <div className="scroll">
               <DeviceConfig dev={dev} />
             </div>
+          ) : tab === 'attributes' ? (
+            <AttributesTab dev={dev} />
           ) : tab === 'physical' ? (
             <PhysicalTab dev={dev} />
           ) : tab === 'program' ? (

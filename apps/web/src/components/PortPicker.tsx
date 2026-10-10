@@ -1,4 +1,6 @@
+import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useFocusTrap } from '../ux/useFocusTrap';
 import { useStore } from '../store';
 
 /** Popup zur Port-Auswahl an beiden Kabelenden. */
@@ -9,6 +11,8 @@ export function PortPicker() {
   const cableStart = useStore((s) => s.cableStart);
   const pickPort = useStore((s) => s.pickPort);
   const cancel = useStore((s) => s.cancel);
+  const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref, !!picker);
   if (!picker || !view) return null;
   const dev = view.devices.find((d) => d.id === picker.deviceId);
   if (!dev) return null;
@@ -17,7 +21,14 @@ export function PortPicker() {
     top: Math.min(picker.y, window.innerHeight - 320),
   };
   return (
-    <div className="port-picker" style={style} role="dialog" aria-label={t('picker.title')}>
+    <div
+      ref={ref}
+      className="port-picker"
+      style={style}
+      role="dialog"
+      aria-label={t('picker.title')}
+      tabIndex={-1}
+    >
       <div className="picker-head">
         <strong>{dev.name}</strong>
         <span className="muted">{cableStart?.port ? t('picker.second') : t('picker.first')}</span>
@@ -31,7 +42,10 @@ export function PortPicker() {
           .map((p) => (
             <li key={p.id}>
               <button disabled={!!p.linkId} onClick={() => void pickPort(p.id)}>
-                <span className={p.linkId ? (p.operUp ? 'dot up' : 'dot down') : 'dot free'} />
+                <span
+                  className={p.linkId ? (p.operUp ? 'dot up' : 'dot down') : 'dot free'}
+                  aria-hidden
+                />
                 {p.name}
                 <span className="muted">{p.linkId ? t('picker.used') : t('picker.free')}</span>
               </button>

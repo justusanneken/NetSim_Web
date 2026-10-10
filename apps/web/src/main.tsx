@@ -5,6 +5,7 @@ import './styles.css';
 import './phase5.css';
 import './proto.css';
 import './teach/teach.css';
+import './ux/ux.css';
 import { App } from './App';
 import { connectEngine } from './store';
 

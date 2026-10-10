@@ -302,6 +302,15 @@ supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolg
   einer PPPoE-Einwahl möglich, nicht am Virtual-Template. Nach einem Neustart der Gegenstelle bleibt die alte SA der anderen Seite bestehen (kein DPD, keine
   Lebensdauer): erst ein von der neu gestarteten Seite aufgebautes IKE oder `clear crypto sa` stellt das VPN wieder her. Entschlüsselte Pakete laufen danach durch die normale Eingangsverarbeitung der Schnittstelle (ACL-in, Weiterleitung).
 
+## UX (Phase 6)
+
+- **Gruppen/Cluster** sind ein beschrifteter Rahmen um Geräte (ein Gerät gehört zu höchstens einer Gruppe); Ziehen am Rahmen verschiebt die Mitglieder. Kein Einklappen zu einem Symbol.
+- **Hintergrundbild:** ein Bild, links oben bei (0, 0), wird auf höchstens 2000 px Kantenlänge verkleinert, Deckkraft einstellbar; keine Skalierung/Verschiebung.
+- **Notizen:** feste Breite, einfacher Text, keine Formatierung oder Pfeile.
+- **Equivalent IOS Commands:** Diff-Heuristik der running-config; Ersetzungen bekannter Befehle (`ip address`, `hostname`, …) erzeugen kein `no`, bei Sonderfällen kann die Folge von der handgeschriebenen IOS-Reihenfolge abweichen.
+- **Touch:** Tippen, langer Druck (Kontextmenü), Pinch/Zwei-Finger-Pan; Rubberband per Ein-Finger-Ziehen im Auswahlwerkzeug.
+- **Axe-Prüfung** schließt `color-contrast` aus dem dynamischen Lauf aus (Canvas nicht prüfbar); Kontraste der Tokens sind in `theme.test.ts` abgesichert.
+
 ## Szenarien, Aufgabenmodus, Challenge Me (teach)
 
 - **Complex PDU:** Protokolle ICMP, UDP, TCP, HTTP/HTTPS, DNS, Telnet, SSH, FTP, SMTP, POP3. UDP ohne Anwendung gilt als erfolgreich, wenn der Empfang im Log steht und binnen 1 s keine ICMP-Fehlermeldung zurückkommt; ein geschlossener Port ergibt (wie bei echten Systemen) Port Unreachable und damit „Failed“ (Packet Tracer wertet bloße Zustellung als Erfolg). TCP-Versuche zu Port 80/443/8080 prüfen nur die Erreichbarkeit (jede HTTP-Antwort), das Protokoll `http` erwartet einen Status < 400. Eine erfolgreiche TCP-Probeverbindung wird sofort geschlossen. Bei Wiederholungen ist „Successful“ nur, wenn alle Versuche gelingen. Die Paketgröße ergibt sich aus der Länge der Nutzlast.

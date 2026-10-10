@@ -6,6 +6,7 @@ import {
   ShellStack,
   Terminal,
   exampleActivities,
+  renderRunningConfig,
   type Shell,
 } from '@netsim/cli';
 import { TeachService, type ViewModel } from '@netsim/engine';
@@ -93,6 +94,15 @@ class WorkerService extends TeachService {
     }
     this.touch();
     return out;
+  }
+
+  /** running-config als Text (für „Equivalent IOS Commands“ der GUI); leer bei Geräten ohne IOS. */
+  runningConfig(id: string): string {
+    const d = this.engine.getDevice(id);
+    if (!d || (d.config.kind !== 'router' && d.config.kind !== 'switch')) return '';
+    return renderRunningConfig(this.engine, d as Parameters<typeof renderRunningConfig>[1]).join(
+      '\n',
+    );
   }
 
   /** Öffnet (oder verbindet erneut mit) dem Terminal des Geräts; liefert Terminal-Daten. */
