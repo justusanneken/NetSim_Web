@@ -12,8 +12,11 @@ import enT from '../src/i18n/en.tcp.json';
 import deScript from '../src/i18n/de.script.json';
 import enScript from '../src/i18n/en.script.json';
 
-const de: Record<string, string> = { ...de0, ...de5, ...deT, ...deProto, ...deScript };
-const en: Record<string, string> = { ...en0, ...en5, ...enT, ...enProto, ...enScript };
+import deUx from '../src/i18n/de.ux.json';
+import enUx from '../src/i18n/en.ux.json';
+
+const de: Record<string, string> = { ...de0, ...de5, ...deT, ...deProto, ...deScript, ...deUx };
+const en: Record<string, string> = { ...en0, ...en5, ...enT, ...enProto, ...enScript, ...enUx };
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const f of readdirSync(dir)) {

@@ -1,6 +1,13 @@
 /// <reference lib="webworker" />
 import * as Comlink from 'comlink';
-import { CliSession, HostShell, ShellStack, Terminal, type Shell } from '@netsim/cli';
+import {
+  CliSession,
+  HostShell,
+  ShellStack,
+  Terminal,
+  renderRunningConfig,
+  type Shell,
+} from '@netsim/cli';
 import { EngineService5, type ViewModel } from '@netsim/engine';
 
 type Subscriber = (v: ViewModel) => void;
@@ -70,6 +77,15 @@ class WorkerService extends EngineService5 {
     }
     this.touch();
     return out;
+  }
+
+  /** running-config als Text (für „Equivalent IOS Commands“ der GUI); leer bei Geräten ohne IOS. */
+  runningConfig(id: string): string {
+    const d = this.engine.getDevice(id);
+    if (!d || (d.config.kind !== 'router' && d.config.kind !== 'switch')) return '';
+    return renderRunningConfig(this.engine, d as Parameters<typeof renderRunningConfig>[1]).join(
+      '\n',
+    );
   }
 
   /** Öffnet (oder verbindet erneut mit) dem Terminal des Geräts; liefert Terminal-Daten. */

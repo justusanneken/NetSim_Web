@@ -140,3 +140,10 @@ WLAN-Roaming im selben SSID behält das DHCP-Lease (INIT-REBOOT, Zustand `reboot
 43. **PCAP wird aus dem Event-Log erzeugt** (`engine/src/pcap.ts`): ein Datensatz je Frame-Ankunft an einem Gerät. Damit auch Routing-Frames im Log stehen, trägt
     `Engine.attachFrame` den Frame am ersten `rx`-Eintrag nach, falls das Protokoll (OSPF, EIGRP, …) ohne Frame geloggt hat. Byte-Encoder liegen in `packages/protocols/src/encode/`.
 44. **Multiuser (Relay/Link-Tunnel) wurde nicht umgesetzt** – optional laut Spec; Zeit/Priorität lagen bei Scripting und PCAP. Python/Pyodide ebenfalls nicht (siehe `simplifications.md`).
+
+## UX-Erweiterungen (Phase 6, „ux“)
+
+39. **UI-Dokument getrennt von der Engine:** Notizen, Gruppen, Hintergrundbild und Geräte-Attribute liegen in `apps/web/src/ux/uiDoc.ts` (zustand), nicht in der Engine; Persistenz speichert sie über `exportUiDoc`/`importUiDoc` und bindet `snapshotUiDoc`/`restoreUiDoc`/`onUiDocChange` in Undo ein. Geräte-Positionen bleiben `DeviceView.pos`; jede Mehrfachbewegung läuft durch `moveDevices` (`ux/actions.ts`).
+40. **„Equivalent IOS Commands“ allgemein als Diff:** statt jedes GUI-Formular Befehle erzeugen zu lassen, vergleicht `EquivalentIos` die running-config (`runningConfig` im Worker) vor und nach einer Änderung (`ux/iosDiff.ts`). Das deckt GUI- und CLI-Änderungen gleichermaßen ab.
+41. **Tastatur-Alternative zur Arbeitsfläche ist die Geräteliste:** Aktivieren eines Eintrags verhält sich wie ein Klick auf das Gerät (Werkzeug-abhängig). Konva-Objekte selbst sind nicht fokussierbar.
+42. **Fokusfalle als Hook** (`ux/useFocusTrap.ts`) und gemeinsamer `Modal` für alle neuen Dialoge.

@@ -191,3 +191,12 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Extras → Skript-Konsole (Editor, Ausführen/Stopp, Beispiele), PCAP-Export-Button, Hex-Ansicht                                                   | fertig                                  | `e2e › script.spec`                           |
 | Python (Pyodide)                                                                                                                                | nicht umgesetzt (siehe simplifications) | –                                             |
 | Multiuser (WebSocket-Relay, Link-Tunnel)                                                                                                        | nicht umgesetzt                         | –                                             |
+
+## UX / Barrierefreiheit (Phase 6)
+
+| Anforderung (Spec 5)                                                                                                            | Status | Test                                               |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------- |
+| Rubberband, Mehrfachverschieben, Ausrichten/Verteilen, Gruppieren, Notizen, Raster/Snap, Mini-Map, Hintergrundbild, Kontextmenü | fertig | `web › ux.spec.ts`, `web › ux.test.ts`             |
+| Netzwerk-Info-Tabellen, Tooltips mit VLAN/IP/MAC, Attributes-Tab, Equivalent IOS Commands                                       | fertig | `web › ux.spec.ts`, `web › iosDiff.test.ts`        |
+| Tastaturbedienung, Fokusfalle, axe-core (hell/dunkel/farbenblind)                                                               | fertig | `web › a11y.spec.ts`, `web › ux.spec.ts`           |
+| i18n-Vollständigkeit und Scan auf feste Texte, Englisch im e2e                                                                  | fertig | `web › i18nComplete.test.ts`, `web › i18n.spec.ts` |

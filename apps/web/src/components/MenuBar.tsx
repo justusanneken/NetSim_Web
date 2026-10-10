@@ -4,6 +4,16 @@ import { setLang, type Lang } from '../i18n';
 import { download, logToCsv } from '../format';
 import { useStore } from '../store';
 import { useScript } from './ScriptConsole';
+import {
+  alignSelected,
+  distributeSelected,
+  fitView,
+  groupSelected,
+  selectAll,
+  ungroupSelected,
+} from '../ux/actions';
+import { useUx } from '../ux/ux';
+import { useMenuKeys } from '../ux/useMenuKeys';
 
 interface Item {
   label: string;
@@ -17,6 +27,8 @@ export function MenuBar() {
   const [open, setOpen] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const s = useStore();
+  const ux = useUx();
+  const menuKeys = useMenuKeys(ref, open, setOpen);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -76,6 +88,25 @@ export function MenuBar() {
         checked: s.viewMode === 'physical',
         onClick: () => s.setViewMode('physical'),
       },
+      { label: t('ux.fit'), onClick: fitView },
+      { label: t('ux.minimap'), checked: ux.minimap, onClick: ux.toggleMinimap },
+      { label: t('ux.grid'), checked: ux.gridVisible, onClick: ux.toggleGrid },
+      { label: t('ux.snap'), checked: ux.snap, onClick: ux.toggleSnap },
+      { label: t('ux.bg.menu'), onClick: () => ux.setBackgroundOpen(true) },
+      { label: t('netinfo.window'), onClick: () => ux.setNetInfo(true) },
+    ],
+    arrange: [
+      { label: t('ux.ctx.selectAll'), onClick: selectAll },
+      { label: t('ux.arrange.group'), onClick: () => void groupSelected() },
+      { label: t('ux.arrange.ungroup'), onClick: ungroupSelected },
+      { label: t('ux.arrange.left'), onClick: () => void alignSelected('left') },
+      { label: t('ux.arrange.hcenter'), onClick: () => void alignSelected('hcenter') },
+      { label: t('ux.arrange.right'), onClick: () => void alignSelected('right') },
+      { label: t('ux.arrange.top'), onClick: () => void alignSelected('top') },
+      { label: t('ux.arrange.vcenter'), onClick: () => void alignSelected('vcenter') },
+      { label: t('ux.arrange.bottom'), onClick: () => void alignSelected('bottom') },
+      { label: t('ux.arrange.distH'), onClick: () => void distributeSelected('horizontal') },
+      { label: t('ux.arrange.distV'), onClick: () => void distributeSelected('vertical') },
     ],
     tools: [
       { label: t('menu.scriptConsole'), onClick: () => useScript.getState().setOpen(true) },
@@ -90,12 +121,13 @@ export function MenuBar() {
   };
 
   return (
-    <header className="menubar" ref={ref}>
+    <header className="menubar" ref={ref} onKeyDown={menuKeys}>
       <span className="brand">NetSim Web</span>
       <nav aria-label={t('menu.aria')}>
         {Object.entries(menus).map(([id, items]) => (
           <div key={id} className="menu">
             <button
+              data-menu={id}
               aria-haspopup="menu"
               aria-expanded={open === id}
               className={open === id ? 'active' : ''}

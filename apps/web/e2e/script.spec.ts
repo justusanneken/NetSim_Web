@@ -13,7 +13,9 @@ test('Skript-Konsole: Beispiel „3-Router-OSPF-Labor“ läuft und baut das Net
 }) => {
   await openConsole(page);
   const dlg = page.getByRole('dialog', { name: 'Skript-Konsole' });
-  await dlg.getByLabel('Beispiele').selectOption({ label: '3-Router-OSPF-Labor aufbauen und prüfen' });
+  await dlg
+    .getByLabel('Beispiele')
+    .selectOption({ label: '3-Router-OSPF-Labor aufbauen und prüfen' });
   await dlg.getByRole('button', { name: 'Ausführen' }).click();
   const out = dlg.getByRole('log', { name: 'Skript-Ausgabe' });
   await expect(out).toContainText('OSPF konvergiert: true', { timeout: 30_000 });
@@ -38,9 +40,7 @@ test('Skript-Konsole: Fehler wird mit Zeilennummer gemeldet, Sandbox blockt eval
 test('Skript-Konsole: Stopp bricht eine Endlosschleife ab', async ({ page }) => {
   await openConsole(page);
   const dlg = page.getByRole('dialog', { name: 'Skript-Konsole' });
-  await dlg
-    .getByLabel('Skript-Editor')
-    .fill('for (;;) { engine.runFor(1); }');
+  await dlg.getByLabel('Skript-Editor').fill('for (;;) { engine.runFor(1); }');
   await dlg.getByRole('button', { name: 'Ausführen' }).click();
   await expect(dlg.getByRole('button', { name: 'Stopp' })).toBeEnabled();
   await dlg.getByRole('button', { name: 'Stopp' }).click();
