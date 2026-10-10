@@ -74,7 +74,6 @@ export function Toolbar() {
       <button
         className="tool"
         title={t('view.zoomReset')}
-        aria-label={t('view.zoomReset')}
         onClick={() => setStageView({ x: 0, y: 0, scale: 1 })}
       >
         1:1
