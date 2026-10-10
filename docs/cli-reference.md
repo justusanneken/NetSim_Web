@@ -176,3 +176,16 @@ Anzeige/Betrieb: `show pppoe session`, `show ip interface brief` (Dialer/Virtual
 **IPsec (Crypto Map):** `crypto isakmp policy N` (`encryption des|3des|aes [128|192|256]`, `hash md5|sha`, `authentication pre-share|rsa-sig`, `group 1|2|5|14|15|16|19|20|21|24`, `lifetime S`; `no …` ohne Wert setzt den Standard), `crypto isakmp key K address A [MASK]`,
 `crypto ipsec transform-set NAME esp-… [esp-…]` (IOS-Transforms, `esp-aes 128|192|256`) (`mode tunnel|transport`), `crypto map NAME SEQ ipsec-isakmp` (`set peer A`, `set transform-set T`, `match address ACL`, `set pfs groupN`,
 `set security-association lifetime seconds S`), an der Schnittstelle `crypto map NAME`; `show crypto isakmp sa|policy`, `show crypto ipsec sa|transform-set`, `show crypto map`, `clear crypto sa|isakmp`.
+
+## WAN, Serial, statische Routen, OSPF-Anzeige (wan)
+
+**Serial (HWIC-2T):** Ports heißen `Serial0/<Steckplatz>/<n>` (`interface serial0/0/0`, Kurzform `s0/0/0`, Anzeige `Se0/0/0`). Kapselung `encapsulation hdlc|ppp` (Default HDLC; `no encapsulation ppp`),
+`clock rate BPS` (nur am DCE-Ende; am DTE: `%Error: This command applies only to DCE interfaces`), `keepalive [SEK]`, `bandwidth`. PPP: `ppp authentication chap|pap [chap|pap]`, `ppp chap hostname X`,
+`ppp chap password [0] Y`, `ppp pap sent-username X password [0] Y`, Benutzer über `username X password Y`. Anzeige: `show interfaces serial 0/0/0`, `show controllers [serial 0/0/0]` (DCE/DTE, Taktstatus),
+`show ip interface brief` (up/down bei fehlendem Takt, Kapselungs- oder Authentifizierungsfehler), `show interfaces dialer N`; Debug: `debug ppp negotiation|authentication`.
+
+**Statische Routen:** `ip route P M (NH | IF | IF NH) [AD] [name TEXT] [tag N] [permanent]` (auch `Null0`; name/tag in beiden Reihenfolgen), `no`-Form ohne die Zusätze.
+`show ip route A.B.C.D [MASK]` mit `Known via`, `Last update from`, `Routing Descriptor Blocks` (OSPF `type intra area|inter area|extern 1/2`, EIGRP `internal|external`); `% Subnet not in table` bei Maske ohne Treffer.
+
+**OSPF:** `show ip ospf interface [brief|IF]` im IOS-15-Format (Network Type, Kosten mit Serial-Bandbreite 1544 kbit/s, DR/BDR, Timer, `Hello due in`, Adjacent-Nachbarn), `ip ospf mtu-ignore`
+(MTU-Mismatch hält die Nachbarschaft in EXSTART), `no area N stub|nssa no-summary` nimmt nur `no-summary` zurück. Serial-Schnittstellen sind standardmäßig `POINT_TO_POINT`; die Nachbarliste zeigt dort `FULL/  -` mit Priorität 0.

@@ -1,4 +1,4 @@
-import { isValidIpv4, maskToPrefix } from '@netsim/protocols';
+import { maskToPrefix } from '@netsim/protocols';
 import type { Port } from '@netsim/engine';
 import { mgmtOf, networkOf } from '@netsim/engine';
 import { IFM, SUBMODES, resolveIface, resolveRange } from './ifnames';

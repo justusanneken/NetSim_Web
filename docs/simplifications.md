@@ -301,3 +301,11 @@ supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolg
   IKEv2, keine Transport-Mode-Wirkung (wird gespeichert), kein DPD, **keine VTI** (`tunnel mode ipsec`) und keine IPsec-Profile; Crypto Maps sind an physischen/Sub-Schnittstellen und am Dialer
   einer PPPoE-Einwahl möglich, nicht am Virtual-Template. Nach einem Neustart der Gegenstelle bleibt die alte SA der anderen Seite bestehen (kein DPD, keine
   Lebensdauer): erst ein von der neu gestarteten Seite aufgebautes IKE oder `clear crypto sa` stellt das VPN wieder her. Entschlüsselte Pakete laufen danach durch die normale Eingangsverarbeitung der Schnittstelle (ACL-in, Weiterleitung).
+
+## Realismus-Pass Routing/WAN (wan)
+
+- **Serial:** Das Line-Protocol wird sofort bei jeder Konfigurationsänderung berechnet (kein 10-s-Keepalive, keine 3 verpassten Keepalives). Takt am DCE-Ende, gleiche Kapselung und – bei PPP – passende CHAP/PAP-Zugangsdaten sind die einzigen Bedingungen;
+  die LCP/IPCP-Aushandlung ist nur als Debug-Ausgabe (`debug ppp negotiation|authentication`) nachgestellt. Kein Frame Relay, kein Multilink, kein `loopback`, keine Bitfehler/CRC. Serialisierung nutzt mindestens 1 Mbit/s (Mindestrate der Engine);
+  IP läuft über Ethernet-Frames mit ARP (in `show ip arp` sichtbar, anders als bei echtem HDLC). Ein abgeschaltetes Gegenende zeigt „up, line protocol down“.
+- **Statische Routen:** `track` und `ip route vrf` fehlen, `permanent` wird nur gespeichert. Null0 sendet immer ICMP net unreachable.
+- **OSPF-Anzeige:** `Hello due in` stammt aus dem Hintergrund-Timer; Flood-Queue-/Scan-Zeilen sind feste Werte. MTU-Prüfung nur im DBD-Paket (`ip ospf mtu-ignore`).

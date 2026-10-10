@@ -673,6 +673,7 @@ function sendDbd(
     master: n.master,
     ddSeq: n.ddSeq,
     headers: init ? [] : lsdbHeaders(rt, c, ifs.area),
+    mtu: iface.mtu,
   });
 }
 
@@ -874,6 +875,16 @@ function rxDbd(
   if (n.state === '2way') {
     if (!needAdj(ifs, n)) return;
     startAdj(rt, c, iface, ifs, n);
+  }
+  // MTU-Mismatch: ein DBD mit größerer MTU des Nachbarn wird verworfen (Nachbar bleibt in EXSTART)
+  if (m.mtu !== undefined && m.mtu > iface.mtu && !ifCfg(iface, c)?.mtuIgnore) {
+    dbg(
+      rt,
+      'OSPF',
+      'ospf.adj',
+      () => `OSPF-${c.pid} ADJ   ${nameOf(rt, iface)}: Nbr ${m.routerId} has larger interface MTU`,
+    );
+    return;
   }
   if (m.init) {
     if (n.state === 'exstart') {

@@ -178,3 +178,12 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Skript-Sandbox: Speichergrenzen, Prototyp-Ausbrüche                                                                                                              | fertig | `engine › qa2_script`                                                                                                       |
 | Begrenztes Log mit Step Back und debug-Cursor; Determinismus und Chaos (Störungen + Heilung)                                                                     | fertig | `cli › qa2_debuglog`, `cli › qa2_determinism`, `cli › qa2_chaos`                                                            |
 | Befehlsfuzzing: jede Definition (Router/Switch/Firewall) ohne interne Fehler, running-config-Replay stabil, `no`-Formen, IOS-Rückfall aus Untermodi              | fertig | `cli › qa2_cmdfuzz`, `cli › qa2_negfuzz`, `cli › qa2_replay`, `cli › qa2_submode`, `cli › qa2_ipseccli`, `cli › qa2_iosfmt` |
+
+## Realismus-Pass Routing/WAN (wan)
+
+| Feature                                                                                                                              | Status | Test                          |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ------ | ----------------------------- |
+| Serial-Ports, HDLC/PPP, clock rate/DCE-DTE, `show controllers serial`, `show interfaces serial`, PAP/CHAP, debug ppp                 | fertig | `cli › wan_serial`            |
+| Statische Routen: Null0, Interface+Next-Hop, name/tag/permanent, Floating Static, `show ip route <addr> [mask]`                      | fertig | `cli › wan_routes`            |
+| OSPF über Serial (p2p, Kosten 64), `show ip ospf interface`, Hello/Dead- und MTU-Mismatch, `mtu-ignore`, `no area N stub no-summary` | fertig | `cli › wan_ospf`              |
+| IPsec-VTI, SA-Lifetime/Rekey, DPD, TACACS+-Fallback, VRRP/GLBP, EIGRP-Named-Mode/Stub, BGP-Erweiterungen, `show tcp brief all`       | offen  | siehe `docs/realism-audit.md` |

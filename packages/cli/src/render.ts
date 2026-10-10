@@ -133,6 +133,7 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
     if (o.helloSec !== undefined) out.push(` ip ospf hello-interval ${o.helloSec}`);
     if (o.deadSec !== undefined) out.push(` ip ospf dead-interval ${o.deadSec}`);
     if (o.network) out.push(` ip ospf network ${o.network}`);
+    if (o.mtuIgnore) out.push(' ip ospf mtu-ignore');
   }
   if (c.hsrpVersion === 2) out.push(' standby version 2');
   const hsrpIds = [
