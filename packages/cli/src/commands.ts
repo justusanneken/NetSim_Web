@@ -13,6 +13,8 @@ import { addGaps } from './commandsGaps';
 import { addDiscovery } from './cmdDisc';
 import { addSwitchSecurity } from './cmdSwSec';
 import { addAclExtras } from './cmdAcl';
+import { addMgmtExtras } from './cmdMgmt';
+import { addQos } from './cmdQos';
 import * as show from './show';
 import { addPhase5 } from './commands5';
 
@@ -1077,5 +1079,7 @@ export function buildRegistry(): Registry<CliSession> {
   addDiscovery(r);
   addSwitchSecurity(r);
   addAclExtras(r);
+  addMgmtExtras(r);
+  addQos(r);
   return r;
 }

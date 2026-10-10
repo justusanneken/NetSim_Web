@@ -89,6 +89,8 @@ export interface IcmpPdu {
 
 export interface Ipv4Pdu {
   kind: 'ipv4';
+  /** DSCP (6 Bit, Standard 0), gesetzt per QoS-Markierung. */
+  dscp?: number;
   src: Ipv4Addr;
   dst: Ipv4Addr;
   ttl: number;

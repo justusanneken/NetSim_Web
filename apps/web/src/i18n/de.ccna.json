@@ -14,5 +14,6 @@
   "dai.srcMac": "DAI: ARP an {{port}} (VLAN {{vlan}}) verworfen – Sender-MAC passt nicht zur Quell-MAC.",
   "dai.dstMac": "DAI: ARP an {{port}} (VLAN {{vlan}}) verworfen – Ziel-MAC passt nicht.",
   "dai.ip": "DAI: ARP an {{port}} (VLAN {{vlan}}) verworfen – ungültige IP-Adresse.",
-  "dhcp.opt82": "DHCP: Anfrage von {{mac}} mit Option 82 ohne giaddr verworfen (ip dhcp relay information trust-all fehlt)."
+  "dhcp.opt82": "DHCP: Anfrage von {{mac}} mit Option 82 ohne giaddr verworfen (ip dhcp relay information trust-all fehlt).",
+  "svc.ntp.authFail": "NTP: Server {{server}} abgelehnt – Authentifizierung mit Schlüssel {{key}} fehlgeschlagen."
 }

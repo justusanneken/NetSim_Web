@@ -27,6 +27,7 @@ import { compressVlans, ifDisplay } from './ifnames';
 import { type7Encrypt } from './secrets';
 import { fwGlobalLines, fwIfaceLines, mgmtGlobalLines, vtyExtraLines, vtyLast } from './render5';
 import { acl6Lines, acl6IfLines } from './cmdAcl';
+import { qosGlobalLines, qosIfLines } from './cmdQos';
 import { discGlobalLines, discIfLines } from './cmdDisc';
 import { swSecGlobalLines, swSecIfLines } from './cmdSwSec';
 
@@ -108,6 +109,7 @@ function l3Lines(cfg: L3Cfg, c: IfaceCfg | undefined, out: string[]): void {
   for (const h of c?.helpers ?? []) out.push(` ip helper-address ${h}`);
   if (c?.aclIn) out.push(` ip access-group ${c.aclIn} in`);
   if (c?.aclOut) out.push(` ip access-group ${c.aclOut} out`);
+  out.push(...qosIfLines(c));
   if (c?.natSide && !(cfg as RouterConfig).fw) out.push(` ip nat ${c.natSide}`);
   if (c) routingIfaceLines(c, out);
   if (c) protoIfaceLines(c, out);
@@ -357,6 +359,7 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
   L.push(...protoGlobalLines(cfg), ...cryptoGlobalLines(cfg));
   L.push(...mgmtGlobalLines(cfg));
   L.push(...discGlobalLines(cfg));
+  L.push(...qosGlobalLines(cfg));
   if (cfg.kind === 'switch') {
     if (cfg.vtp.mode !== 'server') L.push(`vtp mode ${cfg.vtp.mode}`);
     if (cfg.vtp.domain) L.push(`vtp domain ${cfg.vtp.domain}`);

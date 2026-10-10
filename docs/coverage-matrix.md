@@ -178,3 +178,16 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Skript-Sandbox: Speichergrenzen, Prototyp-Ausbrüche                                                                                                              | fertig | `engine › qa2_script`                                                                                                       |
 | Begrenztes Log mit Step Back und debug-Cursor; Determinismus und Chaos (Störungen + Heilung)                                                                     | fertig | `cli › qa2_debuglog`, `cli › qa2_determinism`, `cli › qa2_chaos`                                                            |
 | Befehlsfuzzing: jede Definition (Router/Switch/Firewall) ohne interne Fehler, running-config-Replay stabil, `no`-Formen, IOS-Rückfall aus Untermodi              | fertig | `cli › qa2_cmdfuzz`, `cli › qa2_negfuzz`, `cli › qa2_replay`, `cli › qa2_submode`, `cli › qa2_ipseccli`, `cli › qa2_iosfmt` |
+
+## Realismus-Runde CCNA (Switching/Security/Services)
+
+| Feature                                                                                            | Phase | Status | Test                                         |
+| -------------------------------------------------------------------------------------------------- | ----- | ------ | -------------------------------------------- |
+| CDP/LLDP: Nachbarn, Timer, `no cdp run`, Hold-Time, Native-VLAN-Mismatch-Syslog                    | 6     | fertig | `engine › ccna_discovery`, `cli › ccna_disc` |
+| CDP/LLDP: `show`-Befehle, running-config-Replay                                                    | 6     | fertig | `cli › ccna_disc`                            |
+| DHCP Snooping (Trust, Bindungen, Option 82, Rate-Limit), DAI (Bindung, ARP-ACL, Rate-Limit)        | 6     | fertig | `engine › ccna_swsec`, `cli › ccna_swsec`    |
+| Storm Control, DTP `nonegotiate`, PortFast-/BPDU-Guard-Defaults, Voice-VLAN (Tagging)              | 6     | fertig | `engine › ccna_swsec`, `cli › ccna_swsec`    |
+| errdisable recovery (Ursachen, Syslog, Show), Port-Security Aging und `show port-security address` | 6     | fertig | `cli › ccna_swsec`                           |
+| IPv6-ACL, ACL-Remark, `ip access-list resequence`                                                  | 6     | fertig | `cli › ccna_acl`                             |
+| NTP-Authentifizierung, Logging-Level/-Puffer, SSH-Optionen (1.99), SNMPv3-Konfiguration            | 6     | fertig | `cli › ccna_mgmt`                            |
+| QoS: class-map/policy-map/service-policy, DSCP-Markierung, Zähler                                  | 6     | fertig | `cli › ccna_qos`                             |

@@ -74,3 +74,4 @@ export {
 } from './devices/swsec';
 export { isPortfast, isBpduguard, recoveryOn } from './devices/switch';
 export { acl6Eval } from './acl6';
+export { qosOf, defaultQos, KNOWN_PROTOCOLS } from './qos';

@@ -259,6 +259,7 @@ export function describePdu(pdu: Pdu): HeaderField[] {
         f('DF', pdu.df),
         f('MF', pdu.mf),
         f('Fragment Offset', pdu.fragOffset),
+        ...(pdu.dscp !== undefined ? [f('DSCP', `${dscpName(pdu.dscp)} (${pdu.dscp})`)] : []),
         f('TTL', pdu.ttl),
         f('Protocol', pdu.protocol),
         f('Source', pdu.src),
@@ -811,4 +812,42 @@ function summarizeUdp(p: Ipv4Pdu, u: UdpPdu, tail: string): { proto: ProtoTag; i
     };
   }
   return { proto: 'UDP', info: `${p.src}:${u.srcPort} → ${p.dst}:${u.dstPort}${tail}` };
+}
+
+/** Standardisierte DSCP-Namen (PHB). */
+export const DSCP_NAMES: Record<string, number> = {
+  default: 0,
+  cs1: 8,
+  af11: 10,
+  af12: 12,
+  af13: 14,
+  cs2: 16,
+  af21: 18,
+  af22: 20,
+  af23: 22,
+  cs3: 24,
+  af31: 26,
+  af32: 28,
+  af33: 30,
+  cs4: 32,
+  af41: 34,
+  af42: 36,
+  af43: 38,
+  cs5: 40,
+  ef: 46,
+  cs6: 48,
+  cs7: 56,
+};
+
+/** `46` oder `ef` -> Zahl; ungültig -> undefined. */
+export function parseDscp(tok: string): number | undefined {
+  const t = tok.toLowerCase();
+  if (t in DSCP_NAMES) return DSCP_NAMES[t];
+  if (/^\d+$/.test(t) && Number(t) <= 63) return Number(t);
+  return undefined;
+}
+
+/** 46 -> `ef`, 0 -> `default`, sonst die Zahl. */
+export function dscpName(n: number): string {
+  return Object.entries(DSCP_NAMES).find(([, v]) => v === n)?.[0] ?? String(n);
 }

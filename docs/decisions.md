@@ -124,3 +124,14 @@ WLAN-Roaming im selben SSID behält das DHCP-Lease (INIT-REBOOT, Zustand `reboot
 36. **PPPoE/PPP:** neue Schnittstellenarten `dialer`, `vtemplate`, `vaccess`; Sitzungen als Laufzeitzustand `L3Cfg.ppp`, IP-Schnittstellen erscheinen nur bei stehender Sitzung (`pppIfaces`). PPPoE-Frames werden vor der Schnittstellenzuordnung in `routerRx` abgefangen.
 37. **IPsec:** Crypto-Map-Prüfung im `xmit` der Schnittstelle (`cryptoXmit`), ESP als IP-Nutzlast mit verborgenem `inner`, IKE als ein Austausch; SAs sind Laufzeitzustand in `L3Cfg.crypto.sas`. Kein VTI.
 38. **Neue Protokoll-Tags** `TACACS`, `PPPOE`, `PPP`, `IKE`, `ESP`; Farben in `apps/web/src/proto.css` (Tokens), Übersetzungen in `i18n/{de,en}.proto.json`.
+
+## Realismus-Runde CCNA (Branch `wip/ccna`)
+
+39. **CDP/LLDP als eigene PDUs** (`cdp`, `lldp`) mit Ziel-MAC `01:00:0c:cc:cc:cc` bzw. `01:80:c2:00:00:0e`; sie werden in `Engine.onRx` vor der Gerätelogik verbraucht (`discRx`), also nie weitergeleitet (anders als echte Switches bei `no cdp run`). Timer laufen als `bg:`-Timer (zählen nicht als „Arbeit“ für `runAll`), erster Advertisement-Versand 2 s nach Start bzw. 1 s nach Link-Up. Nachbartabellen liegen im Konfigurationsbaum (`L3Cfg.disc`) und werden bei Hold-Time-Ablauf beim Lesen gefiltert.
+40. **Switch-Sicherheit in `devices/swsec.ts`:** ein Eingangs-Hook `securityIngress` (Storm Control → DHCP Snooping → DAI) nach der Port-Security-Prüfung und vor dem MAC-Lernen. DHCP-Snooping fügt Option 82 in einen geklonten Frame ein; der Original-Frame im Log bleibt unverändert.
+41. **Option-82-Verhalten wie IOS:** DHCP-Server/Relay (Router) verwirft Anfragen mit Option 82 und giaddr 0, solange `ip dhcp relay information trust-all` (global) bzw. `… trusted` (Schnittstelle) fehlt.
+42. **errdisable generalisiert:** `errdisableRecovery.causes` (neben dem alten Flag `psecure`), gemeinsame Funktion `errdisable()` schreibt `%PM-4-ERR_DISABLE` und plant die Wiederherstellung (`%PM-4-ERR_RECOVER`).
+43. **IPv6-ACLs** in `L3Cfg.acls6`, Auswertung in `forward6` (nur Durchgangsverkehr, wie die v4-ACLs); `deny` antwortet mit ICMPv6 Code 1.
+44. **QoS** in `L3Cfg.qos` (class-map/policy-map) mit Anwendung in `forward()` (Eingang nach der ACL, Ausgang vor der ACL); DSCP als optionales Feld `Ipv4Pdu.dscp`.
+45. **Neue CLI-Modi** `config-arp-nacl`, `config-ipv6-acl`, `config-cmap`, `config-pmap`, `config-pmap-c`; Klassen-/Policy-Namen laufen über die Sitzungsfelder `aclName`/`poolName`.
+46. **NTP-Authentifizierung** über die vorhandenen `svc`-Argumente (`keyId`, `digest`, Antwort `auth`); Der Server antwortet authentifiziert, wenn Key-ID und Schlüssel übereinstimmen; der Client akzeptiert Server mit `key N` nur bei `ntp authenticate`, `trusted-key N` und authentifizierter Antwort.

@@ -308,6 +308,30 @@ export interface Acl6 {
   pendingRemark?: string;
 }
 
+export interface QosClass {
+  name: string;
+  matchAll: boolean;
+  /** `match dscp …` (Liste), `match access-group`, `match protocol`, `match any`. */
+  dscp: number[];
+  acl?: string;
+  protocols: string[];
+  any: boolean;
+}
+
+export interface QosPolicyClass {
+  class: string;
+  setDscp?: number;
+  /** Übrige Aktionen im IOS-Wortlaut (`bandwidth percent 20`, `priority 100`, `police …`). */
+  actions: string[];
+}
+
+export interface QosCfg {
+  classes: Record<string, QosClass>;
+  policies: Record<string, { name: string; classes: QosPolicyClass[] }>;
+  /** Laufzeit: Zähler je `Schnittstelle|Richtung|Klasse`. */
+  counters: Record<string, { pkts: number; bytes: number; marked: number }>;
+}
+
 export interface Acl {
   name: string;
   type: 'standard' | 'extended';
@@ -576,6 +600,9 @@ export interface IfaceCfg {
   helpers?: Ipv4Addr[];
   /** `ip dhcp relay information trusted`. */
   relayTrusted?: boolean;
+  /** `service-policy input|output NAME`. */
+  policyIn?: string;
+  policyOut?: string;
   /** IPv6-Konfiguration der Schnittstelle. */
   v6?: V6IfCfg;
   /** Bandbreite (kbit/s) für OSPF-Kosten/EIGRP; sonst aus der Linkgeschwindigkeit. */
@@ -694,6 +721,8 @@ export interface L3Cfg extends IpCore {
   defaultGateway?: Ipv4Addr;
   /** CDP/LLDP. */
   disc?: DiscCfg;
+  /** QoS: class-map, policy-map. */
+  qos?: QosCfg;
   /** PPPoE-Server: `bba-group pppoe`. */
   bba?: Record<string, BbaGroup>;
   /** `ip local pool NAME START END`. */
