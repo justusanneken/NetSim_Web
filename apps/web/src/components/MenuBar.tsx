@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { setLang, type Lang } from '../i18n';
 import { download, logToCsv } from '../format';
 import { useStore } from '../store';
+import { useTeach } from '../teach/teachStore';
+import { useScript } from './ScriptConsole';
 import {
   copySelection,
   fileOpen,
@@ -48,10 +50,6 @@ export function MenuBar() {
     return () => document.removeEventListener('mousedown', close);
   }, []);
 
-  const later = (key: string): Item => ({
-    label: `${t(key)} (${t('menu.later')})`,
-    disabled: true,
-  });
   const zoom = (f: number) =>
     s.setStageView({ ...s.stageView, scale: Math.min(3, Math.max(0.25, s.stageView.scale * f)) });
 
@@ -134,7 +132,21 @@ export function MenuBar() {
       { label: t('ux.arrange.distH'), onClick: () => void distributeSelected('horizontal') },
       { label: t('ux.arrange.distV'), onClick: () => void distributeSelected('vertical') },
     ],
-    tools: [later('menu.scripting'), later('menu.activities')],
+    tools: [
+      {
+        label: t('menu.activities'),
+        onClick: () => {
+          const d = document.getElementById('activity-details') as HTMLDetailsElement | null;
+          if (d) {
+            d.open = true;
+            d.scrollIntoView({ block: 'nearest' });
+          }
+        },
+      },
+      { label: t('activity.author'), onClick: () => useTeach.getState().setAuthorOpen(true) },
+      { label: t('pdu.complex'), onClick: () => useTeach.getState().openPduDialog(true) },
+      { label: t('menu.scriptConsole'), onClick: () => useScript.getState().setOpen(true) },
+    ],
     help: [{ label: t('menu.about'), onClick: () => window.alert(t('about.text')) }],
     language: (['de', 'en'] as Lang[]).map((l) => ({
       label: l === 'de' ? 'Deutsch' : 'English',

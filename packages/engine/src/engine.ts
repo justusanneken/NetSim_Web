@@ -109,6 +109,8 @@ export class Engine {
   readonly p5 = new Phase5(this);
   /** Signatur der zuletzt verarbeiteten Switch-Konfiguration (löst STP-Neuaufbau aus). */
   private readonly switchSig = new Map<string, string>();
+  /** Lehr-Werkzeuge (Szenarien, geplante PDUs): Timer `teach:<name>` werden hierhin gemeldet (nicht Teil des Zustands). */
+  teachTimer?: (dev: Device, name: string) => void;
 
   constructor(opts: EngineOptions = {}) {
     const seed = opts.seed ?? 1;
@@ -155,6 +157,21 @@ export class Engine {
       this.log.length = 0;
       this.logOffset = snap.logLength;
     } else this.log.length = Math.min(this.log.length, keep);
+  }
+
+  /**
+   * Übernimmt das Ergebnis eines Skriptlaufs (Sandbox-Worker mit eigener Engine-Kopie): neuer Zustand und die
+   * dabei entstandenen Log-Einträge (Ids werden fortgesetzt).
+   */
+  adoptRun(state: EngineSnapshot['state'], entries: LogEntry[]): void {
+    this.state = state;
+    for (const e of entries) this.log.push({ ...e, id: this.logOffset + this.log.length });
+    const cap = this.state.config.maxLogEntries ?? 0;
+    if (cap > 0 && this.log.length > cap) {
+      const drop = this.log.length - cap;
+      this.log.splice(0, drop);
+      this.logOffset += drop;
+    }
   }
 
   /** Ersetzt den gesamten Zustand (`.nsim`-Import, Undo) und baut den Laufzeitzustand neu auf. */
@@ -1599,6 +1616,7 @@ export class Engine {
     port.counters.inBytes += sizeOf(p.frame);
     const fromId = from?.id ?? '';
     const cfg = dev.config;
+    const firstLog = this.logLength;
     this.withCtx(dev, (ctx) => {
       if (
         (p.frame.payload.kind === 'cdp' || p.frame.payload.kind === 'lldp') &&
@@ -1625,6 +1643,18 @@ export class Engine {
           break;
       }
     });
+    this.attachFrame(firstLog, p.frame);
+  }
+
+  /**
+   * Für den PCAP-Export: jeder angekommene Frame soll im Log mit seinem PDU auftauchen. Routing-Protokolle
+   * (OSPF, EIGRP …) loggen ohne Frame – hier wird der Frame am ersten `rx`-Eintrag dieser Verarbeitung nachgetragen.
+   */
+  private attachFrame(firstLog: number, frame: Frame): void {
+    const entries = this.logSlice(firstLog, 64);
+    if (entries.some((e) => e.frame === frame)) return;
+    const e = entries.find((x) => x.kind === 'rx' && !x.frame);
+    if (e) e.frame = frame;
   }
 
   private onTimer(dev: Device, p: TimerPayload): void {
@@ -1645,6 +1675,10 @@ export class Engine {
     }
     if (name.startsWith('svc:')) {
       this.withCtx(dev, (ctx) => this.p5.timer(ctx, dev, name.slice(4)));
+      return;
+    }
+    if (name.startsWith('teach:')) {
+      this.teachTimer?.(dev, name.slice(6));
       return;
     }
     if (cfg.kind === 'host') this.withCtx(dev, (ctx) => hostTimer(ctx, cfg, name));

@@ -1,0 +1,70 @@
+/* Skript-Konsole, Hex-Ansicht */
+.script-console {
+  width: min(1100px, 96vw);
+}
+.script-console .dialog-head {
+  flex-wrap: wrap;
+}
+.script-ex {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.script-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+}
+.script-editor,
+.script-output {
+  min-height: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow: auto;
+  resize: none;
+  white-space: pre;
+}
+.script-output {
+  background: var(--term-bg);
+  color: var(--term-fg);
+}
+.script-hint {
+  margin: 0;
+  padding: 4px 10px 8px;
+  font-size: 12px;
+}
+@media (max-width: 800px) {
+  .script-body {
+    grid-template-columns: 1fr;
+  }
+}
+.hexview {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.insp-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 6px 0;
+}
+.insp-tabs button.active {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}

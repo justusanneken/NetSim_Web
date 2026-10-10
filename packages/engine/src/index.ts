@@ -56,6 +56,17 @@ export * from './p5types';
 export { EngineService5 } from './service5';
 export * from './ipsecTypes';
 export * from './pppTypes';
+export { pcapRecords, logToPcap } from './pcap';
+export {
+  Interp,
+  Native,
+  ScriptError,
+  toStr,
+  jsonOf,
+  type Value,
+  type Obj,
+  type InterpLimits,
+} from './p5/script/interp';
 export {
   discOf,
   defaultDisc,
@@ -75,5 +86,6 @@ export {
 export { isPortfast, isBpduguard, recoveryOn } from './devices/switch';
 export { acl6Eval } from './acl6';
 export { qosOf, defaultQos, KNOWN_PROTOCOLS } from './qos';
+export * from './teach';
 export * from './nsim';
 export * from './clone';

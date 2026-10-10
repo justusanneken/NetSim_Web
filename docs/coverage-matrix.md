@@ -179,6 +179,19 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Begrenztes Log mit Step Back und debug-Cursor; Determinismus und Chaos (Störungen + Heilung)                                                                     | fertig | `cli › qa2_debuglog`, `cli › qa2_determinism`, `cli › qa2_chaos`                                                            |
 | Befehlsfuzzing: jede Definition (Router/Switch/Firewall) ohne interne Fehler, running-config-Replay stabil, `no`-Formen, IOS-Rückfall aus Untermodi              | fertig | `cli › qa2_cmdfuzz`, `cli › qa2_negfuzz`, `cli › qa2_replay`, `cli › qa2_submode`, `cli › qa2_ipseccli`, `cli › qa2_iosfmt` |
 
+## Scripting-API, PCAP-Export (script)
+
+| Feature                                                                                                                                         | Status                                  | Test                                          |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | --------------------------------------------- |
+| Byte-Encoder (Ethernet/802.1Q/ARP/IPv4/ICMP/UDP/TCP/IPv6/ICMPv6/DHCP/DNS/OSPF/BGP/RIP/HSRP/EIGRP/STP/…) mit bekannten Bytefolgen und Prüfsummen | fertig                                  | `protocols › encode`, `protocols › encodeAll` |
+| libpcap-Writer (Magic, Version 2.4, LINKTYPE_ETHERNET) und Hexdump                                                                              | fertig                                  | `protocols › encode: pcap`                    |
+| PCAP aus dem Event-Log (Routing-Frames, Capture je Gerät, deterministisch)                                                                      | fertig                                  | `engine › pcap_export`                        |
+| Netzwerk-Scripting-API (`network.*`, `device.cli.run/ping`, `engine.step/runFor/runUntil`, `onPacket`, `onLinkChange`, `log/print`)             | fertig                                  | `cli › scripting`, `web › scriptExamples`     |
+| Sandbox: kein eval/DOM/Netzwerk, Schritt-, Zeit-, Ereignis- und Speichergrenzen, Ausbruchsversuche                                              | fertig                                  | `cli › scripting › Sandbox`                   |
+| Extras → Skript-Konsole (Editor, Ausführen/Stopp, Beispiele), PCAP-Export-Button, Hex-Ansicht                                                   | fertig                                  | `e2e › script.spec`                           |
+| Python (Pyodide)                                                                                                                                | nicht umgesetzt (siehe simplifications) | –                                             |
+| Multiuser (WebSocket-Relay, Link-Tunnel)                                                                                                        | nicht umgesetzt                         | –                                             |
+
 ## UX / Barrierefreiheit (Phase 6)
 
 | Anforderung (Spec 5)                                                                                                            | Status | Test                                               |
@@ -212,6 +225,20 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Datei → Neu/Öffnen/Speichern (Strg+S/O), Zuletzt, Fehlermeldungen                                                                               | fertig | `e2e › persist`                                    |
 | Autosave und Wiederherstellung nach Absturz                                                                                                     | fertig | `e2e › persist`                                    |
 | 14 Vorlagen (SOHO, VLAN+Trunk, Router-on-a-Stick, OSPF, NAT/PAT, DHCP-Relay, STP-Ring, EtherChannel, ACL, WLAN, HSRP, IPv6/OSPFv3, eBGP, IPsec) | fertig | `cli › templates`                                  |
+
+## Szenarien, Aufgabenmodus, Challenge Me (teach)
+
+| Spezifikation                                                                                        | Stand  | Test                                                                |
+| ---------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------- |
+| Simple PDU / Complex PDU (Protokoll, Port, Quell-IP, Nutzlast, Zeit, Wiederholung)                   | fertig | `engine › teach_pdu`, `engine › teach_scenario`, `e2e › teach`      |
+| PDU-Liste mit Successful/Failed, Rerun, Delete                                                       | fertig | `engine › teach_scenario`, `e2e › teach`                            |
+| Mehrere Szenarien je Topologie (anlegen, wechseln, löschen, Beschreibung), `.nsim`-Feld `scenarios`  | fertig | `engine › teach_scenario`, `e2e › teach`                            |
+| Aufgabenmodus `.nsact` (zlib + Zod), Start-/Antwortnetz, Gewichte, Hinweise, Schritte, Zeitlimit     | fertig | `engine › teach_activity`, `engine › teach_scenario`, `e2e › teach` |
+| Prüfungen als Zustandsprädikate (Gerät, IP, VLAN, Route, Config semantisch, Ping, Dienst, OSPF Full) | fertig | `engine › teach_checks`, `cli › teach_activities`                   |
+| Fortschrittsprozent, Ergebnis je Prüfung, „Prüfen“, optionaler Live-Fortschritt                      | fertig | `e2e › teach` (Prüfen), `engine › teach_scenario`                   |
+| Autorenoberfläche (Prüfungen per Formular, aus Antwortnetz ableiten, Export), Sperroptionen          | fertig | `engine › teach_activity` (Ableiten), `web › teach` (Formular)      |
+| Fünf Beispielaufgaben (VLAN/Trunk, Router-on-a-Stick, OSPF, PAT, ACL), de/en                         | fertig | `cli › teach_activities`, `e2e › teach` (ACL)                       |
+| Challenge Me (Entscheidung je Schicht, Erklärung, Punktestand)                                       | fertig | `engine › teach_challenge`, `e2e › teach`                           |
 
 ## Realismus-Pass Routing/WAN (wan)
 

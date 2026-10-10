@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FixedSizeList, type ListChildComponentProps } from 'react-window';
 import type { LogEntry } from '@netsim/engine';
-import { formatTime, translateMsg } from '../format';
+import { download, formatTime, logToCsv, translateMsg } from '../format';
+import { api } from '../engine/client';
 import { ALL_PROTOS, sim, useStore, type ProtoFilter } from '../store';
 
 const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 5, 10, 20];
@@ -27,6 +28,18 @@ function useSize(ref: React.RefObject<HTMLElement>): { width: number; height: nu
     return () => ro.disconnect();
   }, [ref]);
   return size;
+}
+
+async function exportPcap(): Promise<void> {
+  const bytes = await api.exportPcap();
+  const url = URL.createObjectURL(
+    new Blob([bytes.slice().buffer], { type: 'application/vnd.tcpdump.pcap' }),
+  );
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'netsim.pcap';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export function SimPanel() {
@@ -120,6 +133,20 @@ export function SimPanel() {
         <span className="muted">
           {t('sim.queue')}: {view?.queueLength ?? 0}
         </span>
+        <button
+          onClick={() => download('events.csv', logToCsv(t, log), 'text/csv')}
+          disabled={log.length === 0}
+          title={t('sim.exportCsvTitle')}
+        >
+          {t('sim.exportCsv')}
+        </button>
+        <button
+          onClick={() => void exportPcap()}
+          disabled={log.length === 0}
+          title={t('sim.exportPcapTitle')}
+        >
+          {t('sim.exportPcap')}
+        </button>
         <label className="follow">
           <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
           {t('sim.follow')}

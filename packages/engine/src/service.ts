@@ -1,5 +1,6 @@
 import type { Engine } from './engine';
 import { SimController } from './controller';
+import { logToPcap } from './pcap';
 import type { PingOptions } from './devices/host';
 import type { CableType, EngineConfig, LogEntry, Point, PortRef, Result } from './types';
 import type { DeviceType } from './types';
@@ -244,5 +245,26 @@ export class EngineService {
   }
   clear(): void {
     this.ctl.clear();
+  }
+
+  // ---- Skripting (Sandbox-Worker arbeitet auf einer Kopie) und PCAP-Export
+  /** Beginnt einen Skriptlauf: pausiert die Echtzeit und liefert den Zustand für den Sandbox-Worker. */
+  scriptBegin(): { snapshot: ReturnType<Engine['snapshot']>; wasRunning: boolean } {
+    const wasRunning = this.ctl.mode === 'realtime';
+    this.ctl.pause();
+    return { snapshot: this.ctl.engine.snapshot(), wasRunning };
+  }
+  /** Beendet den Lauf; `result` (Zustand + Log) wird übernommen, bei Abbruch entfällt es. */
+  scriptEnd(
+    result: { state: ReturnType<Engine['snapshot']>['state']; log: LogEntry[] } | null,
+    resume: boolean,
+  ): void {
+    if (result) this.ctl.adoptRun(result.state, result.log);
+    if (resume) this.ctl.play();
+    this.ctl.markDirty();
+  }
+  /** Event-Log als libpcap-Datei (optional nur Frames, die an `deviceId` ankamen). */
+  exportPcap(deviceId?: string): Uint8Array {
+    return logToPcap(this.ctl.engine.logSlice(0, 1_000_000), deviceId);
   }
 }

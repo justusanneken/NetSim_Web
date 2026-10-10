@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useStore, type Tool } from '../store';
+import { useTeach } from '../teach/teachStore';
 import { useUx } from '../ux/ux';
 
 const TOOLS: { id: Tool; key: string; icon: string }[] = [
@@ -51,6 +52,15 @@ export function Toolbar() {
           <span className="tool-label">{t(x.key)}</span>
         </button>
       ))}
+      <button
+        className="tool"
+        title={t('pdu.complex')}
+        aria-label={t('pdu.complexShort')}
+        onClick={() => useTeach.getState().openPduDialog(true)}
+      >
+        <span aria-hidden>✉+</span>
+        <span className="tool-label">{t('pdu.complexShort')}</span>
+      </button>
       <span className="sep" />
       <button
         className="tool"

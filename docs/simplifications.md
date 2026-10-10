@@ -302,6 +302,24 @@ supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolg
   einer PPPoE-Einwahl möglich, nicht am Virtual-Template. Nach einem Neustart der Gegenstelle bleibt die alte SA der anderen Seite bestehen (kein DPD, keine
   Lebensdauer): erst ein von der neu gestarteten Seite aufgebautes IKE oder `clear crypto sa` stellt das VPN wieder her. Entschlüsselte Pakete laufen danach durch die normale Eingangsverarbeitung der Schnittstelle (ACL-in, Weiterleitung).
 
+## Scripting-API und PCAP-Export (script)
+
+- **Nur JavaScript.** Python via Pyodide ist nicht eingebaut: ~10 MB Laufzeit, WebAssembly-Download beim ersten Start (verträgt sich nicht mit „keine externen Requests“ und Offline-Betrieb ohne
+  mitgelieferte Pyodide-Dateien) und ein zweiter, nicht deterministisch begrenzbarer Interpreter. Die JS-Teilmenge deckt Labor-Automatisierung ab: Variablen, Funktionen, Schleifen,
+  Arrays/Objekte, `Math`, `JSON.stringify`, `Object.keys/values/entries` – aber **kein** `try/catch`, keine Klassen, kein `async`, keine regulären Ausdrücke, kein `JSON.parse`, kein `Date`.
+- Skripte sind Stapelprogramme: Ereignisse werden nur während der skriptgetriebenen Simulation zugestellt; nach Ende des Skripts laufen keine Handler weiter. Ein Lauf arbeitet auf einer Kopie
+  des Netzes (siehe decisions 40), Terminal-Sitzungen der GUI sind davon unabhängig.
+- **PCAP – Wire-Format:** Frames sind synthetisch aus den strukturierten PDUs erzeugt (Ethernet II, 802.1Q, 802.3/LLC für STP, SNAP für PVST+/VTP, ARP, IPv4 inkl. Fragmente und Header-Prüfsumme,
+  ICMP, IPv6/ICMPv6 (ND, RA, Fehler), UDP/TCP mit Pseudo-Header-Prüfsummen, DHCPv4/DHCPv6, DNS inkl. Namenskompression, RIPv2/RIPng, OSPFv2/OSPFv3 inkl. LSA-Fletcher-Prüfsumme, EIGRP/EIGRPv6,
+  BGP-4, HSRP v1/v2, GRE, ESP, PPPoE/PPP (LCP/CHAP/IPCP), TFTP, NTP, Syslog, SNMP (BER), RADIUS, TACACS+-Rahmen, HTTP/FTP/SMTP/POP3/Telnet als Text). Wireshark dissect-Gegenprobe mit Scapy.
+- Ohne echtes Wire-Format bzw. vereinfacht: **IKE** (korrekter ISAKMP-Kopf, deterministischer Platzhalter-Rumpf), **ESP** (SPI/Seq/IV korrekt, Nutzlast mit festem Schlüsselstrom maskiert, ICV Zufallsbytes),
+  **SSH** (Banner echt, Rest Zufallsbytes), **CAPWAP/IoT** (JSON-Text), **TACACS+** (Kopf echt, Rumpf nicht verschleiert), **VTP** (nur Subset-Advertisement), **BGP** ohne MP-BGP-IPv6-Felder und mit
+  Seq/Ack = 1 in einem Einzelsegment ohne TCP-Handshake, **OSPFv3-LSAs** nur in Grundform (Router, Network, Inter-Area, AS-External; keine Link-/Intra-Area-Prefix-LSAs), **OSPF-MD5** mit
+  Platzhalter-Digest, **IPv6-Erweiterungsheader** entfallen. Keine FCS in der Datei (wie bei den meisten Captures), Frames < 60 Byte werden aufgefüllt.
+- Die Datei enthält jede Frame-**Ankunft** (also ein Frame, der über mehrere Links läuft, mehrfach) – ein Capture „auf allen Leitungen“. Zeitstempel: Simulationszeit ab 2025-01-01 00:00:00 UTC.
+  Frames, die ein Gerät still verwirft, ohne einen Log-Eintrag zu erzeugen, fehlen.
+- Multiuser (WebSocket-Relay, Link-Tunnel) ist **nicht** umgesetzt.
+
 ## UX (Phase 6)
 
 - **Gruppen/Cluster** sind ein beschrifteter Rahmen um Geräte (ein Gerät gehört zu höchstens einer Gruppe); Ziehen am Rahmen verschiebt die Mitglieder. Kein Einklappen zu einem Symbol.
@@ -335,6 +353,15 @@ supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolg
 - Kopieren/Einfügen arbeitet mit der Auswahl der Oberfläche (aktuell ein Gerät; Mehrfachauswahl über `setSelectionProvider`), nicht mit der System-Zwischenablage. HSRP-Virtuell-IPs und statische NAT-Adressen kopierter Router werden nicht umgeschrieben.
 - Importvalidierung der Gerätekonfiguration prüft Struktur und Grundtypen gegen die Standardkonfiguration, nicht jeden Wertebereich; inhaltlich unsinnige Werte fängt der Gerätefehlerschutz der Engine ab (Gerät „crashed“).
 - Autosave und zuletzt verwendete Dateien liegen im Browser (IndexedDB); ohne Speicherzugriff (privates Fenster) entfallen sie ohne Fehlermeldung.
+
+## Szenarien, Aufgabenmodus, Challenge Me (teach)
+
+- **Complex PDU:** Protokolle ICMP, UDP, TCP, HTTP/HTTPS, DNS, Telnet, SSH, FTP, SMTP, POP3. UDP ohne Anwendung gilt als erfolgreich, wenn der Empfang im Log steht und binnen 1 s keine ICMP-Fehlermeldung zurückkommt; ein geschlossener Port ergibt (wie bei echten Systemen) Port Unreachable und damit „Failed“ (Packet Tracer wertet bloße Zustellung als Erfolg). TCP-Versuche zu Port 80/443/8080 prüfen nur die Erreichbarkeit (jede HTTP-Antwort), das Protokoll `http` erwartet einen Status < 400. Eine erfolgreiche TCP-Probeverbindung wird sofort geschlossen. Bei Wiederholungen ist „Successful“ nur, wenn alle Versuche gelingen. Die Paketgröße ergibt sich aus der Länge der Nutzlast.
+- **PDU-Ergebnisse** überleben Step Back/Reset nicht (die Ausführung wird verworfen, der Eintrag gilt wieder als „nicht gesendet“); gespeichert wird das zuletzt bekannte Ergebnis.
+- **Prüfungen:** 60 s virtuelle Einschwingzeit für dynamische Prüfungen (Spanning Tree, OSPF-Adjazenz inkl. DR-Wahl, DHCP). Es gibt keine Prüfung auf EIGRP/BGP-Nachbarn, Syslog/SNMP-Details oder Textzeilen der `running-config` (bewusst: Zustand statt Text).
+- **Zeitlimit** der Aufgabe läuft in Wanduhrzeit der Oberfläche (nicht in virtueller Zeit) und wird nicht gespeichert; die Sperren (CLI/GUI/Geräte hinzufügen) sind Oberflächenregeln, keine Sicherheitsgrenze.
+- **Ableiten aus dem Antwortnetz** liefert Kandidaten (Konfiguration, Routen, Ping zwischen Hosts, HTTP zu Webservern); übernommen wird, was im Antwortnetz gilt und im Startnetz nicht (Verkehr, der nur im Antwortnetz scheitert, mit Erwartung `fail`). Die Liste ist ein Ausgangspunkt für den Autor, kein Ersatz für Hinweise und Gewichtung.
+- **Challenge Me:** Fragen gibt es für Switch (Weiterleiten/Fluten/Verwerfen, Port, Lernen), Hub, Host (NIC, ARP, Echo, geschlossener Port), Router (Gateway-MAC, Weiterleiten, TTL, Schnittstelle, Next Hop, ARP, ACL, NAT, MTU/DF) und eine Schichtfrage; keine Fragen zu Routing-Protokollen, WLAN, VPN oder IPv6-Ereignissen. Die ARP-Folgefrage braucht spätere Log-Einträge; ist der Eintrag der letzte, entfällt sie.
 
 ## Realismus-Pass Routing/WAN (wan)
 

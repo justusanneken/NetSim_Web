@@ -21,6 +21,8 @@ const NO_WRAP = new Set([
   'tick',
   'consumeDirty',
   'getView',
+  'scriptBegin',
+  'exportPcap',
   'getLog',
   'touch',
   'setMode',
@@ -56,6 +58,18 @@ const NO_WRAP_PREFIX = [
   'undo',
   'redo',
   'list',
+  // Lehr-Werkzeuge (teach): Szenarien/PDU-Liste, Aufgaben, Autor, Challenge – kein Entwurf, kein Undo-Schritt
+  'setScenarios',
+  'scenario',
+  'pdu',
+  'author',
+  'challenge',
+  'example',
+  'evaluate',
+  'activityLoad',
+  'activityInfo',
+  'activityCheck',
+  'activityClose',
 ];
 
 export interface TemplateInfo {
