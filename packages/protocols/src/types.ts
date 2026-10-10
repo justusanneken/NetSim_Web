@@ -454,6 +454,8 @@ export type OspfMsg =
       master: boolean;
       ddSeq: number;
       headers: OspfLsaHeader[];
+      /** Interface-MTU des Senders (Prüfung beim Empfänger, `ip ospf mtu-ignore`). */
+      mtu?: number;
     }
   | {
       type: 'lsr';

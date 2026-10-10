@@ -145,6 +145,8 @@ export interface OspfIfCfg {
   helloSec?: number;
   deadSec?: number;
   network?: 'broadcast' | 'point-to-point';
+  /** `ip ospf mtu-ignore`: MTU-Prüfung im DBD-Austausch überspringen. */
+  mtuIgnore?: boolean;
   /** `ip ospf authentication [message-digest|null]` (überschreibt die Area-Einstellung). */
   auth?: 'simple' | 'md5' | 'null';
   /** `ip ospf authentication-key` (Klartext). */

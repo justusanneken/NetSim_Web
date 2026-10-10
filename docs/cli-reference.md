@@ -210,3 +210,16 @@ JavaScript-Teilmenge im Sandbox-Interpreter. Zeiten in ms virtueller Zeit.
 ## Lehr-Werkzeuge (teach)
 
 Keine neuen IOS-Befehle. Fix: Schlüsselwörter mit Großbuchstaben (`encapsulation dot1Q N` im Subinterface) werden in jeder Schreibweise erkannt (`dot1q`, `DOT1Q`). Die Beispielaufgaben (Werkzeuge › Aufgabenmodus) benutzen ausschließlich vorhandene Befehle (`vlan`, `switchport …`, `encapsulation dot1Q`, `router ospf`, `network … area`, `ip nat …`, `ip access-list extended`, `ip access-group`).
+
+## WAN, Serial, statische Routen, OSPF-Anzeige (wan)
+
+**Serial (HWIC-2T):** Ports heißen `Serial0/<Steckplatz>/<n>` (`interface serial0/0/0`, Kurzform `s0/0/0`, Anzeige `Se0/0/0`). Kapselung `encapsulation hdlc|ppp` (Default HDLC; `no encapsulation ppp`),
+`clock rate BPS` (nur am DCE-Ende; am DTE: `%Error: This command applies only to DCE interfaces`), `keepalive [SEK]`, `bandwidth`. PPP: `ppp authentication chap|pap [chap|pap]`, `ppp chap hostname X`,
+`ppp chap password [0] Y`, `ppp pap sent-username X password [0] Y`, Benutzer über `username X password Y`. Anzeige: `show interfaces serial 0/0/0`, `show controllers [serial 0/0/0]` (DCE/DTE, Taktstatus),
+`show ip interface brief` (up/down bei fehlendem Takt, Kapselungs- oder Authentifizierungsfehler), `show interfaces dialer N`; Debug: `debug ppp negotiation|authentication`.
+
+**Statische Routen:** `ip route P M (NH | IF | IF NH) [AD] [name TEXT] [tag N] [permanent]` (auch `Null0`; name/tag in beiden Reihenfolgen), `no`-Form ohne die Zusätze.
+`show ip route A.B.C.D [MASK]` mit `Known via`, `Last update from`, `Routing Descriptor Blocks` (OSPF `type intra area|inter area|extern 1/2`, EIGRP `internal|external`); `% Subnet not in table` bei Maske ohne Treffer.
+
+**OSPF:** `show ip ospf interface [brief|IF]` im IOS-15-Format (Network Type, Kosten mit Serial-Bandbreite 1544 kbit/s, DR/BDR, Timer, `Hello due in`, Adjacent-Nachbarn), `ip ospf mtu-ignore`
+(MTU-Mismatch hält die Nachbarschaft in EXSTART), `no area N stub|nssa no-summary` nimmt nur `no-summary` zurück. Serial-Schnittstellen sind standardmäßig `POINT_TO_POINT`; die Nachbarliste zeigt dort `FULL/  -` mit Priorität 0.

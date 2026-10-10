@@ -21,6 +21,7 @@ import { IFM, ifDisplay, resolveIface } from './ifnames';
 import { K, P, R, choice, opt, type ModeId, type Registry } from './parser';
 import { CliError, type CliSession } from './session';
 import * as show4 from './show4';
+import { showOspfInterfacesV4 } from './showOspfIf';
 
 const CF: ModeId[] = ['config'];
 const IF = IFM;
@@ -1059,6 +1060,14 @@ export function addPhase4(r: Registry<CliSession>): void {
       65535,
       (o, v) => (o.deadSec = v),
     );
+    if (!v6)
+      r.add({
+        modes: IF,
+        only: 'l3',
+        negatable: true,
+        slots: [...head, K('mtu-ignore', 'Ignores the MTU in DBD packets')],
+        run: (s) => ospfIf(s, v6, (o) => (o.mtuIgnore = s.negated ? undefined : true)),
+      });
     r.add({
       modes: IF,
       only: 'l3',
@@ -1408,8 +1417,15 @@ export function addPhase4(r: Registry<CliSession>): void {
       ['ospf', 'OSPF information'],
       ['interface', 'Interface information'],
     ],
-    (s, a) => show4.showOspfInterfaces(s.engine, s.device, false, a.brief === 'brief'),
-    [opt(choice('brief', ['brief', 'Brief summary of interface']))],
+    (s, a) => {
+      const ref = a.if ? resolveIface(s.device, a.if) : undefined;
+      if (a.if && !ref) throw new CliError('% Invalid interface');
+      return showOspfInterfacesV4(s.engine, s.device, a.brief === 'brief', ref?.id);
+    },
+    [
+      opt(choice('brief', ['brief', 'Brief summary of interface'])),
+      opt(P('if', 'iface', 'IFNAME', 'Interface name')),
+    ],
   );
   sh(
     [
@@ -1707,6 +1723,22 @@ export function addPhase4(r: Registry<CliSession>): void {
       label: 'IP routing',
     },
     { words: [['tunnel', 'Generic Tunnel Interface']], tags: ['gre'], label: 'Tunnel debugging' },
+    {
+      words: [
+        ['ppp', 'PPP (Point to Point Protocol) information'],
+        ['negotiation', 'Protocol parameter negotiation'],
+      ],
+      tags: ['ppp.negotiation'],
+      label: 'PPP protocol negotiation debugging',
+    },
+    {
+      words: [
+        ['ppp', 'PPP (Point to Point Protocol) information'],
+        ['authentication', 'Authentication protocol activity'],
+      ],
+      tags: ['ppp.authentication'],
+      label: 'PPP authentication debugging',
+    },
   ];
   for (const d of DBG) {
     r.add({

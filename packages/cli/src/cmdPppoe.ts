@@ -138,7 +138,8 @@ export function addPppoe(r: Registry<CliSession>): void {
     ],
     run: (s) => {
       withIface(s, (ic) => {
-        if (ic.kind === 'dialer') dialer(ic);
+        if (ic.serial) ic.serial.encap = s.negated ? 'hdlc' : 'ppp';
+        else if (ic.kind === 'dialer') dialer(ic);
       });
     },
   });
@@ -184,7 +185,8 @@ export function addPppoe(r: Registry<CliSession>): void {
     ],
     run: (s, a) => {
       withIface(s, (ic) => {
-        dialer(ic).chapUser = s.negated ? undefined : (a.name as string);
+        if (ic.serial) ic.serial.chapHostname = s.negated ? undefined : (a.name as string);
+        else dialer(ic).chapUser = s.negated ? undefined : (a.name as string);
       });
     },
   });
@@ -203,7 +205,8 @@ export function addPppoe(r: Registry<CliSession>): void {
       withIface(s, (ic) => {
         const pw = a.pw ?? a.lead;
         if (!s.negated && pw === undefined) throw new CliError('% Incomplete command.');
-        dialer(ic).chapPass = s.negated ? undefined : pw;
+        if (ic.serial) ic.serial.chapPassword = s.negated ? undefined : pw;
+        else dialer(ic).chapPass = s.negated ? undefined : pw;
       });
     },
   });
@@ -230,12 +233,26 @@ export function addPppoe(r: Registry<CliSession>): void {
     slots: [
       K('ppp', 'Point-to-Point Protocol'),
       K('authentication', 'Set authentication method'),
-      choice('m', ['chap', 'Challenge Handshake Authentication Protocol (CHAP)']),
-      opt(K('callin', 'Authentication on incoming call only')),
+      choice(
+        'm',
+        ['chap', 'Challenge Handshake Authentication Protocol (CHAP)'],
+        ['pap', 'Password Authentication Protocol (PAP)'],
+      ),
+      opt(
+        choice(
+          'm2',
+          ['chap', 'Challenge Handshake Authentication Protocol (CHAP)'],
+          ['pap', 'Password Authentication Protocol (PAP)'],
+          ['callin', 'Authentication on incoming call only'],
+        ),
+      ),
     ],
-    run: (s) => {
+    run: (s, a) => {
       withIface(s, (ic) => {
-        vtemplate(ic).chap = !s.negated;
+        if (ic.serial) {
+          const list = [a.m, a.m2].filter((x) => x === 'chap' || x === 'pap') as ('chap' | 'pap')[];
+          ic.serial.auth = s.negated ? undefined : [...new Set(list)];
+        } else vtemplate(ic).chap = !s.negated;
       });
     },
   });

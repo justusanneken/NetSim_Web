@@ -192,7 +192,7 @@ export function showRipDatabase(e: Engine, d: D): string[] {
 // ---------------------------------------------------------------- OSPF
 
 const nbrRole = (ifs: OspfIfState, n: OspfNbr): string =>
-  ifs.state === 'p2p' ? '-' : n.rid === ifs.dr ? 'DR' : n.rid === ifs.bdr ? 'BDR' : 'DROTHER';
+  ifs.state === 'p2p' ? '  -' : n.rid === ifs.dr ? 'DR' : n.rid === ifs.bdr ? 'BDR' : 'DROTHER';
 
 export function showOspf(e: Engine, d: D, pid?: number): string[] {
   const cfg = l3(d);
@@ -244,11 +244,14 @@ export function showOspfNeighbors(e: Engine, d: D, v6: boolean): string[] {
   for (const c of procs) {
     for (const [id, ifs] of Object.entries(c.ifs)) {
       for (const n of Object.values(ifs.neighbors)) {
-        const dead = (ifs.neighbors[n.rid] ? 40 : 0) * 1e6 - (e.state.now - n.lastHeard);
+        const oc = l3(d)?.ifaces[id]?.ospf;
+        const deadSec =
+          (v6 ? l3(d)?.ifaces[id]?.v6?.ospf?.deadSec : oc?.deadSec) ?? (oc?.helloSec ?? 10) * 4;
+        const dead = deadSec * 1e6 - (e.state.now - n.lastHeard);
         const st =
           n.state === 'full' ? 'FULL' : n.state === '2way' ? '2WAY' : n.state.toUpperCase();
         out.push(
-          `${n.rid.padEnd(16)}${String(n.priority).padStart(3)}   ${(st + '/' + nbrRole(ifs, n)).padEnd(16)}${clock(dead).padEnd(12)}${(v6 ? up6(n.ip) : n.ip).padEnd(16)}${ifDisplay(d, id)}`,
+          `${n.rid.padEnd(16)}${String(ifs.state === 'p2p' ? 0 : n.priority).padStart(3)}   ${(st + '/' + nbrRole(ifs, n)).padEnd(16)}${clock(dead).padEnd(12)}${(v6 ? up6(n.ip) : n.ip).padEnd(16)}${ifDisplay(d, id)}`,
         );
       }
     }

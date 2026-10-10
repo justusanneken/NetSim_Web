@@ -18,6 +18,8 @@ import deUx from './de.ux.json';
 import enUx from './en.ux.json';
 import deCcna from './de.ccna.json';
 import enCcna from './en.ccna.json';
+import deWan from './de.wan.json';
+import enWan from './en.wan.json';
 
 export type Lang = 'de' | 'en';
 
@@ -42,6 +44,7 @@ void i18next.use(initReactI18next).init({
         ...dePersist,
         ...deUx,
         ...deCcna,
+        ...deWan,
         ...deTeach,
         ...deScript,
       },
@@ -55,6 +58,7 @@ void i18next.use(initReactI18next).init({
         ...enPersist,
         ...enUx,
         ...enCcna,
+        ...enWan,
         ...enTeach,
         ...enScript,
       },

@@ -362,3 +362,11 @@ supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolg
 - **Zeitlimit** der Aufgabe läuft in Wanduhrzeit der Oberfläche (nicht in virtueller Zeit) und wird nicht gespeichert; die Sperren (CLI/GUI/Geräte hinzufügen) sind Oberflächenregeln, keine Sicherheitsgrenze.
 - **Ableiten aus dem Antwortnetz** liefert Kandidaten (Konfiguration, Routen, Ping zwischen Hosts, HTTP zu Webservern); übernommen wird, was im Antwortnetz gilt und im Startnetz nicht (Verkehr, der nur im Antwortnetz scheitert, mit Erwartung `fail`). Die Liste ist ein Ausgangspunkt für den Autor, kein Ersatz für Hinweise und Gewichtung.
 - **Challenge Me:** Fragen gibt es für Switch (Weiterleiten/Fluten/Verwerfen, Port, Lernen), Hub, Host (NIC, ARP, Echo, geschlossener Port), Router (Gateway-MAC, Weiterleiten, TTL, Schnittstelle, Next Hop, ARP, ACL, NAT, MTU/DF) und eine Schichtfrage; keine Fragen zu Routing-Protokollen, WLAN, VPN oder IPv6-Ereignissen. Die ARP-Folgefrage braucht spätere Log-Einträge; ist der Eintrag der letzte, entfällt sie.
+
+## Realismus-Pass Routing/WAN (wan)
+
+- **Serial:** Das Line-Protocol wird sofort bei jeder Konfigurationsänderung berechnet (kein 10-s-Keepalive, keine 3 verpassten Keepalives). Takt am DCE-Ende, gleiche Kapselung und – bei PPP – passende CHAP/PAP-Zugangsdaten sind die einzigen Bedingungen;
+  die LCP/IPCP-Aushandlung ist nur als Debug-Ausgabe (`debug ppp negotiation|authentication`) nachgestellt. Kein Frame Relay, kein Multilink, kein `loopback`, keine Bitfehler/CRC. Serialisierung nutzt mindestens 1 Mbit/s (Mindestrate der Engine);
+  IP läuft über Ethernet-Frames mit ARP (in `show ip arp` sichtbar, anders als bei echtem HDLC). Ein abgeschaltetes Gegenende zeigt „up, line protocol down“.
+- **Statische Routen:** `track` und `ip route vrf` fehlen, `permanent` wird nur gespeichert. Null0 sendet immer ICMP net unreachable.
+- **OSPF-Anzeige:** `Hello due in` stammt aus dem Hintergrund-Timer; Flood-Queue-/Scan-Zeilen sind feste Werte. MTU-Prüfung nur im DBD-Paket (`ip ospf mtu-ignore`).

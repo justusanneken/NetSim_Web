@@ -3,6 +3,7 @@ import {
   dialerLines,
   protoGlobalLines,
   protoIfaceLines,
+  serialLines,
   vtemplateLines,
 } from './renderProto';
 import { renderPolicyConfig } from './showGaps';
@@ -122,6 +123,10 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
   if (c.bandwidth !== undefined) out.push(` bandwidth ${c.bandwidth}`);
   if (c.delay !== undefined) out.push(` delay ${c.delay}`);
   if (c.ripSplitHorizon === false) out.push(' no ip split-horizon');
+  for (const [asn, t] of Object.entries(c.eigrpTimers ?? {})) {
+    if (t.hello !== undefined) out.push(` ip hello-interval eigrp ${asn} ${t.hello}`);
+    if (t.hold !== undefined) out.push(` ip hold-time eigrp ${asn} ${t.hold}`);
+  }
   const o = c.ospf;
   if (o) {
     if (o.area !== undefined) out.push(` ip ospf ${o.pid ?? 1} area ${area(o.area)}`);
@@ -137,6 +142,7 @@ function routingIfaceLines(c: IfaceCfg, out: string[]): void {
     if (o.helloSec !== undefined) out.push(` ip ospf hello-interval ${o.helloSec}`);
     if (o.deadSec !== undefined) out.push(` ip ospf dead-interval ${o.deadSec}`);
     if (o.network) out.push(` ip ospf network ${o.network}`);
+    if (o.mtuIgnore) out.push(' ip ospf mtu-ignore');
   }
   if (c.hsrpVersion === 2) out.push(' standby version 2');
   const hsrpIds = [
@@ -255,7 +261,8 @@ function renderInterfaces(d: Device & { config: CliConfig }, L: string[]): void 
       if (p.mtu !== 1500) out.push(` ip mtu ${p.mtu}`);
       if (cfg.kind === 'router') out.push(...fwIfaceLines(cfg, p.id));
       l3Lines(cfg, cfg.ifaces[p.id], out);
-      out.push(` duplex ${p.duplex}`, ` speed ${p.speed}`);
+      if (p.kind === 'serial') out.push(...serialLines(cfg.ifaces[p.id]));
+      else out.push(` duplex ${p.duplex}`, ` speed ${p.speed}`);
     }
     out.push(...discIfLines(cfg, p.id));
     if (!p.adminUp) out.push(' shutdown');
@@ -418,8 +425,12 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
         (maskToPrefix(a.mask) ?? 0) - (maskToPrefix(b.mask) ?? 0),
     );
     for (const r of routes) {
-      const via = r.outIfaceId ? ifDisplay(d, r.outIfaceId) : r.nextHop;
-      L.push(`ip route ${r.prefix} ${r.mask} ${via}${r.ad !== 1 ? ` ${r.ad}` : ''}`);
+      const via = [r.outIfaceId ? ifDisplay(d, r.outIfaceId) : undefined, r.nextHop]
+        .filter(Boolean)
+        .join(' ');
+      L.push(
+        `ip route ${r.prefix} ${r.mask} ${via}${r.ad !== 1 ? ` ${r.ad}` : ''}${r.name !== undefined ? ` name ${r.name}` : ''}${r.tag !== undefined ? ` tag ${r.tag}` : ''}${r.permanent ? ' permanent' : ''}`,
+      );
     }
   }
   for (const r of [...cfg.staticRoutes6].sort(

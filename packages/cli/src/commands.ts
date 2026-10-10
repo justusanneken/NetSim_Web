@@ -17,6 +17,7 @@ import { addMgmtExtras } from './cmdMgmt';
 import { addQos } from './cmdQos';
 import * as show from './show';
 import { addPhase5 } from './commands5';
+import { showSerialInterface } from './showWan';
 
 const U: ModeId[] = ['user', 'priv'];
 const PR: ModeId[] = ['priv'];
@@ -110,7 +111,11 @@ export function runPing(s: CliSession, dst: string, o: PingParams): void {
     `Sending ${o.count}, ${o.size}-byte ICMP Echos to ${dst}, timeout is ${o.timeoutSec} seconds:`,
   );
   if (!r.ok) {
-    s.out('% ' + r.error);
+    if (r.error === 'ping.noIp') {
+      // Kein aktives IP-Interface (z. B. alle Schnittstellen down): IOS meldet 0 % Erfolg
+      s.out('.'.repeat(o.count));
+      s.out(`Success rate is 0 percent (0/${o.count})`);
+    } else s.out('% ' + r.error);
     return;
   }
   const cfg = d.config;
@@ -473,8 +478,9 @@ export function buildRegistry(): Registry<CliSession> {
       K('ip', 'IP information'),
       K('route', 'IP routing table'),
       opt(P('net', 'ip', 'A.B.C.D', 'Network to display information about')),
+      opt(P('mask', 'mask', 'A.B.C.D', 'Network mask')),
     ],
-    run: (s, a) => s.outLines(show.showIpRoute(s.engine, s.device, a.net)),
+    run: (s, a) => s.outLines(show.showIpRoute(s.engine, s.device, a.net, undefined, a.mask)),
   });
   r.add({
     modes: U,
@@ -511,7 +517,10 @@ export function buildRegistry(): Registry<CliSession> {
     ],
     run: (s, a) => {
       const ports = a.if ? [portOf(s, a.if)] : s.device.ports;
-      for (const p of ports) s.outLines(show.showInterface(s.device, p));
+      for (const p of ports)
+        s.outLines(
+          p.kind === 'serial' ? showSerialInterface(s.device, p) : show.showInterface(s.device, p),
+        );
     },
   });
   sh(
@@ -775,33 +784,58 @@ export function buildRegistry(): Registry<CliSession> {
   ];
   const routeRun = (s: CliSession, a: Record<string, string>): void => {
     const ref = a.out ? resolveIface(s.device, a.out) : undefined;
+    if (a.out && !ref) throw new CliError('% Invalid interface');
     const route = {
       prefix: a.prefix as string,
       mask: a.mask as string,
       nextHop: a.nh,
       outIfaceId: ref?.id,
       ad: a.ad ? Number(a.ad) : 1,
+      name: a.rname,
+      tag: a.tag !== undefined ? Number(a.tag) : undefined,
+      permanent: a.perm !== undefined,
     };
     const res = s.negated
       ? s.engine.removeStaticRoute(s.deviceId, route)
       : s.engine.addStaticRoute(s.deviceId, route);
     if (!res.ok) throw engineError(res);
   };
-  for (const [slot, only] of [
-    [P('nh', 'ip', 'A.B.C.D', "Forwarding router's address"), 'l3'],
-    [P('out', 'iface', 'IFNAME', 'Interface name'), 'l3'],
-  ] as const) {
-    r.add({
-      modes: CF,
-      only,
-      negatable: true,
-      slots: [
-        ...routeBase,
-        slot,
-        opt(P('ad', 'int', '<1-255>', 'Distance metric for this route', [1, 255])),
-      ],
-      run: routeRun,
-    });
+  // Optionale Endung `[distance] [name TEXT] [tag N] [permanent]`: der Parser kennt keine Gruppen,
+  // daher je Kombination (und beide Reihenfolgen von name/tag) eine eigene Registrierung.
+  const kwName = [K('name', 'Specify name of the next hop'), P('rname', 'word', 'WORD', 'Name')];
+  const kwTag = [
+    K('tag', 'Set tag for this route'),
+    P('tag', 'int', '<1-4294967295>', 'Tag value', [1, 4294967295]),
+  ];
+  const nameTag = [[], kwName, kwTag, [...kwName, ...kwTag], [...kwTag, ...kwName]];
+  const tails = [];
+  for (const withAd of [false, true])
+    for (const mid of nameTag)
+      for (const perm of [false, true])
+        tails.push([
+          ...(withAd
+            ? [P('ad', 'int', '<1-255>', 'Distance metric for this route', [1, 255])]
+            : []),
+          ...mid,
+          ...(perm ? [choice('perm', ['permanent', 'permanent route'])] : []),
+        ]);
+  for (const slots of [
+    [P('nh', 'ip', 'A.B.C.D', "Forwarding router's address")],
+    [P('out', 'iface', 'IFNAME', 'Interface name')],
+    [
+      P('out', 'iface', 'IFNAME', 'Interface name'),
+      P('nh', 'ip', 'A.B.C.D', "Forwarding router's address"),
+    ],
+  ]) {
+    for (const tail of tails) {
+      r.add({
+        modes: CF,
+        only: 'l3',
+        negatable: true,
+        slots: [...routeBase, ...slots, ...tail],
+        run: routeRun,
+      });
+    }
   }
 
   // --- interface-Varianten
@@ -833,6 +867,11 @@ export function buildRegistry(): Registry<CliSession> {
         if (ref.kind === 'phys' || ref.kind === 'po') throw new CliError('% Invalid interface');
         delete s.device.config.ifaces[ref.id];
         s.engine.routingChanged(s.deviceId);
+        return;
+      }
+      if (ref.kind === 'null') {
+        s.ifaces = [];
+        s.mode = 'config-if';
         return;
       }
       if (ref.kind === 'po') {

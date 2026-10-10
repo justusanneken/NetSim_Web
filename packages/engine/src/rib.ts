@@ -66,7 +66,13 @@ export function buildRib(cfg: L3Cfg, ifaces: Iface[]): RibEntry[] {
       ad: r.ad,
       metric: 0,
     };
-    if (r.outIfaceId) {
+    if (r.outIfaceId === 'null0') {
+      rib.push({ ...base, ifaceId: 'null0' });
+    } else if (r.outIfaceId && r.nextHop) {
+      // Schnittstelle + Next-Hop (z. B. `ip route … Serial0/0/0 10.0.0.2`)
+      if (connected.some((c) => c.ifaceId === r.outIfaceId && contains(c, r.nextHop as string)))
+        rib.push({ ...base, nextHop: r.nextHop, ifaceId: r.outIfaceId });
+    } else if (r.outIfaceId) {
       if (connected.some((c) => c.ifaceId === r.outIfaceId))
         rib.push({ ...base, ifaceId: r.outIfaceId });
     } else if (r.nextHop) {

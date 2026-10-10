@@ -67,7 +67,9 @@ export function addOspfAreas(r: Registry<CliSession>): void {
     run: (s, a) =>
       upd(s, a, (x) => {
         if (s.negated) {
-          if (x.type === 'stub') {
+          // `no area N stub no-summary` nimmt nur no-summary zurück, die Area bleibt Stub (wie IOS)
+          if (x.type === 'stub' && Object.values(a).includes('no-summary')) x.noSummary = false;
+          else if (x.type === 'stub') {
             x.type = 'normal';
             x.noSummary = false;
           }
@@ -91,7 +93,8 @@ export function addOspfAreas(r: Registry<CliSession>): void {
     run: (s, a) =>
       upd(s, a, (x) => {
         if (s.negated) {
-          if (x.type === 'nssa') {
+          if (x.type === 'nssa' && Object.values(a).includes('no-summary')) x.noSummary = false;
+          else if (x.type === 'nssa') {
             x.type = 'normal';
             x.noSummary = false;
             x.nssaDefaultOriginate = undefined;

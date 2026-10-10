@@ -158,6 +158,13 @@ export class Phase5 {
   linkChanged(dev: Device, p: Port, up: boolean): void {
     if (!dev.powered || (dev.config.kind !== 'router' && dev.config.kind !== 'switch')) return;
     const state = up ? 'up' : 'down';
+    if (p.kind === 'serial') {
+      // Serial: LINEPROTO-Meldungen kommen getrennt aus serialLineChanged (Line-Protocol hängt an HDLC/PPP/Takt)
+      this.eng.withCtx(dev, (ctx) =>
+        syslogEmit(ctx, dev, 3, 'LINK-3-UPDOWN', `Interface ${p.name}, changed state to ${state}`),
+      );
+      return;
+    }
     this.eng.withCtx(dev, (ctx) => {
       snmpTrap(ctx, dev, up ? 'linkup' : 'linkdown', {
         index: dev.ports.indexOf(p) + 1,
@@ -613,7 +620,11 @@ export class Phase5 {
     mod.ports.forEach((ps, i) => {
       d.ports.push({
         id: `p${base + i}`,
-        name: /\d$/.test(ps.name) ? ps.name : `${ps.name}${slot + 1}/${i}`,
+        name: /\d$/.test(ps.name)
+          ? ps.name
+          : ps.kind === 'serial'
+            ? `${ps.name}0/${slot}/${i}`
+            : `${ps.name}${slot + 1}/${i}`,
         kind: ps.kind,
         mac: macFromCounter(++s.macCounter),
         adminUp: !isRouter,

@@ -239,3 +239,12 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Autorenoberfläche (Prüfungen per Formular, aus Antwortnetz ableiten, Export), Sperroptionen          | fertig | `engine › teach_activity` (Ableiten), `web › teach` (Formular)      |
 | Fünf Beispielaufgaben (VLAN/Trunk, Router-on-a-Stick, OSPF, PAT, ACL), de/en                         | fertig | `cli › teach_activities`, `e2e › teach` (ACL)                       |
 | Challenge Me (Entscheidung je Schicht, Erklärung, Punktestand)                                       | fertig | `engine › teach_challenge`, `e2e › teach`                           |
+
+## Realismus-Pass Routing/WAN (wan)
+
+| Feature                                                                                                                              | Status | Test                          |
+| ------------------------------------------------------------------------------------------------------------------------------------ | ------ | ----------------------------- |
+| Serial-Ports, HDLC/PPP, clock rate/DCE-DTE, `show controllers serial`, `show interfaces serial`, PAP/CHAP, debug ppp                 | fertig | `cli › wan_serial`            |
+| Statische Routen: Null0, Interface+Next-Hop, name/tag/permanent, Floating Static, `show ip route <addr> [mask]`                      | fertig | `cli › wan_routes`            |
+| OSPF über Serial (p2p, Kosten 64), `show ip ospf interface`, Hello/Dead- und MTU-Mismatch, `mtu-ignore`, `no area N stub no-summary` | fertig | `cli › wan_ospf`              |
+| IPsec-VTI, SA-Lifetime/Rekey, DPD, TACACS+-Fallback, VRRP/GLBP, EIGRP-Named-Mode/Stub, BGP-Erweiterungen, `show tcp brief all`       | offen  | siehe `docs/realism-audit.md` |

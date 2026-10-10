@@ -233,7 +233,8 @@ export function ifCfg(iface: Iface, c: OspfCfg): NonNullable<Iface['cfg']['ospf'
   return o && (o.pid === undefined || o.pid === c.pid) ? o : undefined;
 }
 export const ifNetwork = (iface: Iface, c: OspfCfg): 'broadcast' | 'point-to-point' =>
-  ifCfg(iface, c)?.network ?? (iface.kind === 'tunnel' ? 'point-to-point' : 'broadcast');
+  ifCfg(iface, c)?.network ??
+  (iface.kind === 'tunnel' || iface.cfg.serial ? 'point-to-point' : 'broadcast');
 export const ifHello = (iface: Iface, c: OspfCfg): number => ifCfg(iface, c)?.helloSec ?? 10;
 export const ifDead = (iface: Iface, c: OspfCfg): number =>
   ifCfg(iface, c)?.deadSec ?? ifHello(iface, c) * 4;
@@ -672,6 +673,7 @@ function sendDbd(
     master: n.master,
     ddSeq: n.ddSeq,
     headers: init ? [] : lsdbHeaders(rt, c, ifs.area),
+    mtu: iface.mtu,
   });
 }
 
@@ -873,6 +875,16 @@ function rxDbd(
   if (n.state === '2way') {
     if (!needAdj(ifs, n)) return;
     startAdj(rt, c, iface, ifs, n);
+  }
+  // MTU-Mismatch: ein DBD mit größerer MTU des Nachbarn wird verworfen (Nachbar bleibt in EXSTART)
+  if (m.mtu !== undefined && m.mtu > iface.mtu && !ifCfg(iface, c)?.mtuIgnore) {
+    dbg(
+      rt,
+      'OSPF',
+      'ospf.adj',
+      () => `OSPF-${c.pid} ADJ   ${nameOf(rt, iface)}: Nbr ${m.routerId} has larger interface MTU`,
+    );
+    return;
   }
   if (m.init) {
     if (n.state === 'exstart') {

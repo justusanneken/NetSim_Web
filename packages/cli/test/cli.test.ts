@@ -50,7 +50,7 @@ describe('Parser: Abkürzungen, Fehler, Hilfe', () => {
     expect(r.s.help('co')).toBe('configure  copy\n');
     expect(r.s.help('show ip ')).toContain('route');
     expect(r.s.help('zzz')).toBe('% Unrecognized command\n');
-    expect(r.s.help('show ip route 1.1.1.1 ')).toBe('  <cr>\n');
+    expect(r.s.help('show ip route 1.1.1.1 ')).toBe('  A.B.C.D  Network mask\n  <cr>\n');
   });
 
   it('Tab vervollständigt eindeutig oder bis zum gemeinsamen Präfix', () => {

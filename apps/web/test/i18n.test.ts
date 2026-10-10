@@ -21,6 +21,8 @@ import enUx from '../src/i18n/en.ux.json';
 
 import deCcna from '../src/i18n/de.ccna.json';
 import enCcna from '../src/i18n/en.ccna.json';
+import deWan from '../src/i18n/de.wan.json';
+import enWan from '../src/i18n/en.wan.json';
 
 const de: Record<string, string> = {
   ...de0,
@@ -31,6 +33,7 @@ const de: Record<string, string> = {
   ...dePersist,
   ...deUx,
   ...deCcna,
+  ...deWan,
   ...deTeach,
 };
 const en: Record<string, string> = {
@@ -42,6 +45,7 @@ const en: Record<string, string> = {
   ...enPersist,
   ...enUx,
   ...enCcna,
+  ...enWan,
   ...enTeach,
 };
 

@@ -72,6 +72,7 @@ export function ifaceBwKbps(rt: Rt, i: Iface): number {
   if (i.kind === 'tunnel') return 100;
   if (i.kind === 'svi') return 1_000_000;
   const p = rt.dev.ports.find((x) => x.id === i.portId);
+  if (p?.kind === 'serial') return 1544;
   return (p?.operSpeed ?? 100) * 1000;
 }
 
@@ -80,6 +81,7 @@ export function ifaceDelay(rt: Rt, i: Iface): number {
   if (i.cfg.delay !== undefined) return i.cfg.delay;
   if (i.kind === 'loop') return 500;
   if (i.kind === 'tunnel') return 5000;
+  if (rt.dev.ports.find((x) => x.id === i.portId)?.kind === 'serial') return 2000;
   const bw = ifaceBwKbps(rt, i);
   return bw <= 10_000 ? 100 : bw <= 100_000 ? 10 : 1;
 }
