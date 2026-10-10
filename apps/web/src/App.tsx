@@ -12,6 +12,7 @@ import { applyTheme } from './theme';
 import { PortPicker } from './components/PortPicker';
 import { SimPanel } from './components/SimPanel';
 import { Toolbar } from './components/Toolbar';
+import { PersistUi } from './persist/PersistUi';
 import { sim, useStore } from './store';
 import { translateMsg } from './format';
 import { ActivityPanel } from './teach/ActivityPanel';
@@ -93,6 +94,7 @@ export function App() {
         <DeviceDialog />
         <PduDialog />
         <AuthorDialog />
+        <PersistUi />
         <ContextMenu />
         <NetworkInfo />
         <BackgroundDialog />

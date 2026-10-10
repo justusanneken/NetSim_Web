@@ -10,6 +10,8 @@ import deT from './de.tcp.json';
 import enT from './en.tcp.json';
 import deTeach from './de.teach.json';
 import enTeach from './en.teach.json';
+import dePersist from './de.persist.json';
+import enPersist from './en.persist.json';
 import deUx from './de.ux.json';
 import enUx from './en.ux.json';
 import deCcna from './de.ccna.json';
@@ -29,8 +31,30 @@ function storedLang(): Lang {
 
 void i18next.use(initReactI18next).init({
   resources: {
-    de: { translation: { ...de, ...de5, ...deT, ...deProto, ...deUx, ...deCcna, ...deTeach } },
-    en: { translation: { ...en, ...en5, ...enT, ...enProto, ...enUx, ...enCcna, ...enTeach } },
+    de: {
+      translation: {
+        ...de,
+        ...de5,
+        ...deT,
+        ...deProto,
+        ...dePersist,
+        ...deUx,
+        ...deCcna,
+        ...deTeach,
+      },
+    },
+    en: {
+      translation: {
+        ...en,
+        ...en5,
+        ...enT,
+        ...enProto,
+        ...enPersist,
+        ...enUx,
+        ...enCcna,
+        ...enTeach,
+      },
+    },
   },
   lng: storedLang(),
   fallbackLng: 'de',

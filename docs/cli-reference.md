@@ -191,6 +191,11 @@ Anzeige/Betrieb: `show pppoe session`, `show ip interface brief` (Dialer/Virtual
 
 **QoS:** `class-map [match-all|match-any] NAME` (`match dscp V…`, `match access-group [name] ACL`, `match protocol P`, `match any`), `policy-map NAME` (`class NAME|class-default` mit `set dscp V`, `bandwidth …`, `priority …`, `police …`, `queue-limit …`, `shape …`), Schnittstelle `service-policy input|output NAME`, `show class-map [NAME]`, `show policy-map [NAME]`, `show policy-map interface [IF]`.
 
+## Persistenz-Änderungen
+
+- `encapsulation dot1Q <vlan>` im Subinterface-Modus funktionierte nicht (der PPPoE-Befehl `encapsulation ppp` verdeckte ihn, zudem verglich der Parser Schlüsselwörter mit Großbuchstaben nie). Behoben; Router-on-a-Stick per CLI ist über die Vorlage `router-on-a-stick` getestet.
+- Die Vorlagen (`Datei → Vorlagen`) sind reine IOS-Konfigurationen und lassen sich in den Terminals per `show running-config` nachlesen.
+
 ## Lehr-Werkzeuge (teach)
 
 Keine neuen IOS-Befehle. Fix: Schlüsselwörter mit Großbuchstaben (`encapsulation dot1Q N` im Subinterface) werden in jeder Schreibweise erkannt (`dot1q`, `DOT1Q`). Die Beispielaufgaben (Werkzeuge › Aufgabenmodus) benutzen ausschließlich vorhandene Befehle (`vlan`, `switchport …`, `encapsulation dot1Q`, `router ospf`, `network … area`, `ip nat …`, `ip access-list extended`, `ip access-group`).

@@ -11,6 +11,9 @@ import deT from '../src/i18n/de.tcp.json';
 import enT from '../src/i18n/en.tcp.json';
 import deTeach from '../src/i18n/de.teach.json';
 import enTeach from '../src/i18n/en.teach.json';
+import dePersist from '../src/i18n/de.persist.json';
+import enPersist from '../src/i18n/en.persist.json';
+
 import deUx from '../src/i18n/de.ux.json';
 import enUx from '../src/i18n/en.ux.json';
 
@@ -22,6 +25,7 @@ const de: Record<string, string> = {
   ...de5,
   ...deT,
   ...deProto,
+  ...dePersist,
   ...deUx,
   ...deCcna,
   ...deTeach,

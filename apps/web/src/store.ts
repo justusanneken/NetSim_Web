@@ -12,6 +12,7 @@ import { api, proxy } from './engine/client';
 import { isEndDevice } from './deviceKinds';
 import { syncLogWindow } from './logSync';
 import { useTeach } from './teach/teachStore';
+import { resetDocExtras } from './persist/actions';
 import { resetUiDoc } from './ux/uiDoc';
 import { useUx } from './ux/ux';
 
@@ -343,7 +344,8 @@ export const useStore = create<UiState>((set, get) => ({
   },
 
   async newTopology() {
-    await api.clear();
+    await api.newTopology();
+    resetDocExtras();
     resetUiDoc();
     useUx.getState().setSelected([]);
     set({ selectedDevice: null, selectedLink: null, selectedLog: null });
