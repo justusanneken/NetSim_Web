@@ -50,8 +50,7 @@ SW1#show ip route
 % Invalid input detected at '^' marker.
 
 SW1#show ip arp
-% Incomplete command.
-
+Protocol  Address          Age (min)  Hardware Addr   Type   Interface
 SW1#show running-config | section interface FastEthernet0/2
 interface FastEthernet0/2
  description Server B

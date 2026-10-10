@@ -501,9 +501,6 @@ export function buildRegistry(): Registry<CliSession> {
       ['arp', 'IP ARP table'],
     ],
     (s) => s.outLines(show.showIpArp(s.engine, s.device)),
-    U,
-    [],
-    'router',
   );
   r.add({
     modes: U,
