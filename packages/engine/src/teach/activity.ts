@@ -2,6 +2,7 @@ import { Unzlib, strFromU8, strToU8, zlibSync } from 'fflate';
 import { z } from 'zod';
 import type { EngineState, Result } from '../types';
 import { CheckSchema, LTextSchema } from './checks';
+import { sanitizeState } from '../nsim';
 
 /**
  * Aufgabenformat `.nsact`: JSON `{ schema: 1, kind: 'netsim-activity', ... }`, zlib-komprimiert, mit Zod
@@ -140,7 +141,21 @@ export function parseActivity(data: unknown): Result<Activity> {
   const checks = r.data.checks;
   const ids = new Set(checks.map((c) => c.id));
   if (ids.size !== checks.length) return { ok: false, error: 'activity.err.duplicateId' };
-  return { ok: true, value: r.data as unknown as Activity };
+  const value = r.data as unknown as Activity;
+  // Netze wie `.nsim` prüfen (Typabgleich, Integrität, Probelauf): das Zod-Schema oben prüft nur die Hülle
+  for (const k of ['start', 'answer'] as const) {
+    const st = value[k];
+    if (st === undefined) continue;
+    const clean = sanitizeState(st);
+    if (!clean.ok)
+      return {
+        ok: false,
+        error: 'activity.err.invalid',
+        params: { path: k, message: String(clean.params?.detail ?? clean.error) },
+      };
+    value[k] = clean.value;
+  }
+  return { ok: true, value };
 }
 
 /** `.nsact`-Bytes: zlib-komprimiertes JSON. */

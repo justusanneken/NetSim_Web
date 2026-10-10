@@ -11,7 +11,8 @@ import { Unzlib, zlibSync } from 'fflate';
 import { z } from 'zod';
 import { CATALOG } from './catalog';
 import { validateCable } from './cabling';
-import { DEFAULT_CONFIG, type Engine } from './engine';
+import { DEFAULT_CONFIG, Engine } from './engine';
+import { buildDevices, buildLinks } from './view';
 import type { Device, DeviceType, EngineConfig, EngineState, Link, Port, Result } from './types';
 import type { PhysicalTree } from './p5types';
 
@@ -626,12 +627,79 @@ export function buildState(doc: NsimDoc): Result<EngineState> {
   return { ok: true, value: state };
 }
 
-/** Lädt ein validiertes Dokument in die Engine (Zustand ersetzen, Laufzeit neu aufbauen). */
-export function importNsim(engine: Engine, doc: NsimDoc): Result<true> {
+// ------------------------------------------------------------------ Probelauf
+
+/**
+ * Zusätzliche Prüfung im Probelauf (z. B. running-config und `show`-Befehle rendern). Das CLI-Paket
+ * registriert sie beim Laden; die Engine selbst kennt die CLI nicht.
+ */
+export type ImportVerifier = (e: Engine) => void;
+let verifier: ImportVerifier | undefined;
+export function setImportVerifier(v: ImportVerifier | undefined): void {
+  verifier = v;
+}
+
+/** Virtuelle Zeit des Probelaufs: erste Hellos/Advertisements, DHCP-/STP-Start. */
+const TRIAL_US = 3_000_000;
+
+/**
+ * Probelauf auf einer Kopie: Laden, Ansicht bauen, kurz simulieren, Verifier. Die Zod-/Typprüfung deckt
+ * nur Felder der Standardkonfiguration ab; optionale Teilbäume und Einträge von Tabellen (ACLs, QoS,
+ * CDP/LLDP, Snooping …) mit falschen Typen würden sonst erst in Engine, Ansicht oder CLI werfen.
+ */
+function trialRun(state: EngineState): string | undefined {
+  try {
+    const e = new Engine({ seed: state.seed, config: state.config });
+    e.loadState(structuredClone(state));
+    buildDevices(e);
+    buildLinks(e);
+    e.runUntil(e.state.now + TRIAL_US);
+    buildDevices(e);
+    verifier?.(e);
+    return undefined;
+  } catch (err) {
+    return `trial: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200);
+  }
+}
+
+/**
+ * Lädt ein validiertes Dokument in die Engine (Zustand ersetzen, Laufzeit neu aufbauen). Nicht
+ * vertrauenswürdige Dokumente laufen vorher probeweise auf einer Kopie; wirft dabei etwas, bleibt die
+ * Engine unverändert und das Ergebnis ist `nsim.invalid`. `trusted` (eigene Undo-Schnappschüsse) spart das.
+ */
+export function importNsim(
+  engine: Engine,
+  doc: NsimDoc,
+  opts: { trusted?: boolean } = {},
+): Result<true> {
   const st = buildState(doc);
   if (!st.ok) return st;
+  if (!opts.trusted) {
+    const bad = trialRun(st.value);
+    if (bad) return fail('nsim.invalid', { detail: bad });
+  }
   engine.loadState(st.value);
   return { ok: true, value: true };
+}
+
+/**
+ * Bereinigt einen fremden Engine-Zustand (z. B. Start-/Antwortnetz einer `.nsact`-Aufgabe) über denselben
+ * Weg wie `.nsim`: Entwurf exportieren, Zod/Integrität/Typabgleich, Probelauf. Ergebnis ist ein frischer
+ * Zustand ohne Laufzeitdaten.
+ */
+export function sanitizeState(raw: EngineState): Result<EngineState> {
+  let json: string;
+  try {
+    json = designJson({ state: raw } as unknown as Engine);
+  } catch {
+    return fail('nsim.invalid', { detail: 'state' });
+  }
+  const doc = parseNsimJson(json);
+  if (!doc.ok) return doc;
+  const st = buildState(doc.value);
+  if (!st.ok) return st;
+  const bad = trialRun(st.value);
+  return bad ? fail('nsim.invalid', { detail: bad }) : st;
 }
 
 /** Bequemer Pfad: Bytes → Engine. */
