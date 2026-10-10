@@ -267,8 +267,11 @@ export const useStore = create<UiState>((set, get) => ({
       set({ placing: null });
       return;
     }
+    // Platzieren sofort beenden: ein schneller Klick auf die Palette während der RPC würde sonst
+    // den (noch aktiven) Modus abschalten bzw. danach vom späten `placing: null` überschrieben.
+    set({ placing: null });
     const id = await api.addDevice(type, { x, y });
-    set({ placing: null, selectedDevice: id, selectedLink: null });
+    set({ selectedDevice: id, selectedLink: null });
   },
 
   async deviceClicked(id, clientX, clientY) {
@@ -411,10 +414,23 @@ export async function connectEngine(): Promise<void> {
     proxy((view: ViewModel) => {
       const s = useStore.getState();
       const patch: Partial<UiState> = { view };
-      if (s.selectedDevice && !view.devices.some((d) => d.id === s.selectedDevice)) {
+      // Ansichten kommen über einen eigenen MessagePort (Comlink-Proxy) und können älter sein als
+      // eine bereits beantwortete RPC (addDevice/paste wählt das neue Gerät aus). Auswahl daher nur
+      // verwerfen, wenn das Objekt in der vorigen Ansicht existierte, jetzt also wirklich entfernt ist.
+      const had = (id: string, list: { id: string }[] | undefined): boolean =>
+        list?.some((x) => x.id === id) ?? true;
+      if (
+        s.selectedDevice &&
+        !view.devices.some((d) => d.id === s.selectedDevice) &&
+        had(s.selectedDevice, s.view?.devices)
+      ) {
         patch.selectedDevice = null;
       }
-      if (s.selectedLink && !view.links.some((l) => l.id === s.selectedLink)) {
+      if (
+        s.selectedLink &&
+        !view.links.some((l) => l.id === s.selectedLink) &&
+        had(s.selectedLink, s.view?.links)
+      ) {
         patch.selectedLink = null;
       }
       useStore.setState(patch);

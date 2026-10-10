@@ -153,6 +153,18 @@ class WorkerService extends TeachService {
   saveNsim(extras?: Record<string, unknown>): Uint8Array {
     return this.persist.save(extras);
   }
+  /** Autosave: Revision, Geräteanzahl und Datei aus demselben Zustand (kein Wettlauf mit der Ansicht). */
+  saveNsimAutosave(extras?: Record<string, unknown>): {
+    revision: number;
+    devices: number;
+    bytes: Uint8Array;
+  } {
+    return {
+      revision: this.persist.revision,
+      devices: Object.keys(this.engine.state.devices).length,
+      bytes: this.persist.save(extras),
+    };
+  }
   openNsim(bytes: Uint8Array) {
     const r = this.persist.open(bytes);
     this.touch();
