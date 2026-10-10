@@ -21,6 +21,8 @@ const NO_WRAP = new Set([
   'tick',
   'consumeDirty',
   'getView',
+  'scriptBegin',
+  'exportPcap',
   'getLog',
   'touch',
   'setMode',

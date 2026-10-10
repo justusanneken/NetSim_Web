@@ -177,6 +177,17 @@ Anzeige/Betrieb: `show pppoe session`, `show ip interface brief` (Dialer/Virtual
 `crypto ipsec transform-set NAME esp-… [esp-…]` (IOS-Transforms, `esp-aes 128|192|256`) (`mode tunnel|transport`), `crypto map NAME SEQ ipsec-isakmp` (`set peer A`, `set transform-set T`, `match address ACL`, `set pfs groupN`,
 `set security-association lifetime seconds S`), an der Schnittstelle `crypto map NAME`; `show crypto isakmp sa|policy`, `show crypto ipsec sa|transform-set`, `show crypto map`, `clear crypto sa|isakmp`.
 
+## Scripting-API (Extras → Skript-Konsole)
+
+JavaScript-Teilmenge im Sandbox-Interpreter. Zeiten in ms virtueller Zeit.
+
+- `network.addDevice(type, name, x, y)` → Gerät (Typen wie in der Palette: `pc`, `router`, `switch-l2`, `switch-l3`, `server`, `hub` …); `network.connect(a, portA, b, portB, cable?)` → `{ok, id, error}` (Geräte als Objekt oder Name,
+  Ports als Name `Gi0/0`, Id oder Index, `cable` Default automatisch); `network.getDevice(name)` (`null`, wenn unbekannt), `network.devices()`, `network.links()`, `network.removeDevice(d)`.
+- Gerät: `name`, `id`, `type`; `device.cli.run(line)` → Ausgabe (mehrere Zeilen mit `\n`; Modus bleibt erhalten, Start im privilegierten Modus), `device.ping(ip, count?)` → `{ok, sent, received, lost, rttMs, status, from}`,
+  `device.setIp(ip, mask, gw?)`, `device.ip()`, `device.ports()`, `device.routes()`, `device.setPower(on)`.
+- `engine.step()` (ein Ereignis; `false`, wenn die Queue leer ist), `engine.runFor(ms)`, `engine.runUntil(fn, maxMs)` → `true`, wenn die Bedingung erfüllt wurde, `engine.now()` (ms seit Skriptstart).
+- `onPacket(fn)` – `fn({t, from, at, port, proto, dropped, summary, src, dst})`; `onLinkChange(fn)` – `fn({t, device, port, up})`; `log(...)` / `print(...)` (Objekte als JSON).
+
 ## CCNA-Runde (Switching, Sicherheit, Dienste)
 
 **CDP/LLDP:** `cdp run`, `cdp timer 5-254`, `cdp holdtime 10-255`, Schnittstelle `cdp enable`; `lldp run`, `lldp timer|holdtime|reinit`, Schnittstelle `lldp transmit|receive`; `show cdp`, `show cdp neighbors [IF] [detail]`, `show cdp entry NAME`, `show cdp interface [IF]`, `show cdp traffic`, `show lldp`, `show lldp neighbors [detail]`, `show lldp entry NAME`, `show lldp interface [IF]`, `show lldp traffic`, `clear cdp table|counters`, `clear lldp table|counters`.

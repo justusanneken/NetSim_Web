@@ -10,6 +10,7 @@ import { Palette } from './components/Palette';
 import { PhysicalView } from './components/PanelPhysical';
 import { applyTheme } from './theme';
 import { PortPicker } from './components/PortPicker';
+import { ScriptConsole } from './components/ScriptConsole';
 import { SimPanel } from './components/SimPanel';
 import { Toolbar } from './components/Toolbar';
 import { PersistUi } from './persist/PersistUi';
@@ -94,6 +95,7 @@ export function App() {
         <DeviceDialog />
         <PduDialog />
         <AuthorDialog />
+        <ScriptConsole />
         <PersistUi />
         <ContextMenu />
         <NetworkInfo />

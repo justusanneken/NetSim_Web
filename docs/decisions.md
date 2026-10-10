@@ -165,3 +165,19 @@ WLAN-Roaming im selben SSID behält das DHCP-Lease (INIT-REBOOT, Zustand `reboot
 65. **Beispielaufgaben entstehen zur Laufzeit aus echten IOS-Befehlen** (`packages/cli/src/activities.ts`, `CliSession`) statt als Binärdateien; Tests stellen sicher, dass das Startnetz die Prüfungen verfehlt und das Antwortnetz sie zu 100 % erfüllt.
 66. **Challenge Me:** Die richtige Antwort ist die tatsächliche Entscheidung der Engine, abgeleitet aus Nachrichtenschlüssel + Parametern des Log-Eintrags (`router.forward`, `switch.unicast`, `acl.deny` …) und dem empfangenen Frame; Folgeverhalten (z. B. ARP für den Next Hop) wird aus den späteren Log-Einträgen gelesen. Distraktoren sind typische Fehlvorstellungen; die Reihenfolge ist deterministisch (Seed = Log-Id). Die Engine-Erklärung des Ereignisses bleibt im Quizmodus bis zur Antwort verborgen.
 67. **Fix im CLI-Parser:** Schlüsselwörter mit Großbuchstaben (`encapsulation dot1Q`) wurden nie erkannt (Vergleich nur mit der kleingeschriebenen Eingabe); jetzt unabhängig von der Groß-/Kleinschreibung.
+
+## Erweiterungen script (Scripting-API, PCAP)
+
+68. **Skript-Laufzeit = vorhandener IoT-Interpreter in einem eigenen Sandbox-Worker.** Kein neues `eval`/`new Function`, auch nicht im Worker: der Interpreter
+    (`engine/src/p5/script/interp.ts`) kennt keine Globals, kein DOM, kein Netzwerk, keinen Prototypen-Zugriff. Erweitert um `Object.keys/values/entries`, `Array.isArray`,
+    String-/Array-Methoden (`find`, `some`, `every`, `sort`, `concat`, `replace`, `padEnd`, `substring` …) und einen `check`-Haken (Wanduhr-Limit).
+69. **Der Skript-Worker (`apps/web/src/engine/script.worker.ts`) arbeitet auf einer Kopie des Engine-Zustands** (`scriptBegin` → Snapshot, Haupt-Engine pausiert). Vorteile: Stop
+    und hartes CPU-Limit sind echtes `Worker.terminate()`, das Netz bleibt bei Abbruch/Timeout unverändert. Nach erfolgreichem Lauf übernimmt `scriptEnd` Zustand und Log
+    (`Engine.adoptRun`, „Schritt zurück“-Verlauf wird verworfen). Änderungen, die der Nutzer während eines Laufs am Netz macht, gehen verloren (Läufe dauern typisch < 1 s).
+70. **Limits (deterministisch zuerst):** 3 Mio. Interpreter-Schritte, 3 Mio. Engine-Ereignisse, 2 h simulierte Zeit je Lauf, 8 s Wanduhr (kooperativ) und 12 s harter Abbruch durch den
+    Hauptthread. Skript-Zeit ist ausschließlich virtuelle Zeit (`engine.now()` = ms seit Skriptstart); es gibt weder `Date` noch `Math.random`.
+71. **Skript-CLI-Sitzungen** (`device.cli.run`) starten im privilegierten Modus (Setup-Dialog/Konsolen-Login werden automatisch beantwortet), behalten den Modus zwischen Aufrufen.
+    Event-Handler (`onPacket`, `onLinkChange`) werden nur während der skriptgetriebenen Simulation (`step/runFor/runUntil`, `ping`, CLI) bedient, nicht danach.
+72. **PCAP wird aus dem Event-Log erzeugt** (`engine/src/pcap.ts`): ein Datensatz je Frame-Ankunft an einem Gerät. Damit auch Routing-Frames im Log stehen, trägt
+    `Engine.attachFrame` den Frame am ersten `rx`-Eintrag nach, falls das Protokoll (OSPF, EIGRP, …) ohne Frame geloggt hat. Byte-Encoder liegen in `packages/protocols/src/encode/`.
+73. **Multiuser (Relay/Link-Tunnel) wurde nicht umgesetzt** – optional laut Spec; Zeit/Priorität lagen bei Scripting und PCAP. Python/Pyodide ebenfalls nicht (siehe `simplifications.md`).

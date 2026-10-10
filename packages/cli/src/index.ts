@@ -13,6 +13,7 @@ export type { ShellNest } from './shell';
 export { RemoteLoginShell, deviceByIp } from './remote';
 export { FtpShell } from './ftpshell';
 export { exampleActivities } from './activities';
+export { runScript, type ScriptOptions, type ScriptResult } from './scripting';
 export {
   TEMPLATES,
   templateById,

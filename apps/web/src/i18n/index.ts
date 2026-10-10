@@ -10,6 +10,8 @@ import deT from './de.tcp.json';
 import enT from './en.tcp.json';
 import deTeach from './de.teach.json';
 import enTeach from './en.teach.json';
+import deScript from './de.script.json';
+import enScript from './en.script.json';
 import dePersist from './de.persist.json';
 import enPersist from './en.persist.json';
 import deUx from './de.ux.json';
@@ -41,6 +43,7 @@ void i18next.use(initReactI18next).init({
         ...deUx,
         ...deCcna,
         ...deTeach,
+        ...deScript,
       },
     },
     en: {
@@ -53,6 +56,7 @@ void i18next.use(initReactI18next).init({
         ...enUx,
         ...enCcna,
         ...enTeach,
+        ...enScript,
       },
     },
   },

@@ -6,6 +6,7 @@ import './phase5.css';
 import './ccna.css';
 import './proto.css';
 import './teach/teach.css';
+import './script.css';
 import './persist/persist.css';
 import './ux/ux.css';
 import { App } from './App';
