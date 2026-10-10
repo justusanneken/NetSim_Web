@@ -12,6 +12,8 @@ import deTeach from './de.teach.json';
 import enTeach from './en.teach.json';
 import deUx from './de.ux.json';
 import enUx from './en.ux.json';
+import deCcna from './de.ccna.json';
+import enCcna from './en.ccna.json';
 
 export type Lang = 'de' | 'en';
 
@@ -27,8 +29,8 @@ function storedLang(): Lang {
 
 void i18next.use(initReactI18next).init({
   resources: {
-    de: { translation: { ...de, ...de5, ...deT, ...deProto, ...deUx, ...deTeach } },
-    en: { translation: { ...en, ...en5, ...enT, ...enProto, ...enUx, ...enTeach } },
+    de: { translation: { ...de, ...de5, ...deT, ...deProto, ...deUx, ...deCcna, ...deTeach } },
+    en: { translation: { ...en, ...en5, ...enT, ...enProto, ...enUx, ...enCcna, ...enTeach } },
   },
   lng: storedLang(),
   fallbackLng: 'de',

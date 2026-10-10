@@ -41,7 +41,7 @@ export function syslogEmit(
   const m = mgmtOf(c.sys);
   const clock = clockOf(dev);
   const line = `${syslogStamp(deviceTimeMs(dev, ctx.now), clock?.syncedTo !== undefined)}: %${tag}: ${text}`;
-  if (m.syslog.buffered) {
+  if (m.syslog.buffered && sev <= (m.syslog.bufLevel ?? 7)) {
     m.logBuffer.push(line);
     if (m.logBuffer.length > 100) m.logBuffer.shift();
   }

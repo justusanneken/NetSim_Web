@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './i18n';
 import './styles.css';
 import './phase5.css';
+import './ccna.css';
 import './proto.css';
 import './teach/teach.css';
 import './ux/ux.css';

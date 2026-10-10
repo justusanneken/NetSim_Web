@@ -45,6 +45,11 @@ const MODE_SUFFIX: Record<ModeId, string> = {
   'config-bgp-af6': '(config-router-af)#',
   'config-dhcp6': '(config-dhcpv6)#',
   'config-rip6': '(config-rtr)#',
+  'config-arp-nacl': '(config-arp-nacl)#',
+  'config-ipv6-acl': '(config-ipv6-acl)#',
+  'config-cmap': '(config-cmap)#',
+  'config-pmap': '(config-pmap)#',
+  'config-pmap-c': '(config-pmap-c)#',
 };
 
 let REGISTRY: Registry<CliSession> | undefined;

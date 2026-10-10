@@ -1,3 +1,4 @@
+import { acl6Eval } from './acl6';
 import { hostPort } from './p5/hostport';
 import {
   ETHERTYPE,
@@ -874,6 +875,30 @@ export function hostV6Start(ctx: DeviceCtx, cfg: HostConfig): void {
 
 // ------------------------------------------------------------------ Weiterleiten
 
+/** IPv6-ACL auswerten; Verwurf wird protokolliert und mit ICMPv6 „administratively prohibited“ beantwortet. */
+function acl6Permits(
+  ctx: DeviceCtx,
+  n: Ip6Host,
+  ifaceIn: Iface6,
+  base: Base,
+  pkt: Ipv6Pdu,
+  name: string,
+  dir: 'in' | 'out',
+): boolean {
+  const cfg = n.cfg as unknown as L3Cfg;
+  const r = acl6Eval(cfg?.acls6?.[name], pkt);
+  if (r.action === 'permit') return true;
+  ctx.log({
+    ...base,
+    kind: 'drop',
+    proto: 'ACL',
+    status: 'drop',
+    msg: { key: 'acl.deny', params: { acl: name, dir, src: pkt.src, dst: pkt.dst } },
+  });
+  sendIcmp6Error(ctx, n, 'dest-unreachable', 1, pkt, srcFor6(ifaceIn, pkt.src));
+  return false;
+}
+
 function forward6(ctx: DeviceCtx, n: Ip6Host, ifaceIn: Iface6, base: Base, pkt: Ipv6Pdu): void {
   if (isLinkLocalIpv6(pkt.dst)) return;
   if (pkt.hopLimit <= 1) {
@@ -886,6 +911,8 @@ function forward6(ctx: DeviceCtx, n: Ip6Host, ifaceIn: Iface6, base: Base, pkt: 
     sendIcmp6Error(ctx, n, 'time-exceeded', 0, pkt, srcFor6(ifaceIn, pkt.src));
     return;
   }
+  const aclName = ifaceIn.cfg.v6?.aclIn;
+  if (aclName && !acl6Permits(ctx, n, ifaceIn, base, pkt, aclName, 'in')) return;
   const hop = n.v6.lookup(pkt.dst, pkt.src);
   if (!hop) {
     ctx.log({
@@ -897,6 +924,8 @@ function forward6(ctx: DeviceCtx, n: Ip6Host, ifaceIn: Iface6, base: Base, pkt: 
     sendIcmp6Error(ctx, n, 'dest-unreachable', 0, pkt, srcFor6(ifaceIn, pkt.src));
     return;
   }
+  const outAcl = hop.iface.cfg.v6?.aclOut;
+  if (outAcl && !acl6Permits(ctx, n, ifaceIn, base, pkt, outAcl, 'out')) return;
   const out: Ipv6Pdu = { ...structuredClone(pkt), hopLimit: pkt.hopLimit - 1 };
   const r = ip6SendVia(ctx, n, hop, out);
   if (!r.ok) {

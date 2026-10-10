@@ -56,4 +56,23 @@ export * from './p5types';
 export { EngineService5 } from './service5';
 export * from './ipsecTypes';
 export * from './pppTypes';
+export {
+  discOf,
+  defaultDisc,
+  liveNeighbors,
+  platformText,
+  iosVersionText,
+} from './devices/discovery';
+export {
+  snoopOf,
+  daiOf,
+  daiStats,
+  liveBindings,
+  defaultSnoop,
+  defaultDai,
+  DAI_DEFAULT_RATE,
+} from './devices/swsec';
+export { isPortfast, isBpduguard, recoveryOn } from './devices/switch';
+export { acl6Eval } from './acl6';
+export { qosOf, defaultQos, KNOWN_PROTOCOLS } from './qos';
 export * from './teach';

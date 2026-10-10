@@ -208,9 +208,12 @@ export function addPhase5(r: Registry<CliSession>): void {
     ],
     run: (s, a) => {
       mg(s).ssh.version = s.negated ? 2 : (Number(a.v) as 1 | 2);
+      mg(s).ssh.explicit = !s.negated;
     },
   });
 
+  const sshVer = (x: { version: number; explicit?: boolean }): string =>
+    x.version === 2 && !x.explicit ? '1.99' : String(x.version);
   const keygen = (s: CliSession, bits: number): void => {
     if (!s.sys.domainName) throw new CliError('Please define a domain-name first.');
     if (!Number.isInteger(bits) || bits < 360 || bits > 4096)
@@ -218,9 +221,9 @@ export function addPhase5(r: Registry<CliSession>): void {
     mg(s).ssh.keyBits = bits;
     s.out(`The name for the keys will be: ${s.sys.hostname}.${s.sys.domainName}`);
     s.out(`% The key modulus size is ${bits} bits`);
-    s.out('% Generating 1024 bit RSA keys, keys will be non-exportable...');
+    s.out(`% Generating ${bits} bit RSA keys, keys will be non-exportable...`);
     s.out('[OK] (elapsed time was 0 seconds)');
-    s.engine.p5.syslog(s.deviceId, 5, 'SSH-5-ENABLED', `SSH ${mg(s).ssh.version} has been enabled`);
+    s.engine.p5.syslog(s.deviceId, 5, 'SSH-5-ENABLED', `SSH ${sshVer(mg(s).ssh)} has been enabled`);
   };
   r.add({
     modes: CF,
@@ -262,12 +265,18 @@ export function addPhase5(r: Registry<CliSession>): void {
       K('ntp', 'Configure NTP'),
       K('server', 'Configure NTP server'),
       ip4('ip', 'IP address of peer'),
+      opt(K('key', 'Configure peer authentication key')),
+      opt(P('keyid', 'int', '<1-4294967295>', 'Key number', [1, 4294967295])),
     ],
     run: (s, a) => {
       const m = mg(s);
       const ip = a.ip as string;
       m.ntp.servers = m.ntp.servers.filter((x) => x !== ip);
-      if (!s.negated) m.ntp.servers.push(ip);
+      if (m.ntp.serverKeys) delete m.ntp.serverKeys[ip];
+      if (!s.negated) {
+        m.ntp.servers.push(ip);
+        if (a.keyid) (m.ntp.serverKeys ??= {})[ip] = Number(a.keyid);
+      }
       s.engine.p5.startTimers(s.device);
     },
   });
@@ -311,18 +320,6 @@ export function addPhase5(r: Registry<CliSession>): void {
       const n = /^\d$/.test(l) ? Number(l) : SEVERITY_NAMES.findIndex((x) => x.startsWith(l));
       if (n < 0 || n > 7) throw new CliError('% Invalid input detected');
       mg(s).syslog.trap = s.negated ? 6 : n;
-    },
-  });
-  r.add({
-    modes: CF,
-    negatable: true,
-    slots: [
-      K('logging', 'Modify message logging facilities'),
-      K('buffered', 'Set buffered logging parameters'),
-      opt(P('size', 'int', '<4096-2147483647>', 'Logging buffer size')),
-    ],
-    run: (s) => {
-      mg(s).syslog.buffered = !s.negated;
     },
   });
   r.add({
