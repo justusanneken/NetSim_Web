@@ -35,6 +35,7 @@ const en: Record<string, string> = {
   ...en5,
   ...enT,
   ...enProto,
+  ...enPersist,
   ...enUx,
   ...enCcna,
   ...enTeach,
