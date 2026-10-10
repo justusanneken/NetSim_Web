@@ -2,6 +2,8 @@ import { api, proxy } from '../engine/client';
 import { useStore } from '../store';
 import { kvDelete, kvGet, kvSet, recentAdd, recentList } from './idb';
 import { usePersist } from './state';
+import { selection } from '../ux/actions';
+import { exportUiDoc, importUiDoc, onUiDocChange, resetUiDoc } from '../ux/uiDoc';
 
 /** Obergrenze für zu öffnende Dateien (entspricht dem Limit der Engine). */
 const MAX_FILE = 16 * 1024 * 1024;
@@ -18,12 +20,30 @@ const extras = new Map<string, DocExtra>();
 export function registerDocExtra(name: string, ext: DocExtra): void {
   extras.set(name, ext);
 }
+// Notizen, Gruppen, Hintergrund und Geräte-Attribute der Oberfläche
+registerDocExtra('ux', {
+  export: exportUiDoc,
+  import: (d) => importUiDoc(d as Parameters<typeof importUiDoc>[0]),
+  reset: resetUiDoc,
+});
+
+/** Unterdrückt die Rückmeldung an den Worker, solange der Zustand von dort eingespielt wird. */
+let applying = false;
+
 function collectExtras(): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, e] of extras) out[k] = e.export();
   return out;
 }
 function applyExtras(data: Record<string, unknown>): void {
+  applying = true;
+  try {
+    applyExtrasInner(data);
+  } finally {
+    applying = false;
+  }
+}
+function applyExtrasInner(data: Record<string, unknown>): void {
   for (const [k, e] of extras) {
     try {
       if (k in data) e.import(data[k]);
@@ -34,15 +54,17 @@ function applyExtras(data: Record<string, unknown>): void {
   }
 }
 export function resetDocExtras(): void {
-  for (const e of extras.values()) e.reset();
+  applying = true;
+  try {
+    for (const e of extras.values()) e.reset();
+  } finally {
+    applying = false;
+  }
 }
 
 // ------------------------------------------------------------------ Auswahl
 
-let selectionProvider = (): string[] => {
-  const s = useStore.getState();
-  return s.selectedDevice ? [s.selectedDevice] : [];
-};
+let selectionProvider = (): string[] => selection();
 /** Mehrfachauswahl-Komponenten können hier die Liste der ausgewählten Geräte liefern. */
 export function setSelectionProvider(fn: () => string[]): void {
   selectionProvider = fn;
@@ -171,12 +193,14 @@ export async function loadTemplate(id: string): Promise<void> {
 
 export async function undo(): Promise<void> {
   if (usePersist.getState().undo === 0) return;
-  await api.undo();
+  const r = await api.undo();
+  if (r.ok) applyExtras(r.extras);
   useStore.getState().selectLog(null);
 }
 export async function redo(): Promise<void> {
   if (usePersist.getState().redo === 0) return;
-  await api.redo();
+  const r = await api.redo();
+  if (r.ok) applyExtras(r.extras);
   useStore.getState().selectLog(null);
 }
 
@@ -284,4 +308,11 @@ export function initPersistence(): void {
     /* ignorieren */
   }
   setInterval(() => void autosaveNow(), ms);
+  // Änderungen der Oberfläche (Notizen …) an den Worker melden: Teil von Undo und Autosave
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  onUiDocChange(() => {
+    if (applying) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => void api.setExtras(collectExtras()), 600);
+  });
 }

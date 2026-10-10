@@ -13,6 +13,7 @@ import { FirewallPanel, MgmtPanel } from './PanelMgmt';
 import { BridgePanel } from './PanelPhysical';
 import { HostTime, IotDeviceForm, Services5Config } from './PanelServices5';
 import { ApPanel, WifiClient, WlcPanel } from './PanelWireless';
+import { EquivalentIos } from '../ux/EquivalentIos';
 
 export function DevicePanel() {
   const dev = useStore(selectedDeviceView);
@@ -76,6 +77,7 @@ export function DeviceConfig({ dev }: { dev: DeviceView }) {
       {dev.p5?.bridge && <BridgePanel dev={dev} />}
       {hasCli(dev) && <MgmtPanel dev={dev} />}
       {dev.type === 'firewall' && <FirewallPanel dev={dev} />}
+      {hasCli(dev) && <EquivalentIos dev={dev} />}
 
       <h4>{t('panel.ports')}</h4>
       <table className="grid">

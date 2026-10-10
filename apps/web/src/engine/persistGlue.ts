@@ -88,6 +88,8 @@ export class Persistence {
   assets: Record<string, string> = {};
   /** Szenarien (Platzhalter, gehört der Lehr-Komponente) – wird unverändert durchgereicht. */
   scenarios: unknown;
+  /** Oberflächen-Zustand (Notizen, Gruppen …) – Teil jedes Undo-Schritts und der Datei. */
+  extras: Record<string, unknown> = {};
   private undoCb: ((i: UndoInfo) => void) | undefined;
 
   constructor(
@@ -96,7 +98,7 @@ export class Persistence {
     private readonly pruneTerms: (alive: Set<string>) => void,
   ) {
     this.undoMgr = new UndoManager(
-      () => designJson(svc.engine),
+      () => designJson(svc.engine, { extras: this.extras }),
       (s) => this.restoreJson(s),
       (i) => this.undoCb?.(i),
     );
@@ -141,6 +143,7 @@ export class Persistence {
   private load(doc: NsimDoc): boolean {
     const r = importNsim(this.svc.engine, doc);
     if (!r.ok) return false;
+    this.extras = doc.extras ?? {};
     this.svc.reset();
     this.pruneTerms(new Set(Object.keys(this.svc.engine.state.devices)));
     return true;
@@ -149,6 +152,7 @@ export class Persistence {
   // ---------------------------------------------------------------- Datei
 
   save(extras?: Record<string, unknown>): Uint8Array {
+    if (extras) this.extras = extras;
     const sc = this.scen().getScenarios?.() ?? this.scenarios;
     const doc = exportNsim(this.svc.engine, {
       name: this.name,
@@ -156,7 +160,7 @@ export class Persistence {
       savedAt: new Date().toISOString(),
       scenarios: sc,
       assets: this.assets,
-      extras,
+      extras: this.extras,
     });
     return encodeNsim(doc);
   }
@@ -189,7 +193,10 @@ export class Persistence {
 
   /** Neues, leeres Netz (Datei → Neu); der Zustand davor bleibt per Undo erreichbar. */
   newTopology(): void {
-    this.undoMgr.run(() => this.svc.clear());
+    this.undoMgr.run(() => {
+      this.svc.clear();
+      this.extras = {};
+    });
     this.name = '';
     this.description = '';
     this.assets = {};
@@ -217,6 +224,7 @@ export class Persistence {
     try {
       this.undoMgr.run(() => {
         this.svc.clear();
+        this.extras = {};
         buildTemplate(this.svc.engine, id);
       });
     } catch {
@@ -230,6 +238,27 @@ export class Persistence {
     this.svc.touch();
     this.pruneTerms(new Set(Object.keys(this.svc.engine.state.devices)));
     return { ok: true, value: { devices: Object.keys(this.svc.engine.state.devices).length } };
+  }
+
+  /** Neuer Oberflächen-Zustand von der Hauptseite; ändert er sich, entsteht ein Undo-Schritt. */
+  setExtras(e: Record<string, unknown>): void {
+    this.undoMgr.run(() => {
+      this.extras = e;
+    });
+  }
+
+  /** Mehrere Geräte in einem Schritt verschieben. */
+  moveMany(moves: Record<string, Point>): void {
+    this.undoMgr.run(() => {
+      for (const [id, p] of Object.entries(moves)) this.svc.moveDevice(id, p);
+    });
+  }
+
+  /** Mehrere Geräte in einem Schritt löschen. */
+  removeMany(ids: string[]): void {
+    this.undoMgr.run(() => {
+      for (const id of ids) this.svc.removeDevice(id);
+    });
   }
 
   // ---------------------------------------------------------------- Kopieren/Einfügen

@@ -1,6 +1,13 @@
 /// <reference lib="webworker" />
 import * as Comlink from 'comlink';
-import { CliSession, HostShell, ShellStack, Terminal, type Shell } from '@netsim/cli';
+import {
+  CliSession,
+  HostShell,
+  ShellStack,
+  Terminal,
+  renderRunningConfig,
+  type Shell,
+} from '@netsim/cli';
 import { EngineService5, type ViewModel } from '@netsim/engine';
 import { Persistence } from './persistGlue';
 import type { UndoInfo } from './undo';
@@ -78,6 +85,15 @@ class WorkerService extends EngineService5 {
     return out;
   }
 
+  /** running-config als Text (für „Equivalent IOS Commands“ der GUI); leer bei Geräten ohne IOS. */
+  runningConfig(id: string): string {
+    const d = this.engine.getDevice(id);
+    if (!d || (d.config.kind !== 'router' && d.config.kind !== 'switch')) return '';
+    return renderRunningConfig(this.engine, d as Parameters<typeof renderRunningConfig>[1]).join(
+      '\n',
+    );
+  }
+
   /** Öffnet (oder verbindet erneut mit) dem Terminal des Geräts; liefert Terminal-Daten. */
   termOpen(id: string): string | undefined {
     let entry = this.terms.get(id);
@@ -140,15 +156,26 @@ class WorkerService extends EngineService5 {
   pasteDevices(ids: string[], dx: number, dy: number) {
     return this.persist.paste(ids, { x: dx, y: dy });
   }
-  undo(): boolean {
-    const r = this.persist.undo();
+  undo(): { ok: boolean; extras: Record<string, unknown> } {
+    const ok = this.persist.undo();
     this.touch();
-    return r;
+    return { ok, extras: this.persist.extras };
   }
-  redo(): boolean {
-    const r = this.persist.redo();
+  redo(): { ok: boolean; extras: Record<string, unknown> } {
+    const ok = this.persist.redo();
     this.touch();
-    return r;
+    return { ok, extras: this.persist.extras };
+  }
+  setExtras(e: Record<string, unknown>): void {
+    this.persist.setExtras(e);
+  }
+  moveMany(moves: Record<string, { x: number; y: number }>): void {
+    this.persist.moveMany(moves);
+    this.touch();
+  }
+  removeMany(ids: string[]): void {
+    this.persist.removeMany(ids);
+    this.touch();
   }
   subscribeUndo(cb: (i: UndoInfo) => void): void {
     this.persist.onUndoInfo(cb);
