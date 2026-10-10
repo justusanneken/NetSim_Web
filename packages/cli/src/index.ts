@@ -12,3 +12,13 @@ export { ShellStack } from './shellstack';
 export type { ShellNest } from './shell';
 export { RemoteLoginShell, deviceByIp } from './remote';
 export { FtpShell } from './ftpshell';
+export {
+  TEMPLATES,
+  templateById,
+  buildTemplate,
+  runTemplateChecks,
+  Lab as TemplateLab,
+  type Template,
+  type TemplateCheck,
+  type CheckResult,
+} from './templates';

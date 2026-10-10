@@ -201,6 +201,18 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | NTP-Authentifizierung, Logging-Level/-Puffer, SSH-Optionen (1.99), SNMPv3-Konfiguration            | 6     | fertig | `cli › ccna_mgmt`                            |
 | QoS: class-map/policy-map/service-policy, DSCP-Markierung, Zähler                                  | 6     | fertig | `cli › ccna_qos`                             |
 
+## Persistenz und Vorlagen (Phase 6, persist)
+
+| Anforderung                                                                                                                                     | Stand  | Tests                                              |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------------------------------------------------- |
+| `.nsim`: zlib-JSON, Round-Trip, Determinismus, Szenarien/Extras durchgereicht                                                                   | fertig | `engine › nsim`                                    |
+| Migrationskette, neuere Schemas, Zip-Bombe, Größenlimit, Prototype-Pollution, Strukturverletzungen                                              | fertig | `engine › nsim`                                    |
+| Kopieren/Einfügen (Namen, MACs, IPs, Kabel)                                                                                                     | fertig | `engine › clone`, `web › persist`, `e2e › persist` |
+| Undo/Redo (Topologie, GUI-Konfiguration, CLI), Speicherlimit, Schritt-zurück unabhängig                                                         | fertig | `web › persist`, `e2e › persist`                   |
+| Datei → Neu/Öffnen/Speichern (Strg+S/O), Zuletzt, Fehlermeldungen                                                                               | fertig | `e2e › persist`                                    |
+| Autosave und Wiederherstellung nach Absturz                                                                                                     | fertig | `e2e › persist`                                    |
+| 14 Vorlagen (SOHO, VLAN+Trunk, Router-on-a-Stick, OSPF, NAT/PAT, DHCP-Relay, STP-Ring, EtherChannel, ACL, WLAN, HSRP, IPv6/OSPFv3, eBGP, IPsec) | fertig | `cli › templates`                                  |
+
 ## Realismus-Pass Routing/WAN (wan)
 
 | Feature                                                                                                                              | Status | Test                          |

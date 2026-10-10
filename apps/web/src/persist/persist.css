@@ -1,0 +1,87 @@
+.persist-dialog {
+  height: auto;
+  max-height: 88vh;
+  width: min(460px, 94vw);
+}
+.persist-dialog.wide {
+  width: min(880px, 94vw);
+  height: min(560px, 88vh);
+}
+.persist-form {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.persist-form label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.persist-form input {
+  flex: 1;
+}
+.persist-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.persist-actions .primary {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-color: var(--accent-bg);
+}
+.persist-tpl {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+.persist-tpl-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  width: 300px;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  background: var(--panel-2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.persist-tpl-list button {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+}
+.persist-tpl-list button.active {
+  background: var(--row-sel);
+  border-color: var(--accent);
+}
+.persist-tpl .lvl {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.persist-tpl-detail {
+  padding: 12px 18px;
+  overflow: auto;
+  flex: 1;
+}
+.persist-tpl-detail h3 {
+  margin: 0 0 6px;
+}
+.persist-tpl-detail h4 {
+  margin: 12px 0 4px;
+}
+@media (max-width: 720px) {
+  .persist-tpl {
+    flex-direction: column;
+  }
+  .persist-tpl-list {
+    width: auto;
+    max-height: 40%;
+  }
+}
