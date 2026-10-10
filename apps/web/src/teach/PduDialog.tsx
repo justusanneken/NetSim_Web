@@ -5,6 +5,7 @@ import { useStore } from '../store';
 import { useTeach } from './teachStore';
 
 /** Gleiche Liste wie `PDU_PROTOCOLS` der Engine (kein Wert-Import, damit die Engine nicht im UI-Bundle landet). */
+const NO_DEVICES: never[] = [];
 const PDU_PROTOCOLS: PduProtocol[] = [
   'icmp',
   'udp',
@@ -38,7 +39,7 @@ export function PduDialog() {
   const open = useTeach((s) => s.pduDialog);
   const setOpen = useTeach((s) => s.openPduDialog);
   const addPdu = useTeach((s) => s.addPdu);
-  const devices = useStore((s) => s.view?.devices ?? []);
+  const devices = useStore((s) => s.view?.devices) ?? NO_DEVICES;
   const sources = devices.filter(
     (d) => d.type !== 'hub' && d.type !== 'cloud' && d.type !== 'note' && d.powered,
   );

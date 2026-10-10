@@ -18,6 +18,8 @@ import {
 import { failReason } from './describe';
 import { useTeach } from './teachStore';
 
+const NO_DEVICES: never[] = [];
+
 interface Row {
   uid: number;
   raw: Raw;
@@ -40,7 +42,7 @@ function Field({
 }) {
   if (def.kind === 'bool')
     return (
-      <label className="fld check">
+      <label className="fld chk">
         <input
           type="checkbox"
           checked={value === true}
@@ -80,7 +82,7 @@ export function AuthorDialog() {
   const { t } = useTranslation();
   const open = useTeach((s) => s.authorOpen);
   const setOpen = useTeach((s) => s.setAuthorOpen);
-  const devices = useStore((s) => s.view?.devices ?? []);
+  const devices = useStore((s) => s.view?.devices) ?? NO_DEVICES;
   const showToast = useStore((s) => s.showToast);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -260,7 +262,7 @@ export function AuthorDialog() {
                 <span className={cap.answer ? 'ok' : 'muted'}>
                   {cap.answer ? t('author.have') : t('author.haveNot')}
                 </span>
-                <label className="check">
+                <label className="chk">
                   <input
                     type="checkbox"
                     checked={includeAnswer}
@@ -434,7 +436,7 @@ export function AuthorDialog() {
                   onChange={(e) => setPass(e.target.value)}
                 />
               </label>
-              <label className="check">
+              <label className="chk">
                 <input
                   type="checkbox"
                   checked={liveProgress}
@@ -442,7 +444,7 @@ export function AuthorDialog() {
                 />
                 {t('author.live')}
               </label>
-              <label className="check">
+              <label className="chk">
                 <input
                   type="checkbox"
                   checked={hideCli}
@@ -450,7 +452,7 @@ export function AuthorDialog() {
                 />
                 {t('author.hideCli')}
               </label>
-              <label className="check">
+              <label className="chk">
                 <input
                   type="checkbox"
                   checked={hideGui}
@@ -458,7 +460,7 @@ export function AuthorDialog() {
                 />
                 {t('author.hideGui')}
               </label>
-              <label className="check">
+              <label className="chk">
                 <input
                   type="checkbox"
                   checked={noAdd}

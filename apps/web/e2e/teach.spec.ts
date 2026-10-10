@@ -68,7 +68,7 @@ test('Szenarien: Complex PDU mit Wiederholung, Status, Rerun und mehrere Szenari
   await page.getByRole('button', { name: 'Auswählen' }).click();
 
   // mehrere Szenarien: neues Szenario hat eine leere Liste, das alte bleibt erhalten
-  await page.getByLabel('Name', { exact: true }).fill('Test Zwei');
+  await page.locator('#scen-name').fill('Test Zwei');
   await page.getByLabel('Beschreibung').fill('Zweites Szenario');
   await page.getByLabel('Beschreibung').blur();
   await page.getByRole('button', { name: 'Neu', exact: true }).click();
@@ -104,7 +104,7 @@ test('Aufgabe: Beispiel laden, teilweise lösen, Fortschritt sehen, vollständig
   const checks = page.getByRole('list', { name: 'Prüfungen' });
   await expect(checks.locator('[data-state="fail"]')).toHaveCount(4);
   await expect(checks.locator('[data-state="pass"]')).toHaveCount(2);
-  await expect(checks).toContainText('ACL GUEST-IN enthält keinen passenden');
+  await expect(checks).toContainText('ACL GUEST-IN existiert nicht.');
 
   // Hinweis auf Abruf
   await checks.getByRole('button', { name: 'Hinweis anzeigen' }).first().click();
@@ -188,7 +188,7 @@ test('Challenge Me: Frage zum Echo-Request beantworten und Punktestand', async (
 
   // Antworten sind endgültig, Zurücksetzen löscht den Stand
   await expect(q.getByLabel(/Echo-Reply an 10\.0\.0\.1 senden/)).toBeDisabled();
-  await page.getByRole('button', { name: 'Zurücksetzen' }).click();
+  await page.getByRole('button', { name: 'Zurücksetzen', exact: true }).click();
   await expect(page.getByTestId('challenge-score')).toContainText('0 von 0');
   expect(errors).toEqual([]);
   void closeDialog;

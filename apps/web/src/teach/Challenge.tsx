@@ -13,7 +13,7 @@ export function ChallengeToggle() {
   const pct = score.answered ? Math.round((score.correct / score.answered) * 100) : 0;
   return (
     <div className="challenge-bar">
-      <label className="check">
+      <label className="chk">
         <input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)} />
         {t('challenge.toggle')}
       </label>

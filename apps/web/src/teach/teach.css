@@ -202,9 +202,9 @@ table.pdu-list th {
 .author-fields .fld.wide {
   flex: 1 1 100%;
 }
-.author-body .check,
-.pdu-row .check,
-.challenge-bar .check {
+.author-body .chk,
+.pdu-row .chk,
+.challenge-bar .chk {
   display: inline-flex;
   flex-direction: row;
   align-items: center;

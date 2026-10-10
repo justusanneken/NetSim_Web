@@ -43,7 +43,9 @@ interface TeachState {
   deleteScenario(i: number): Promise<void>;
   updateScenario(i: number, patch: { name?: string; description?: string }): Promise<void>;
 
-  loadActivity(data: Uint8Array | ActivityPublic | unknown): Promise<boolean>;
+  loadActivity(data: Uint8Array | unknown): Promise<boolean>;
+  /** Übernimmt eine bereits im Worker geladene Aufgabe (Beispiele). */
+  adoptActivity(a: ActivityPublic): Promise<void>;
   closeActivity(): Promise<void>;
   checkActivity(): Promise<void>;
   liveCheck(): Promise<void>;
@@ -130,9 +132,13 @@ export const useTeach = create<TeachState>((set, get) => ({
       useStore.getState().showToast(r.error, r.params);
       return false;
     }
+    await get().adoptActivity(r.value);
+    return true;
+  },
+  async adoptActivity(a) {
     useStore.setState({ selectedDevice: null, selectedLink: null, selectedLog: null });
     set({
-      activity: r.value,
+      activity: a,
       results: null,
       live: null,
       startedAt: Date.now(),
@@ -140,7 +146,6 @@ export const useTeach = create<TeachState>((set, get) => ({
       hintsShown: {},
     });
     await get().refreshScenarios();
-    return true;
   },
   async closeActivity() {
     await api.activityClose();

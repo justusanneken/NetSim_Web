@@ -28,6 +28,7 @@ export function ActivityPanel() {
   const expired = useTeach((s) => s.expired);
   const hints = useTeach((s) => s.hintsShown);
   const load = useTeach((s) => s.loadActivity);
+  const adopt = useTeach((s) => s.adoptActivity);
   const close = useTeach((s) => s.closeActivity);
   const check = useTeach((s) => s.checkActivity);
   const liveCheck = useTeach((s) => s.liveCheck);
@@ -92,7 +93,7 @@ export function ActivityPanel() {
           <button
             onClick={() => {
               void api.exampleLoad(exId).then(async (r) => {
-                if (r.ok) await load(r.value);
+                if (r.ok) await adopt(r.value);
               });
             }}
             disabled={!exId}
