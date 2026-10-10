@@ -394,6 +394,7 @@ export function allFrames(): EthernetPdu[] {
             serverId: '10.0.0.1',
             requestedIp: '10.0.0.5',
             tftp: '10.0.0.7',
+            opt82: { circuitId: 'Gi0/1', remoteId: 'SW1' },
           },
         },
         op === 'offer' || op === 'ack' || op === 'nak' ? 67 : 68,
@@ -789,5 +790,44 @@ export function allFrames(): EthernetPdu[] {
       ],
     },
   });
+  out.push(
+    {
+      kind: 'ethernet',
+      dst: '01:00:0c:cc:cc:cc',
+      src: MAC_A,
+      etherType: 0x2000,
+      payload: {
+        kind: 'cdp',
+        deviceId: 'R1',
+        portName: 'GigabitEthernet0/0',
+        platform: 'cisco 2911',
+        capabilities: ['R', 'S'],
+        version: 'NetSim IOS',
+        holdtime: 180,
+        addr: '10.0.0.1',
+        nativeVlan: 1,
+        duplex: 'full',
+      },
+    },
+    {
+      kind: 'ethernet',
+      dst: '01:80:c2:00:00:0e',
+      src: MAC_A,
+      etherType: 0x88cc,
+      payload: {
+        kind: 'lldp',
+        chassisId: MAC_A,
+        portId: 'Gi0/0',
+        portDesc: 'uplink',
+        ttl: 120,
+        sysName: 'SW1',
+        sysDesc: 'NetSim switch',
+        capabilities: ['B', 'R'],
+        enabledCaps: ['B'],
+        mgmtAddr: '10.0.0.5',
+      },
+    },
+    eth4(ipv4({ kind: 'udp', srcPort: 1, dstPort: 2, dataSize: 4 }, 17, { dscp: 46 })),
+  );
   return out;
 }

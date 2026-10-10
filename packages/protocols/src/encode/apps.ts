@@ -53,6 +53,18 @@ export function encodeDhcp(p: DhcpPdu): Uint8Array {
       .u8(4)
       .ip4(parseIpv4(o.tftp) !== undefined ? o.tftp : '0.0.0.0');
   }
+  if (o.opt82) {
+    const c = ascii(o.opt82.circuitId);
+    const r = ascii(o.opt82.remoteId);
+    w.u8(82)
+      .u8(4 + c.length + r.length)
+      .u8(1)
+      .u8(c.length)
+      .bytes(c)
+      .u8(2)
+      .u8(r.length)
+      .bytes(r);
+  }
   w.u8(255);
   // BOOTP-Mindestlänge 300 Byte
   if (w.length < 300) w.zeros(300 - w.length);

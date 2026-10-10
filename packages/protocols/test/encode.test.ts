@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { allFrames } from './encodeFixtures';
 import {
   encodeArp,
   encodeBgp,
@@ -548,5 +549,27 @@ describe('encode: pcap', () => {
       '0000  41 42 00 7f 30 30 30 30  30 30 30 30 30 30 30 30  AB..000000000000',
     );
     expect(lines[1]?.startsWith('0010  30 30')).toBe(true);
+  });
+});
+
+describe('encode: CDP, LLDP, DSCP', () => {
+  const frames = allFrames().slice(-3);
+  it('CDP: SNAP 0x2000, Version 2, gültige Prüfsumme', () => {
+    const b = encodeFrame(frames[0] as EthernetPdu);
+    expect(hex(b.slice(14, 22))).toBe('aaaa0300000c2000');
+    expect(b[22]).toBe(2);
+    expect(b[23]).toBe(180);
+    const len = (b[12] as number) * 256 + (b[13] as number);
+    expect(inetChecksum(b.slice(22, 14 + len))).toBe(0);
+  });
+  it('LLDP: Chassis-ID-TLV (MAC-Subtyp) und EtherType 88cc', () => {
+    const b = encodeFrame(frames[1] as EthernetPdu);
+    expect(hex(b.slice(12, 14))).toBe('88cc');
+    expect(hex(b.slice(14, 23))).toBe('0207' + '04' + '020000000001');
+  });
+  it('DSCP landet im ToS-Byte (EF = 46 → 0xb8)', () => {
+    const b = encodeFrame(frames[2] as EthernetPdu);
+    expect(b[15]).toBe(0xb8);
+    expect(inetChecksum(b.slice(14, 34))).toBe(0);
   });
 });

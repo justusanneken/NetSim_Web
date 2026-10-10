@@ -1,6 +1,15 @@
-import type { ArpPdu, BpduPdu, EthernetPdu, PppMsg, PppoePdu, VtpPdu } from '../types';
+import type {
+  ArpPdu,
+  BpduPdu,
+  CdpPdu,
+  EthernetPdu,
+  LldpPdu,
+  PppMsg,
+  PppoePdu,
+  VtpPdu,
+} from '../types';
 import { MAC_PVST } from '../types';
-import { macBytes, W } from './bytes';
+import { ascii, inetChecksum, macBytes, W } from './bytes';
 import { encodeIpv4, encodeIpv6 } from './ip';
 
 /** Kleinste Ethernet-Framegröße ohne FCS (64 − 4); kürzere Frames werden mit Nullen aufgefüllt. */
@@ -142,6 +151,57 @@ function pppBytes(m: PppMsg): { proto: number; body: number[] } {
   }
 }
 
+/** CDP v2 (Cisco, SNAP 0x2000): Device-ID, Adressen, Port-ID, Capabilities, Version, Platform, Native VLAN, Duplex. */
+export function encodeCdp(p: CdpPdu): Uint8Array {
+  const tlv = (w: W, type: number, body: ArrayLike<number>): void => {
+    w.u16(type)
+      .u16(4 + body.length)
+      .bytes(body);
+  };
+  const t = new W();
+  tlv(t, 0x0001, ascii(p.deviceId));
+  if (p.addr) tlv(t, 0x0002, new W().u32(1).u8(1).u8(1).u8(0xcc).u16(4).ip4(p.addr).b);
+  tlv(t, 0x0003, ascii(p.portName));
+  const bits: Record<string, number> = {
+    R: 0x01,
+    T: 0x02,
+    B: 0x04,
+    S: 0x08,
+    H: 0x10,
+    I: 0x20,
+    r: 0x40,
+  };
+  tlv(t, 0x0004, new W().u32(p.capabilities.reduce((a, c) => a | (bits[c] ?? 0), 0)).b);
+  tlv(t, 0x0005, ascii(p.version));
+  tlv(t, 0x0006, ascii(p.platform));
+  if (p.nativeVlan !== undefined) tlv(t, 0x000a, new W().u16(p.nativeVlan).b);
+  if (p.duplex) tlv(t, 0x000b, [p.duplex === 'full' ? 1 : 0]);
+  const w = new W().u8(2).u8(Math.min(255, p.holdtime)).u16(0).bytes(t.b);
+  w.set16(2, inetChecksum(w.b));
+  return w.out();
+}
+
+/** LLDP (IEEE 802.1AB): Chassis-ID, Port-ID, TTL, Beschreibungen, System-Capabilities, Management-Adresse. */
+export function encodeLldp(p: LldpPdu): Uint8Array {
+  const w = new W();
+  const tlv = (type: number, body: ArrayLike<number>): void => {
+    w.u16((type << 9) | body.length).bytes(body);
+  };
+  const isMac = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i.test(p.chassisId);
+  tlv(1, isMac ? [4, ...macBytes(p.chassisId)] : [7, ...ascii(p.chassisId)]);
+  tlv(2, [5, ...ascii(p.portId)]);
+  tlv(3, new W().u16(p.ttl).b);
+  tlv(4, ascii(p.portDesc));
+  tlv(5, ascii(p.sysName));
+  tlv(6, ascii(p.sysDesc));
+  const bits: Record<string, number> = { B: 0x04, R: 0x10, W: 0x08, T: 0x20, S: 0x80 };
+  const mask = (l: string[]): number => l.reduce((a, c) => a | (bits[c] ?? 0), 0);
+  tlv(7, new W().u16(mask(p.capabilities)).u16(mask(p.enabledCaps)).b);
+  if (p.mgmtAddr) tlv(8, new W().u8(5).u8(1).ip4(p.mgmtAddr).u8(1).u32(0).u8(0).b);
+  tlv(0, []);
+  return w.out();
+}
+
 export function encodePppoe(p: PppoePdu): Uint8Array {
   const body = new W();
   if (p.code === 'SESSION') {
@@ -170,7 +230,7 @@ export function encodePppoe(p: PppoePdu): Uint8Array {
 export function encodeFrame(f: EthernetPdu): Uint8Array {
   const p = f.payload;
   const etherType = f.etherType;
-  let body: number[];
+  let body: number[] = [];
   let llc = false;
   switch (p.kind) {
     case 'arp':
@@ -195,6 +255,13 @@ export function encodeFrame(f: EthernetPdu): Uint8Array {
       break;
     case 'pppoe':
       body = [...encodePppoe(p)];
+      break;
+    case 'cdp':
+      llc = true;
+      body = [...snap(0x2000), ...encodeCdp(p)];
+      break;
+    case 'lldp':
+      body = [...encodeLldp(p)];
       break;
   }
   const w = new W().mac(f.dst).mac(f.src);

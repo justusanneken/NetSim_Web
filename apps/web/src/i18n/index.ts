@@ -12,6 +12,8 @@ import deScript from './de.script.json';
 import enScript from './en.script.json';
 import deUx from './de.ux.json';
 import enUx from './en.ux.json';
+import deCcna from './de.ccna.json';
+import enCcna from './en.ccna.json';
 
 export type Lang = 'de' | 'en';
 
@@ -27,8 +29,8 @@ function storedLang(): Lang {
 
 void i18next.use(initReactI18next).init({
   resources: {
-    de: { translation: { ...de, ...de5, ...deT, ...deProto, ...deScript, ...deUx } },
-    en: { translation: { ...en, ...en5, ...enT, ...enProto, ...enScript, ...enUx } },
+    de: { translation: { ...de, ...de5, ...deT, ...deProto, ...deScript, ...deUx, ...deCcna } },
+    en: { translation: { ...en, ...en5, ...enT, ...enProto, ...enScript, ...enUx, ...enCcna } },
   },
   lng: storedLang(),
   fallbackLng: 'de',

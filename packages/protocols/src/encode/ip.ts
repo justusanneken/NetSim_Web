@@ -297,7 +297,7 @@ export function encodeIpv4(p: Ipv4Pdu): Uint8Array {
   const flagsFrag = (p.df ? 0x4000 : 0) | (p.mf ? 0x2000 : 0) | (p.fragOffset & 0x1fff);
   const h = new W()
     .u8(0x45)
-    .u8(0)
+    .u8(((p.dscp ?? 0) & 0x3f) << 2)
     .u16(20 + data.length)
     .u16(p.id)
     .u16(flagsFrag)
