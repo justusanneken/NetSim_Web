@@ -19,6 +19,8 @@ import {
   stpLearning,
 } from './stp';
 import { vtpRx, vtpTimer } from './vtp';
+import { securityIngress } from './swsec';
+import { syslogEmit } from '../p5/syslog';
 import { l3Node } from './l3dev';
 import { ip6FrameRx } from '../l3v6';
 import type { Device, MacEntry, SwitchConfig, SwitchPortCfg } from '../types';
@@ -58,7 +60,20 @@ export function carriesVlan(cfg: SwitchConfig, lp: string, vlan: number): boolea
   const pc = first ? cfg.ports[first] : undefined;
   if (!pc || !cfg.vlans[vlan]) return false;
   if (isTrunk(cfg, first as string)) return pc.allowed === 'all' || pc.allowed.includes(vlan);
-  return pc.accessVlan === vlan;
+  return pc.accessVlan === vlan || pc.voiceVlan === vlan;
+}
+
+/** PortFast wirksam (Port-Konfiguration oder `spanning-tree portfast default` für Access-Ports). */
+export function isPortfast(cfg: SwitchConfig, portId: string): boolean {
+  const pc = cfg.ports[portId];
+  if (!pc || pc.portfastOff) return false;
+  return pc.portfast || (!!cfg.portfastDefault && !cfg.operTrunk[portId] && !pc.routed);
+}
+
+export function isBpduguard(cfg: SwitchConfig, portId: string): boolean {
+  const pc = cfg.ports[portId];
+  if (!pc || pc.bpduguardOff) return false;
+  return pc.bpduguard || (!!cfg.bpduguardDefault && isPortfast(cfg, portId));
 }
 
 const macKey = (vlan: number, mac: string): string => `${vlan}|${mac}`;
@@ -121,7 +136,9 @@ function output(
   }
   const portId = members[idx] as string;
   const pc = cfg.ports[portId] as SwitchPortCfg;
-  const tagged = isTrunk(cfg, portId) && vlan !== pc.nativeVlan;
+  const tagged =
+    (isTrunk(cfg, portId) && vlan !== pc.nativeVlan) ||
+    (!isTrunk(cfg, portId) && typeof pc.voiceVlan === 'number' && vlan === pc.voiceVlan);
   const out: Frame = tagged
     ? { ...frame, vlan: { vid: vlan, pcp: frame.vlan?.pcp ?? 0 } }
     : { ...frame, vlan: undefined };
@@ -154,9 +171,10 @@ export function switchRx(
   ctx: DeviceCtx,
   dev: SwitchDev,
   portId: string,
-  frame: Frame,
+  rxFrame: Frame,
   fromId: string,
 ): void {
+  let frame = rxFrame;
   const cfg = dev.config;
   const port = ctx.port(portId);
   const pc = cfg.ports[portId];
@@ -187,7 +205,9 @@ export function switchRx(
       return;
     }
   } else {
-    if (frame.vlan && frame.vlan.vid !== pc.accessVlan) {
+    if (frame.vlan && typeof pc.voiceVlan === 'number' && frame.vlan.vid === pc.voiceVlan) {
+      vlan = pc.voiceVlan;
+    } else if (frame.vlan && frame.vlan.vid !== pc.accessVlan) {
       ctx.log({
         ...base,
         kind: 'drop',
@@ -195,8 +215,7 @@ export function switchRx(
         msg: { key: 'switch.taggedOnAccess', params: { port: port.name } },
       });
       return;
-    }
-    vlan = pc.accessVlan;
+    } else vlan = pc.accessVlan;
   }
   const lp = lpOf(cfg, portId);
 
@@ -242,6 +261,11 @@ export function switchRx(
     !securityAllows(ctx, dev, portId, frame.src, base)
   )
     return;
+
+  // 4b) Storm-Control, DHCP-Snooping, Dynamic ARP Inspection
+  const checked = securityIngress(ctx, dev, portId, vlan, frame, base);
+  if (!checked) return;
+  frame = checked;
 
   // 5) Lernen
   let learned = false;
@@ -340,11 +364,33 @@ export function switchRx(
 
 // ------------------------------------------------------------------ Port-Security
 
+const ciscoMacOf = (mac: string): string => {
+  const h = mac.replace(/:/g, '');
+  return `${h.slice(0, 4)}.${h.slice(4, 8)}.${h.slice(8, 12)}`;
+};
+
+/** Ist `errdisable recovery` für diese Ursache aktiv? */
+export function recoveryOn(rec: SwitchConfig['errdisableRecovery'], reason: string): boolean {
+  return (
+    (reason === 'psecure-violation' && rec.psecure) ||
+    !!rec.causes?.includes(reason) ||
+    !!rec.causes?.includes('all')
+  );
+}
+
 export function errdisable(ctx: DeviceCtx, dev: SwitchDev, portId: string, reason: string): void {
   const port = ctx.port(portId);
   port.errdisabled = reason;
+  port.errdisabledAt = ctx.now;
   port.operUp = false;
   switchPortDown(ctx, dev, portId);
+  syslogEmit(
+    ctx,
+    dev,
+    4,
+    'PM-4-ERR_DISABLE',
+    `${reason} error detected on ${port.name}, putting ${port.name} in err-disable state`,
+  );
   ctx.log({
     kind: 'error',
     proto: 'LINK',
@@ -354,8 +400,7 @@ export function errdisable(ctx: DeviceCtx, dev: SwitchDev, portId: string, reaso
   });
   ctx.requestRefresh();
   const rec = dev.config.errdisableRecovery;
-  if (reason === 'psecure-violation' && rec.psecure)
-    ctx.setTimer(`errdisable:${portId}`, rec.intervalSec * 1_000_000);
+  if (recoveryOn(rec, reason)) ctx.setTimer(`errdisable:${portId}`, rec.intervalSec * 1_000_000);
 }
 
 function securityAllows(
@@ -372,14 +417,38 @@ function securityAllows(
   },
 ): boolean {
   const ps = (dev.config.ports[portId] as SwitchPortCfg).psec;
-  if (ps.macs.includes(src) || ps.dynMacs.includes(src)) return true;
+  // Aging dynamisch gelernter sicherer Adressen (`switchport port-security aging time`)
+  if (ps.agingTime && ps.dynSince) {
+    for (const m of [...ps.dynMacs]) {
+      if (ctx.now - (ps.dynSince[m] ?? ctx.now) >= ps.agingTime * 60_000_000) {
+        ps.dynMacs = ps.dynMacs.filter((x) => x !== m);
+        delete ps.dynSince[m];
+      }
+    }
+  }
+  if (ps.macs.includes(src) || ps.dynMacs.includes(src)) {
+    if (ps.agingType === 'inactivity' && ps.dynSince?.[src] !== undefined)
+      ps.dynSince[src] = ctx.now;
+    return true;
+  }
   if (ps.macs.length + ps.dynMacs.length < ps.max) {
     if (ps.sticky) ps.macs.push(src);
-    else ps.dynMacs.push(src);
+    else {
+      ps.dynMacs.push(src);
+      (ps.dynSince ??= {})[src] = ctx.now;
+    }
     return true;
   }
   ps.violations++;
   ps.lastMac = src;
+  if (ps.violation !== 'protect')
+    syslogEmit(
+      ctx,
+      dev,
+      2,
+      'PORT_SECURITY-2-PSECURE_VIOLATION',
+      `Security violation occurred, caused by MAC address ${ciscoMacOf(src)} on port ${base.port.name}.`,
+    );
   const key = `switch.psec.${ps.violation}`;
   if (ps.violation !== 'protect') {
     ctx.log({
@@ -402,6 +471,13 @@ export function switchTimer(ctx: DeviceCtx, dev: SwitchDev, name: string): void 
   else if (name.startsWith('errdisable:')) {
     const port = dev.ports.find((p) => p.id === name.slice(11));
     if (port?.errdisabled) {
+      syslogEmit(
+        ctx,
+        dev,
+        4,
+        'PM-4-ERR_RECOVER',
+        `Attempting to recover from ${port.errdisabled} err-disable state on ${port.name}`,
+      );
       delete port.errdisabled;
       ctx.log({
         kind: 'info',

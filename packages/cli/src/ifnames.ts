@@ -136,4 +136,9 @@ export const SUBMODES: ModeId[] = [
   'config-bgp-af6',
   'config-dhcp6',
   'config-rip6',
+  'config-arp-nacl',
+  'config-ipv6-acl',
+  'config-cmap',
+  'config-pmap',
+  'config-pmap-c',
 ];

@@ -1,0 +1,19 @@
+{
+  "cdp.neighbor": "CDP: new neighbor {{dev}} ({{rport}}) on {{port}}.",
+  "lldp.neighbor": "LLDP: new neighbor {{dev}} ({{rport}}) on {{port}}.",
+  "cdp.nativeMismatch": "CDP: native VLAN mismatch on {{port}} ({{mine}}) with {{dev}} {{rport}} ({{theirs}}).",
+  "storm.shutdown": "Storm control: {{type}} storm detected on {{port}} – port err-disabled.",
+  "storm.filtered": "Storm control: {{type}} storm detected on {{port}} – packets are being filtered.",
+  "snoop.untrusted": "DHCP snooping: {{msg}} dropped on untrusted port {{port}}.",
+  "snoop.rate": "DHCP snooping: rate limit ({{rate}} pps) exceeded on {{port}} – port err-disabled.",
+  "snoop.opt82": "DHCP snooping: {{msg}} with option 82/giaddr dropped on untrusted port {{port}}.",
+  "snoop.macFail": "DHCP snooping: {{msg}} on {{port}} dropped – chaddr does not match the source MAC.",
+  "dai.rate": "DAI: {{count}} ARP packets in one second on {{port}} – port err-disabled.",
+  "dai.dhcp": "DAI: ARP from {{mac}}/{{ip}} on {{port}} (VLAN {{vlan}}) dropped – no matching DHCP snooping binding.",
+  "dai.acl": "DAI: ARP from {{mac}}/{{ip}} on {{port}} (VLAN {{vlan}}) dropped by ARP ACL.",
+  "dai.srcMac": "DAI: ARP on {{port}} (VLAN {{vlan}}) dropped – sender MAC does not match source MAC.",
+  "dai.dstMac": "DAI: ARP on {{port}} (VLAN {{vlan}}) dropped – target MAC mismatch.",
+  "dai.ip": "DAI: ARP on {{port}} (VLAN {{vlan}}) dropped – invalid IP address.",
+  "dhcp.opt82": "DHCP: request from {{mac}} with option 82 and no giaddr dropped (ip dhcp relay information trust-all missing).",
+  "svc.ntp.authFail": "NTP: server {{server}} rejected – authentication with key {{key}} failed."
+}

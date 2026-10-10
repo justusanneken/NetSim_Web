@@ -381,7 +381,14 @@ export interface TacacsHost {
 export interface MgmtCfg {
   /** `username X [privilege N] secret Y` (Klartext, wie die übrigen Passwörter). */
   users: Record<string, { secret: string; privilege: number }>;
-  ssh: { version: 1 | 2; keyBits?: number };
+  ssh: {
+    version: 1 | 2;
+    keyBits?: number;
+    /** `ip ssh version 2` wurde konfiguriert (sonst „1.99“). */
+    explicit?: boolean;
+    timeout?: number;
+    retries?: number;
+  };
   vty: {
     /** Anzahl der vty-Leitungen (`line vty 0 4` = 5, `0 15` = 16). */
     lines: number;
@@ -390,9 +397,26 @@ export interface MgmtCfg {
     /** `login authentication LIST` (AAA). */
     authList?: string;
   };
-  ntp: { servers: Ipv4Addr[]; master?: number };
+  ntp: {
+    servers: Ipv4Addr[];
+    master?: number;
+    /** `ntp authenticate`, `ntp authentication-key N md5 K`, `ntp trusted-key N`, `ntp server X key N`. */
+    auth?: boolean;
+    keys?: Record<number, string>;
+    trusted?: number[];
+    serverKeys?: Record<string, number>;
+  };
   clock: ClockCfg;
-  syslog: { hosts: Ipv4Addr[]; trap: number; buffered: boolean };
+  syslog: {
+    hosts: Ipv4Addr[];
+    trap: number;
+    buffered: boolean;
+    /** `logging buffered SIZE LEVEL`, `logging console LEVEL`, `logging monitor LEVEL`. */
+    bufSize?: number;
+    bufLevel?: number;
+    consoleLevel?: number;
+    monitorLevel?: number;
+  };
   snmp: {
     communities: SnmpCommunity[];
     location?: string;
@@ -401,6 +425,16 @@ export interface MgmtCfg {
     trapHosts?: SnmpTrapHost[];
     /** `snmp-server enable traps …`: freigeschaltete Trap-Typen. */
     traps?: SnmpTrapKind[];
+    /** SNMPv3: Gruppen und Benutzer. */
+    v3?: {
+      groups: { name: string; level: 'noauth' | 'auth' | 'priv' }[];
+      users: {
+        name: string;
+        group: string;
+        auth?: { alg: 'md5' | 'sha'; key: string };
+        priv?: { alg: 'aes' | 'des'; bits?: number; key: string };
+      }[];
+    };
   };
   aaa: {
     newModel: boolean;

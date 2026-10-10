@@ -122,7 +122,7 @@ describe('CLI Phase 5: Telnet und SSH', () => {
     expect(bad).toContain('% Authentication failed');
     pcRun('ssh -l admin 10.0.0.1', 's3cret');
     expect(pcStack.prompt()).toBe('R1#');
-    expect(pcRun('show ip ssh')).toContain('SSH Enabled - version 2.0');
+    expect(pcRun('show ip ssh')).toContain('SSH Enabled - version 1.99');
     expect(pcRun('show ssh')).toContain('admin');
     pcRun('exit');
   });

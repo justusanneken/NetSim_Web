@@ -14,6 +14,15 @@ import { SimPanel } from './components/SimPanel';
 import { Toolbar } from './components/Toolbar';
 import { sim, useStore } from './store';
 import { translateMsg } from './format';
+import { deleteSelection, selectAll } from './ux/actions';
+import { BackgroundDialog } from './ux/BackgroundDialog';
+import { ContextMenu } from './ux/ContextMenu';
+import { NetworkInfo } from './ux/NetworkInfo';
+import { NotesPanel } from './ux/NotesPanel';
+import { startUxSync } from './ux/sync';
+import { useUx } from './ux/ux';
+
+startUxSync();
 
 function useShortcuts(): void {
   useEffect(() => {
@@ -24,8 +33,11 @@ function useShortcuts(): void {
       if (typing) return;
       const s = useStore.getState();
       if (e.key === 'Escape') s.cancel();
-      else if (e.key === 'Delete' || e.key === 'Backspace') void s.deleteSelected();
-      else if (e.key === ' ' && el?.tagName !== 'BUTTON') {
+      else if (e.key === 'Delete' || e.key === 'Backspace') void deleteSelection();
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        selectAll();
+      } else if (e.key === ' ' && el?.tagName !== 'BUTTON') {
         e.preventDefault();
         const m = s.view?.mode;
         const running = m === 'realtime' || (m === 'simulation' && s.view?.autoCapture);
@@ -37,6 +49,7 @@ function useShortcuts(): void {
           c: 'cable',
           p: 'pdu',
           x: 'delete',
+          n: 'note',
         };
         const tool = map[e.key.toLowerCase()];
         if (tool) s.setTool(tool);
@@ -74,6 +87,9 @@ export function App() {
         )}
         <PortPicker />
         <DeviceDialog />
+        <ContextMenu />
+        <NetworkInfo />
+        <BackgroundDialog />
         {toast && (
           <div className={`toast ${toast.kind}`} role="alert">
             {translateMsg(t, toast)}
@@ -84,6 +100,13 @@ export function App() {
         <details open>
           <summary>{t('netinfo.title')}</summary>
           <DeviceList />
+          <div className="pad">
+            <button onClick={() => useUx.getState().setNetInfo(true)}>{t('netinfo.open')}</button>
+          </div>
+        </details>
+        <details>
+          <summary>{t('ux.notes.title')}</summary>
+          <NotesPanel />
         </details>
         <details open>
           <summary>{t('panel.title')}</summary>

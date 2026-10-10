@@ -35,17 +35,30 @@ function aclFor(s: CliSession, name: string, type: 'standard' | 'extended'): Acl
 
 function aclLine(s: CliSession, name: string, type: 'standard' | 'extended', text: string): void {
   try {
+    const rm = /^remark\s+(.*)$/.exec(text.trim());
+    if (rm) {
+      const acl = aclFor(s, name, type);
+      if (s.negated) acl.pendingRemark = undefined;
+      else acl.pendingRemark = rm[1];
+      return;
+    }
     const entry = parseAclEntry(type, text);
     const acl = aclFor(s, name, type);
     if (s.negated) {
       const i = acl.entries.findIndex((e) =>
         entry.seq !== undefined
           ? e.seq === entry.seq
-          : JSON.stringify({ ...e, seq: 0, matches: 0 }) ===
-            JSON.stringify({ ...entry, seq: 0, matches: 0 }),
+          : JSON.stringify({ ...e, seq: 0, matches: 0, remark: undefined }) ===
+            JSON.stringify({ ...entry, seq: 0, matches: 0, remark: undefined }),
       );
       if (i >= 0) acl.entries.splice(i, 1);
-    } else addEntry(acl.entries, entry);
+    } else {
+      if (acl.pendingRemark) {
+        entry.remark = acl.pendingRemark;
+        acl.pendingRemark = undefined;
+      }
+      addEntry(acl.entries, entry);
+    }
   } catch (e) {
     if (e instanceof AclParseError) throw new CliError(e.message);
     throw e;
@@ -134,24 +147,6 @@ export function addPhase3(r: Registry<CliSession>): void {
     run: (s) => {
       for (const p of s.device.ports)
         showClamp(s, [...show.showInterfacesSwitchport(s.device, p), '']);
-    },
-  });
-  r.add({
-    modes: CF,
-    only: 'switch',
-    slots: [
-      K('spanning-tree', 'Spanning Tree Subsystem'),
-      K('portfast', 'Spanning tree portfast options'),
-      K('default', 'Enable portfast by default on all access ports'),
-    ],
-    run: (s) => {
-      const cfg = s.device.config;
-      if (cfg.kind !== 'switch') return;
-      for (const p of s.device.ports) {
-        const pc = cfg.ports[p.id];
-        if (pc?.mode === 'access' || pc?.mode === 'dynamic-auto')
-          s.engine.setSwitchport(s.device.id, p.id, { portfast: true });
-      }
     },
   });
   r.add({
@@ -450,21 +445,6 @@ export function addPhase3(r: Registry<CliSession>): void {
   r.add({
     modes: CF,
     only: 'switch',
-    negatable: true,
-    slots: [
-      K('errdisable', 'Error disable'),
-      K('recovery', 'Configure errdisable recovery'),
-      K('cause', 'Enable error disable for:'),
-      K('psecure-violation', 'Timer to recover from psecure violation error disable state'),
-    ],
-    run: (s) => {
-      const cfg = s.device.config;
-      if (cfg.kind === 'switch') cfg.errdisableRecovery.psecure = !s.negated;
-    },
-  });
-  r.add({
-    modes: CF,
-    only: 'switch',
     slots: [
       K('errdisable', 'Error disable'),
       K('recovery', 'Configure errdisable recovery'),
@@ -648,16 +628,6 @@ export function addPhase3(r: Registry<CliSession>): void {
     negatable: true,
     slots: [
       K('switchport', 'Set switching mode characteristics'),
-      K('nonegotiate', 'Device will not engage in negotiation protocol on this interface'),
-    ],
-    run: () => undefined,
-  });
-  r.add({
-    modes: IF,
-    only: 'switch',
-    negatable: true,
-    slots: [
-      K('switchport', 'Set switching mode characteristics'),
       K('trunk', 'Set trunking characteristics of the interface'),
       K('encapsulation', 'Set trunking encapsulation when interface is in trunking mode'),
       K('dot1q', 'Interface uses only 802.1q trunking encapsulation when trunking'),
@@ -683,7 +653,11 @@ export function addPhase3(r: Registry<CliSession>): void {
       K('bpduguard', "Don't accept BPDUs on this interface"),
       opt(choice('v', ['enable', 'Enable BPDU guard'], ['disable', 'Disable BPDU guard'])),
     ],
-    run: (s, a) => swPorts(s, () => ({ bpduguard: !s.negated && a.v !== 'disable' })),
+    run: (s, a) =>
+      swPorts(s, () => ({
+        bpduguard: !s.negated && a.v !== 'disable',
+        bpduguardOff: !s.negated && a.v === 'disable',
+      })),
   });
   r.add({
     modes: IF,
@@ -1090,8 +1064,8 @@ export function addPhase3(r: Registry<CliSession>): void {
     r.add({
       modes: [mode],
       only: 'l3',
-      slots: [K('remark', 'Access list entry comment'), opt(R('t', 'LINE', 'comment'))],
-      run: () => undefined,
+      slots: [K('remark', 'Access list entry comment'), R('t', 'LINE', 'comment')],
+      run: (s, a) => aclLine(s, s.aclName, type, `remark ${a.t ?? ''}`),
     });
   }
 

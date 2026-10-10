@@ -1,11 +1,14 @@
 import { MAC_PVST, MAC_STP, ETHERTYPE, type BpduPdu, type Frame } from '@netsim/protocols';
 import type { DeviceCtx } from '../ctx';
 import type { Base } from '../l3';
+import { syslogEmit } from '../p5/syslog';
 import type { StpInstance, StpPortState } from '../types';
 import {
   carriesVlan,
   errdisable,
   flushMacs,
+  isBpduguard,
+  isPortfast,
   logicalPorts,
   lpMembers,
   lpOf,
@@ -137,7 +140,7 @@ function recompute(ctx: DeviceCtx, dev: SwitchDev, vlan: number): void {
   for (const lp of lps) {
     if (inst.ports[lp]) continue;
     const first = lpMembers(cfg, lp)[0] as string;
-    const edge = !lp.startsWith('po') && !!cfg.ports[first]?.portfast && !cfg.operTrunk[first];
+    const edge = !lp.startsWith('po') && isPortfast(cfg, first) && !cfg.operTrunk[first];
     const fresh: StpPortState = { role: 'designated', state: 'discarding', edge };
     if (edge) fresh.state = 'forwarding';
     else if (isRstp(dev)) {
@@ -154,10 +157,7 @@ function recompute(ctx: DeviceCtx, dev: SwitchDev, vlan: number): void {
     const ps = inst.ports[lp] as StpPortState;
     const first = lpMembers(cfg, lp)[0] as string;
     const want =
-      !lp.startsWith('po') &&
-      !!cfg.ports[first]?.portfast &&
-      !cfg.operTrunk[first] &&
-      !ps.edgeBroken;
+      !lp.startsWith('po') && isPortfast(cfg, first) && !cfg.operTrunk[first] && !ps.edgeBroken;
     if (want === ps.edge) continue;
     ps.edge = want;
     ps.proposing = false;
@@ -365,7 +365,14 @@ export function stpRx(
   }
   const local = !cfg.operTrunk[portId];
   if (ps.edge && local) {
-    if (pc.bpduguard) {
+    if (isBpduguard(cfg, portId)) {
+      syslogEmit(
+        ctx,
+        dev,
+        2,
+        'SPANTREE-2-BLOCK_BPDUGUARD',
+        `Received BPDU on port ${base.port?.name ?? portId} with BPDU Guard enabled. Disabling port.`,
+      );
       ctx.log({
         ...base,
         kind: 'error',

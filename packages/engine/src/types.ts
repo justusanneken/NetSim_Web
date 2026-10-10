@@ -112,6 +112,8 @@ export interface Port {
   mtu: number;
   /** Gesetzt, wenn der Port durch err-disable abgeschaltet wurde (z. B. `psecure-violation`). */
   errdisabled?: string;
+  /** Zeitpunkt (µs), zu dem der Port err-disabled wurde. */
+  errdisabledAt?: number;
   /** Serial: Grund, warum das Line-Protocol down ist (Link-Schicht), sonst up. */
   protoDown?: SerialDown;
 }
@@ -302,12 +304,62 @@ export interface AclEntry {
   established?: boolean;
   log?: boolean;
   matches: number;
+  /** `remark` unmittelbar vor diesem Eintrag. */
+  remark?: string;
+}
+
+export type Acl6Match = { any: true } | { prefix: Ipv6Addr; plen: number };
+
+export interface Acl6Entry {
+  seq: number;
+  action: 'permit' | 'deny';
+  proto: 'ipv6' | 'icmp' | 'tcp' | 'udp';
+  src: Acl6Match;
+  dst: Acl6Match;
+  srcPort?: PortMatch;
+  dstPort?: PortMatch;
+  established?: boolean;
+  matches: number;
+  remark?: string;
+}
+
+/** `ipv6 access-list NAME`. */
+export interface Acl6 {
+  name: string;
+  entries: Acl6Entry[];
+  pendingRemark?: string;
+}
+
+export interface QosClass {
+  name: string;
+  matchAll: boolean;
+  /** `match dscp …` (Liste), `match access-group`, `match protocol`, `match any`. */
+  dscp: number[];
+  acl?: string;
+  protocols: string[];
+  any: boolean;
+}
+
+export interface QosPolicyClass {
+  class: string;
+  setDscp?: number;
+  /** Übrige Aktionen im IOS-Wortlaut (`bandwidth percent 20`, `priority 100`, `police …`). */
+  actions: string[];
+}
+
+export interface QosCfg {
+  classes: Record<string, QosClass>;
+  policies: Record<string, { name: string; classes: QosPolicyClass[] }>;
+  /** Laufzeit: Zähler je `Schnittstelle|Richtung|Klasse`. */
+  counters: Record<string, { pkts: number; bytes: number; marked: number }>;
 }
 
 export interface Acl {
   name: string;
   type: 'standard' | 'extended';
   entries: AclEntry[];
+  /** `remark` ohne nachfolgenden Eintrag. */
+  pendingRemark?: string;
 }
 
 export interface NatPool {
@@ -411,6 +463,8 @@ export interface DhcpServerCfg {
   excluded: { from: Ipv4Addr; to: Ipv4Addr }[];
   bindings: Record<Ipv4Addr, DhcpBinding>;
   conflicts: Ipv4Addr[];
+  /** `ip dhcp relay information trust-all`: Option 82 ohne giaddr akzeptieren. */
+  trustAll?: boolean;
 }
 
 // ---------------------------------------------------------------- Hosts
@@ -566,6 +620,11 @@ export interface IfaceCfg {
   aclOut?: string;
   natSide?: 'inside' | 'outside';
   helpers?: Ipv4Addr[];
+  /** `ip dhcp relay information trusted`. */
+  relayTrusted?: boolean;
+  /** `service-policy input|output NAME`. */
+  policyIn?: string;
+  policyOut?: string;
   /** IPv6-Konfiguration der Schnittstelle. */
   v6?: V6IfCfg;
   /** Bandbreite (kbit/s) für OSPF-Kosten/EIGRP; sonst aus der Linkgeschwindigkeit. */
@@ -602,6 +661,9 @@ export interface V6IfCfg {
   autoconfig: boolean;
   /** `ipv6 nd ra suppress`. */
   raSuppress?: boolean;
+  /** `ipv6 traffic-filter NAME in|out`. */
+  aclIn?: string;
+  aclOut?: string;
   /** `ipv6 rip NAME enable`: RIPng-Prozess an dieser Schnittstelle. */
   ripng?: string;
   /** `ipv6 dhcp server POOL` (Schnittstelle bedient DHCPv6-Clients). */
@@ -675,6 +737,8 @@ export interface L3Cfg extends IpCore {
   ifaces: Record<string, IfaceCfg>;
   staticRoutes: StaticRoute[];
   acls: Record<string, Acl>;
+  /** IPv6-ACLs (`ipv6 access-list`). */
+  acls6?: Record<string, Acl6>;
   nat: NatCfg;
   dhcp: DhcpServerCfg;
   /** `ip routing` (Router: immer an). */
@@ -683,6 +747,10 @@ export interface L3Cfg extends IpCore {
   dhcp6?: Dhcp6ServerCfg;
   /** Switch ohne Routing: `ip default-gateway`. */
   defaultGateway?: Ipv4Addr;
+  /** CDP/LLDP. */
+  disc?: DiscCfg;
+  /** QoS: class-map, policy-map. */
+  qos?: QosCfg;
   /** PPPoE-Server: `bba-group pppoe`. */
   bba?: Record<string, BbaGroup>;
   /** `ip local pool NAME START END`. */
@@ -717,6 +785,11 @@ export interface PortSecurity {
   dynMacs: Mac[];
   violations: number;
   lastMac?: Mac;
+  /** `switchport port-security aging time` (Minuten, 0 = kein Aging) und `aging type`. */
+  agingTime?: number;
+  agingType?: 'absolute' | 'inactivity';
+  /** Zeitpunkt (µs) je dynamisch gelernter MAC (für Aging). */
+  dynSince?: Record<Mac, number>;
 }
 
 export type SwitchportMode = 'access' | 'trunk' | 'dynamic-auto' | 'dynamic-desirable';
@@ -735,6 +808,132 @@ export interface SwitchPortCfg {
   psec: PortSecurity;
   channel?: number;
   channelMode?: 'on' | 'active' | 'passive' | 'desirable' | 'auto';
+  /** `switchport voice vlan N|dot1p|untagged`. */
+  voiceVlan?: number | 'dot1p' | 'untagged';
+  /** `spanning-tree portfast disable` / `bpduguard disable` (überstimmt die globalen Defaults). */
+  portfastOff?: boolean;
+  bpduguardOff?: boolean;
+  /** `switchport nonegotiate`: kein DTP. */
+  nonegotiate?: boolean;
+  /** `storm-control`: Schwellen in Prozent der Leitungsrate und Aktion. */
+  storm?: StormCfg;
+  /** DHCP-Snooping / DAI je Port. */
+  snoopTrust?: boolean;
+  snoopRate?: number;
+  daiTrust?: boolean;
+  daiRate?: number;
+  daiBurst?: number;
+  /** `spanning-tree link-type point-to-point|shared`. */
+  linkType?: 'point-to-point' | 'shared';
+  /** Laufzeit: Zähler des laufenden 1-s-Fensters. */
+  rt?: {
+    win: number;
+    dhcp: number;
+    arp: number;
+    /** [Bytes, Pakete] je Klasse im 1-s-Fenster. */
+    bc: [number, number];
+    mc: [number, number];
+    uc: [number, number];
+    stormLogged?: boolean;
+  };
+}
+
+export interface StormThresh {
+  unit: 'pct' | 'pps' | 'bps';
+  rising: number;
+  falling?: number;
+}
+
+export interface StormCfg {
+  broadcast?: StormThresh;
+  multicast?: StormThresh;
+  unicast?: StormThresh;
+  action: 'filter' | 'shutdown' | 'trap';
+}
+
+export interface SnoopBinding {
+  mac: Mac;
+  ip: Ipv4Addr;
+  vlan: number;
+  portId: string;
+  /** Ablauf (µs virtuelle Zeit); 0 = statisch. */
+  expiresAt: number;
+  type: 'dhcp-snooping' | 'static';
+}
+
+export interface SnoopCfg {
+  enabled: boolean;
+  vlans: number[];
+  /** `ip dhcp snooping information option` (Default: an). */
+  option82: boolean;
+  verifyMac: boolean;
+  allowUntrusted: boolean;
+  bindings: SnoopBinding[];
+  stats: {
+    forwarded: number;
+    macFail: number;
+    untrustedDrop: number;
+    opt82Drop: number;
+    rateDrop: number;
+  };
+}
+
+export interface DaiVlanStats {
+  forwarded: number;
+  dropped: number;
+  dhcpDrops: number;
+  dhcpPermits: number;
+  aclDrops: number;
+  aclPermits: number;
+  srcMacFail: number;
+  dstMacFail: number;
+  ipFail: number;
+}
+
+export interface DaiCfg {
+  vlans: number[];
+  validate: { srcMac: boolean; dstMac: boolean; ip: boolean };
+  /** `arp access-list NAME` / `permit ip host IP mac host MAC`. */
+  acls: Record<string, { ip: Ipv4Addr; mac: Mac }[]>;
+  filters: { acl: string; vlan: number; static: boolean }[];
+  stats: Record<number, DaiVlanStats>;
+}
+
+export interface DiscNeighbor {
+  deviceId: string;
+  platform: string;
+  capabilities: string[];
+  /** Eigener Port (ID) und Name des Nachbarports. */
+  localPortId: string;
+  remotePort: string;
+  addr?: Ipv4Addr;
+  holdUntil: number;
+  /** CDP: Software-Version. */
+  version: string;
+  nativeVlan?: number;
+  duplex?: 'full' | 'half';
+  /** LLDP-Felder. */
+  chassisId?: string;
+  sysDesc?: string;
+  ttl: number;
+}
+
+/** CDP-/LLDP-Konfiguration und -Nachbartabellen (Router und Switches). */
+export interface DiscCfg {
+  cdpRun: boolean;
+  cdpTimer: number;
+  cdpHold: number;
+  /** Ports, auf denen CDP per `no cdp enable` abgeschaltet ist. */
+  cdpOff: string[];
+  lldpRun: boolean;
+  lldpTimer: number;
+  lldpHold: number;
+  lldpReinit: number;
+  lldpTxOff: string[];
+  lldpRxOff: string[];
+  cdp: Record<string, DiscNeighbor>;
+  lldp: Record<string, DiscNeighbor>;
+  stats: { cdpSent: number; cdpRecv: number; lldpSent: number; lldpRecv: number };
 }
 
 export interface VtpCfg {
@@ -794,7 +993,12 @@ export interface SwitchConfig extends L3Cfg {
   bundles: Record<number, string[]>;
   /** Laufzeit: operativer Trunk-Status je Port. */
   operTrunk: Record<string, boolean>;
-  errdisableRecovery: { psecure: boolean; intervalSec: number };
+  errdisableRecovery: { psecure: boolean; intervalSec: number; causes?: string[] };
+  snoop?: SnoopCfg;
+  dai?: DaiCfg;
+  /** `spanning-tree portfast default` / `portfast bpduguard default`. */
+  portfastDefault?: boolean;
+  bpduguardDefault?: boolean;
 }
 
 export interface HubConfig {

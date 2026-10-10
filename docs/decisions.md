@@ -124,7 +124,25 @@ WLAN-Roaming im selben SSID behält das DHCP-Lease (INIT-REBOOT, Zustand `reboot
 36. **PPPoE/PPP:** neue Schnittstellenarten `dialer`, `vtemplate`, `vaccess`; Sitzungen als Laufzeitzustand `L3Cfg.ppp`, IP-Schnittstellen erscheinen nur bei stehender Sitzung (`pppIfaces`). PPPoE-Frames werden vor der Schnittstellenzuordnung in `routerRx` abgefangen.
 37. **IPsec:** Crypto-Map-Prüfung im `xmit` der Schnittstelle (`cryptoXmit`), ESP als IP-Nutzlast mit verborgenem `inner`, IKE als ein Austausch; SAs sind Laufzeitzustand in `L3Cfg.crypto.sas`. Kein VTI.
 38. **Neue Protokoll-Tags** `TACACS`, `PPPOE`, `PPP`, `IKE`, `ESP`; Farben in `apps/web/src/proto.css` (Tokens), Übersetzungen in `i18n/{de,en}.proto.json`.
-39. **Serial-WAN (wan):** Line-Protocol wird in `Engine.refreshLinks` für Serial-Links aus der Konfiguration berechnet (`serial.ts`: Takt am DCE-Ende, Kapselung, PPP-Authentifizierung), sofort statt über Keepalive-Timer. `Port.protoDown` hält den Grund; `ifaceUp` wertet es aus. Kabelende-Rolle: `serial-dce` = Port A ist DCE.
+
+## UX-Erweiterungen (Phase 6, „ux“)
+
+39. **UI-Dokument getrennt von der Engine:** Notizen, Gruppen, Hintergrundbild und Geräte-Attribute liegen in `apps/web/src/ux/uiDoc.ts` (zustand), nicht in der Engine; Persistenz speichert sie über `exportUiDoc`/`importUiDoc` und bindet `snapshotUiDoc`/`restoreUiDoc`/`onUiDocChange` in Undo ein. Geräte-Positionen bleiben `DeviceView.pos`; jede Mehrfachbewegung läuft durch `moveDevices` (`ux/actions.ts`).
+40. **„Equivalent IOS Commands“ allgemein als Diff:** statt jedes GUI-Formular Befehle erzeugen zu lassen, vergleicht `EquivalentIos` die running-config (`runningConfig` im Worker) vor und nach einer Änderung (`ux/iosDiff.ts`). Das deckt GUI- und CLI-Änderungen gleichermaßen ab.
+41. **Tastatur-Alternative zur Arbeitsfläche ist die Geräteliste:** Aktivieren eines Eintrags verhält sich wie ein Klick auf das Gerät (Werkzeug-abhängig). Konva-Objekte selbst sind nicht fokussierbar.
+42. **Fokusfalle als Hook** (`ux/useFocusTrap.ts`) und gemeinsamer `Modal` für alle neuen Dialoge.
+
+## Realismus-Runde CCNA (Branch `wip/ccna`)
+
+43. **CDP/LLDP als eigene PDUs** (`cdp`, `lldp`) mit Ziel-MAC `01:00:0c:cc:cc:cc` bzw. `01:80:c2:00:00:0e`; sie werden in `Engine.onRx` vor der Gerätelogik verbraucht (`discRx`), also nie weitergeleitet (anders als echte Switches bei `no cdp run`). Timer laufen als `bg:`-Timer (zählen nicht als „Arbeit“ für `runAll`), erster Advertisement-Versand 2 s nach Start bzw. 1 s nach Link-Up. Nachbartabellen liegen im Konfigurationsbaum (`L3Cfg.disc`) und werden bei Hold-Time-Ablauf beim Lesen gefiltert.
+44. **Switch-Sicherheit in `devices/swsec.ts`:** ein Eingangs-Hook `securityIngress` (Storm Control → DHCP Snooping → DAI) nach der Port-Security-Prüfung und vor dem MAC-Lernen. DHCP-Snooping fügt Option 82 in einen geklonten Frame ein; der Original-Frame im Log bleibt unverändert.
+45. **Option-82-Verhalten wie IOS:** DHCP-Server/Relay (Router) verwirft Anfragen mit Option 82 und giaddr 0, solange `ip dhcp relay information trust-all` (global) bzw. `… trusted` (Schnittstelle) fehlt.
+46. **errdisable generalisiert:** `errdisableRecovery.causes` (neben dem alten Flag `psecure`), gemeinsame Funktion `errdisable()` schreibt `%PM-4-ERR_DISABLE` und plant die Wiederherstellung (`%PM-4-ERR_RECOVER`).
+47. **IPv6-ACLs** in `L3Cfg.acls6`, Auswertung in `forward6` (nur Durchgangsverkehr, wie die v4-ACLs); `deny` antwortet mit ICMPv6 Code 1.
+48. **QoS** in `L3Cfg.qos` (class-map/policy-map) mit Anwendung in `forward()` (Eingang nach der ACL, Ausgang vor der ACL); DSCP als optionales Feld `Ipv4Pdu.dscp`.
+49. **Neue CLI-Modi** `config-arp-nacl`, `config-ipv6-acl`, `config-cmap`, `config-pmap`, `config-pmap-c`; Klassen-/Policy-Namen laufen über die Sitzungsfelder `aclName`/`poolName`.
+50. **NTP-Authentifizierung** über die vorhandenen `svc`-Argumente (`keyId`, `digest`, Antwort `auth`); Der Server antwortet authentifiziert, wenn Key-ID und Schlüssel übereinstimmen; der Client akzeptiert Server mit `key N` nur bei `ntp authenticate`, `trusted-key N` und authentifizierter Antwort.
+51. **Serial-WAN (wan):** Line-Protocol wird in `Engine.refreshLinks` für Serial-Links aus der Konfiguration berechnet (`serial.ts`: Takt am DCE-Ende, Kapselung, PPP-Authentifizierung), sofort statt über Keepalive-Timer. `Port.protoDown` hält den Grund; `ifaceUp` wertet es aus. Kabelende-Rolle: `serial-dce` = Port A ist DCE.
     Ein abgeschaltetes Gegenende lässt dieses Ende „up/down“. Serial-Bandbreite für Kosten/EIGRP ist fest 1544 kbit/s (Delay 20 000 µs), unabhängig von `clock rate` (wie IOS).
-40. **Statische Routen:** Null0 ist die Pseudo-Schnittstelle `null0` (Route ohne Ausgangs-Iface ⇒ Weiterleitung scheitert mit ICMP net unreachable). `ip route` wird je Endungs-Kombination registriert, weil der Parser keine optionalen Gruppen kennt (ein Rest-Slot würde in `no`-Formen Pflichtparameter verschlucken).
-41. **serialLog.ts** enthält eine eigene `dbg`-Kopie statt `routing/core` zu importieren: der Import von `routing/core` aus `engine.ts` heraus verschob die Modul-Initialisierung (zirkuläre Importe ließen `SEC` in `ospf.ts` undefined/NaN werden).
+52. **Statische Routen:** Null0 ist die Pseudo-Schnittstelle `null0` (Route ohne Ausgangs-Iface ⇒ Weiterleitung scheitert mit ICMP net unreachable). `ip route` wird je Endungs-Kombination registriert, weil der Parser keine optionalen Gruppen kennt (ein Rest-Slot würde in `no`-Formen Pflichtparameter verschlucken).
+53. **serialLog.ts** enthält eine eigene `dbg`-Kopie statt `routing/core` zu importieren: der Import von `routing/core` aus `engine.ts` heraus verschob die Modul-Initialisierung (zirkuläre Importe ließen `SEC` in `ospf.ts` undefined/NaN werden).

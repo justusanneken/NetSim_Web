@@ -137,6 +137,10 @@ export function pduSize(pdu: Pdu): number {
       return BPDU_SIZE;
     case 'vtp':
       return 40 + pdu.vlans.length * 12;
+    case 'cdp':
+      return 80 + pdu.deviceId.length + pdu.platform.length + pdu.version.length;
+    case 'lldp':
+      return 60 + pdu.sysName.length + pdu.sysDesc.length;
     case 'rip':
     case 'hsrp':
     case 'dhcp6':
@@ -255,6 +259,7 @@ export function describePdu(pdu: Pdu): HeaderField[] {
         f('DF', pdu.df),
         f('MF', pdu.mf),
         f('Fragment Offset', pdu.fragOffset),
+        ...(pdu.dscp !== undefined ? [f('DSCP', `${dscpName(pdu.dscp)} (${pdu.dscp})`)] : []),
         f('TTL', pdu.ttl),
         f('Protocol', pdu.protocol),
         f('Source', pdu.src),
@@ -310,6 +315,27 @@ export function describePdu(pdu: Pdu): HeaderField[] {
       return describeBpdu(pdu);
     case 'vtp':
       return describeVtp(pdu);
+    case 'cdp':
+      return [
+        f('Device ID', pdu.deviceId),
+        f('Port ID', pdu.portName),
+        f('Platform', pdu.platform),
+        f('Capabilities', pdu.capabilities.join(' ')),
+        f('Holdtime', `${pdu.holdtime} s`),
+        ...(pdu.addr ? [f('Address', pdu.addr)] : []),
+        ...(pdu.nativeVlan !== undefined ? [f('Native VLAN', pdu.nativeVlan)] : []),
+        ...(pdu.duplex ? [f('Duplex', pdu.duplex)] : []),
+      ];
+    case 'lldp':
+      return [
+        f('Chassis ID', pdu.chassisId),
+        f('Port ID', pdu.portId),
+        f('Port Description', pdu.portDesc),
+        f('TTL', `${pdu.ttl} s`),
+        f('System Name', pdu.sysName),
+        f('System Capabilities', pdu.capabilities.join(',')),
+        ...(pdu.mgmtAddr ? [f('Management Address', pdu.mgmtAddr)] : []),
+      ];
     case 'rip':
       return [
         f('Command', pdu.command),
@@ -577,6 +603,8 @@ const LAYER_META: Record<Pdu['kind'], { osi: number; name: string }> = {
   arp: { osi: 2, name: 'ARP' },
   bpdu: { osi: 2, name: 'STP' },
   vtp: { osi: 2, name: 'VTP' },
+  cdp: { osi: 2, name: 'CDP' },
+  lldp: { osi: 2, name: 'LLDP' },
   ipv4: { osi: 3, name: 'IPv4' },
   ipv6: { osi: 3, name: 'IPv6' },
   icmp6: { osi: 3, name: 'ICMPv6' },
@@ -620,6 +648,10 @@ export function summarizeFrame(frame: EthernetPdu): { proto: ProtoTag; info: str
       };
     case 'vtp':
       return { proto: 'VTP', info: `domain ${p.domain} revision ${p.revision}` };
+    case 'cdp':
+      return { proto: 'CDP', info: `Device ID: ${p.deviceId}  Port ID: ${p.portName}` };
+    case 'lldp':
+      return { proto: 'LLDP', info: `System Name = ${p.sysName}  Port ID = ${p.portId}` };
     case 'ipv4':
       return summarizeIp(p);
     case 'ipv6':
@@ -780,4 +812,42 @@ function summarizeUdp(p: Ipv4Pdu, u: UdpPdu, tail: string): { proto: ProtoTag; i
     };
   }
   return { proto: 'UDP', info: `${p.src}:${u.srcPort} → ${p.dst}:${u.dstPort}${tail}` };
+}
+
+/** Standardisierte DSCP-Namen (PHB). */
+export const DSCP_NAMES: Record<string, number> = {
+  default: 0,
+  cs1: 8,
+  af11: 10,
+  af12: 12,
+  af13: 14,
+  cs2: 16,
+  af21: 18,
+  af22: 20,
+  af23: 22,
+  cs3: 24,
+  af31: 26,
+  af32: 28,
+  af33: 30,
+  cs4: 32,
+  af41: 34,
+  af42: 36,
+  af43: 38,
+  cs5: 40,
+  ef: 46,
+  cs6: 48,
+  cs7: 56,
+};
+
+/** `46` oder `ef` -> Zahl; ungültig -> undefined. */
+export function parseDscp(tok: string): number | undefined {
+  const t = tok.toLowerCase();
+  if (t in DSCP_NAMES) return DSCP_NAMES[t];
+  if (/^\d+$/.test(t) && Number(t) <= 63) return Number(t);
+  return undefined;
+}
+
+/** 46 -> `ef`, 0 -> `default`, sonst die Zahl. */
+export function dscpName(n: number): string {
+  return Object.entries(DSCP_NAMES).find(([, v]) => v === n)?.[0] ?? String(n);
 }
