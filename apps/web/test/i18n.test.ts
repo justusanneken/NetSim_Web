@@ -15,8 +15,27 @@ import enPersist from '../src/i18n/en.persist.json';
 import deUx from '../src/i18n/de.ux.json';
 import enUx from '../src/i18n/en.ux.json';
 
-const de: Record<string, string> = { ...de0, ...de5, ...deT, ...deProto, ...dePersist, ...deUx };
-const en: Record<string, string> = { ...en0, ...en5, ...enT, ...enProto, ...enPersist, ...enUx };
+import deCcna from '../src/i18n/de.ccna.json';
+import enCcna from '../src/i18n/en.ccna.json';
+
+const de: Record<string, string> = {
+  ...de0,
+  ...de5,
+  ...deT,
+  ...deProto,
+  ...dePersist,
+  ...deUx,
+  ...deCcna,
+};
+const en: Record<string, string> = {
+  ...en0,
+  ...en5,
+  ...enT,
+  ...enProto,
+  ...enPersist,
+  ...enUx,
+  ...enCcna,
+};
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const f of readdirSync(dir)) {

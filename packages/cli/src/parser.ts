@@ -31,7 +31,12 @@ export type ModeId =
   | 'config-bba'
   | 'config-isakmp'
   | 'config-trans'
-  | 'config-crypto-map';
+  | 'config-crypto-map'
+  | 'config-arp-nacl'
+  | 'config-ipv6-acl'
+  | 'config-cmap'
+  | 'config-pmap'
+  | 'config-pmap-c';
 export type ParamType =
   'word' | 'int' | 'ip' | 'mask' | 'iface' | 'vlans' | 'mac' | 'wildcard' | 'ipv6' | 'prefix6';
 export type Family = 'router' | 'switch' | 'switch-l3' | 'firewall';

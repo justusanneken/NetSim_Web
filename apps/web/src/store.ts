@@ -31,6 +31,8 @@ export const ALL_PROTOS = [
   'HTTP',
   'STP',
   'VTP',
+  'CDP',
+  'LLDP',
   'NAT',
   'ACL',
   'RIP',

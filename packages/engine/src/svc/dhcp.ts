@@ -240,6 +240,23 @@ export function dhcpRx(
   void frame;
   const fromClient = CLIENT_OPS.includes(app.op);
   if (fromClient && udp.dstPort === 67) {
+    // Option 82 ohne giaddr (vom Snooping-Switch eingefügt): IOS verwirft sie ohne `trust-all`
+    if (
+      node.l3 &&
+      app.options.opt82 &&
+      app.giaddr === '0.0.0.0' &&
+      !iface.cfg.relayTrusted &&
+      !node.l3?.dhcp.trustAll
+    ) {
+      ctx.log({
+        ...base,
+        kind: 'drop',
+        proto: 'DHCP',
+        status: 'drop',
+        msg: { key: 'dhcp.opt82', params: { mac: app.chaddr } },
+      });
+      return true;
+    }
     if (node.l3 && iface.cfg.helpers?.length && app.giaddr === '0.0.0.0') {
       relayUp(ctx, node, iface, base, app);
       return true;

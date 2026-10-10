@@ -2,7 +2,7 @@ import { api, proxy } from '../engine/client';
 import { useStore } from '../store';
 import { kvDelete, kvGet, kvSet, recentAdd, recentList } from './idb';
 import { usePersist } from './state';
-import { selection } from '../ux/actions';
+import { selectOnly, selection } from '../ux/actions';
 import { exportUiDoc, importUiDoc, onUiDocChange, resetUiDoc } from '../ux/uiDoc';
 
 /** Obergrenze für zu öffnende Dateien (entspricht dem Limit der Engine). */
@@ -222,7 +222,7 @@ export async function pasteClipboard(): Promise<void> {
     return;
   }
   const first = r.value.ids[0];
-  if (first) useStore.getState().selectDevice(first);
+  if (first) selectOnly(first);
   if (r.value.readdressed.length > 0)
     toast('persist.pastedReaddressed', { n: r.value.readdressed.length });
   else toast('persist.pasted', { n: r.value.ids.length });

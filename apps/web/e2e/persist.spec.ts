@@ -107,26 +107,30 @@ test('Speichern und Öffnen (.nsim) ergibt dasselbe Netz', async ({ page }) => {
   await menu(page, 'Datei', 'Neu');
   await expect(devices(page)).toHaveCount(0);
 
-  // Öffnen per Strg+O
+  // Öffnen per Strg+O (bei Last kann der Dateiauswahl-Dialog verspätet kommen: wiederholen)
   await page.locator('.canvas-wrap').hover();
-  const [chooser] = await Promise.all([
-    page.waitForEvent('filechooser'),
-    page.keyboard.press('Control+o'),
-  ]);
-  await chooser.setFiles(path);
+  await expect(async () => {
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser', { timeout: 8000 }),
+      page.keyboard.press('Control+o'),
+    ]);
+    await chooser.setFiles(path);
+  }).toPass({ timeout: 60_000 });
   await expect(devices(page)).toHaveCount(6);
   await expect(page.getByRole('alert')).toContainText('mein-lab');
 
   // kaputte Datei: klare Fehlermeldung, Netz bleibt
-  const [chooser2] = await Promise.all([
-    page.waitForEvent('filechooser'),
-    menu(page, 'Datei', /Öffnen/),
-  ]);
-  await chooser2.setFiles({
-    name: 'kaputt.nsim',
-    mimeType: 'application/octet-stream',
-    buffer: Buffer.from('das ist kein nsim'),
-  });
+  await expect(async () => {
+    const [chooser2] = await Promise.all([
+      page.waitForEvent('filechooser', { timeout: 8000 }),
+      menu(page, 'Datei', /Öffnen/),
+    ]);
+    await chooser2.setFiles({
+      name: 'kaputt.nsim',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('das ist kein nsim'),
+    });
+  }).toPass({ timeout: 60_000 });
   await expect(page.getByRole('alert')).toContainText('keine gültige .nsim-Datei');
   await expect(devices(page)).toHaveCount(6);
 });

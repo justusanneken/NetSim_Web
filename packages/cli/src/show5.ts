@@ -1,5 +1,5 @@
 import type { Device, Engine, MgmtCfg } from '@netsim/engine';
-import { clockOf, idleText, mgmtOf, oidName } from '@netsim/engine';
+import { SEVERITY_NAMES, clockOf, idleText, mgmtOf, oidName } from '@netsim/engine';
 import { ifDisplay } from './ifnames';
 import { aaaMethodText } from './render5';
 
@@ -87,8 +87,8 @@ export function showIpSsh(d: D): string[] {
   const m = cfg ? mgmtOf(cfg.sys) : undefined;
   const on = !!cfg?.sys.domainName && m?.ssh.keyBits !== undefined;
   return [
-    `SSH ${on ? 'Enabled' : 'Disabled'} - version ${m?.ssh.version ?? 2}.0`,
-    'Authentication timeout: 120 secs; Authentication retries: 3',
+    `SSH ${on ? 'Enabled' : 'Disabled'} - version ${m?.ssh.version === 2 && !m.ssh.explicit ? '1.99' : `${m?.ssh.version ?? 2}.0`}`,
+    `Authentication timeout: ${m?.ssh.timeout ?? 120} secs; Authentication retries: ${m?.ssh.retries ?? 3}`,
   ];
 }
 
@@ -113,34 +113,48 @@ export function showKeys(d: D): string[] {
 export function showLogging(d: D): string[] {
   const cfg = cli(d);
   const m: MgmtCfg | undefined = cfg ? mgmtOf(cfg.sys) : undefined;
-  const sevName = [
-    'emergencies',
-    'alerts',
-    'critical',
-    'errors',
-    'warnings',
-    'notifications',
-    'informational',
-    'debugging',
-  ];
+  const lv = (n: number | undefined, dflt: number): string => SEVERITY_NAMES[n ?? dflt] as string;
+  const n = m?.logBuffer.length ?? 0;
+  const trapCount = (m?.logBuffer ?? []).length;
   const out = [
-    'Syslog logging: enabled (0 messages dropped, 0 messages rate-limited, 0 flushes, 0 overruns)',
-    '    Console logging: level debugging',
-    `    Monitor logging: level debugging`,
-    `    Buffer logging: ${m?.syslog.buffered ? `level debugging, ${m.logBuffer.length} messages logged` : 'disabled'}`,
-    `    Trap logging: level ${sevName[m?.syslog.trap ?? 6]}, ${m?.logBuffer.length ?? 0} message lines logged`,
+    'Syslog logging: enabled (0 messages dropped, 0 messages rate-limited, 0 flushes, 0 overruns, xml disabled, filtering disabled)',
+    '',
+    'No Active Message Discriminator.',
+    '',
+    'No Inactive Message Discriminator.',
+    '',
+    `    Console logging: level ${lv(m?.syslog.consoleLevel, 7)}, ${n} messages logged, xml disabled,`,
+    '                     filtering disabled',
+    `    Monitor logging: level ${lv(m?.syslog.monitorLevel, 7)}, 0 messages logged, xml disabled,`,
+    '                     filtering disabled',
+    m?.syslog.buffered === false
+      ? '    Buffer logging: disabled, xml disabled,'
+      : `    Buffer logging:  level ${lv(m?.syslog.bufLevel, 7)}, ${n} messages logged, xml disabled,`,
+    '                     filtering disabled',
+    '    Logging Exception size (4096 bytes)',
+    '    Count and timestamp logging messages: disabled',
+    '    Persistent logging: disabled',
+    '',
+    'No active filter modules.',
+    '',
+    `    Trap logging: level ${lv(m?.syslog.trap, 6)}, ${trapCount} message lines logged`,
   ];
   for (const h of m?.syslog.hosts ?? [])
-    out.push(`        Logging to ${h}  (udp port 514, audit disabled, link up)`);
-  out.push('', 'Log Buffer (4096 bytes):', '');
-  out.push(...(m?.logBuffer ?? []));
+    out.push(
+      `        Logging to ${h}  (udp port 514, audit disabled, link up), 0 message lines logged`,
+    );
+  if (m?.syslog.buffered !== false) {
+    out.push('', `Log Buffer (${m?.syslog.bufSize ?? 4096} bytes):`, '');
+    out.push(...(m?.logBuffer ?? []));
+  }
   return out;
 }
 
 export function showSnmp(d: D): string[] {
   const cfg = cli(d);
   const m = cfg ? mgmtOf(cfg.sys) : undefined;
-  if (!m || m.snmp.communities.length === 0) return ['%SNMP agent not enabled'];
+  if (!m || (m.snmp.communities.length === 0 && !m.snmp.v3?.groups.length))
+    return ['%SNMP agent not enabled'];
   const out: string[] = [];
   if (m.snmp.contact) out.push(`Contact: ${m.snmp.contact}`);
   if (m.snmp.location) out.push(`Location: ${m.snmp.location}`);
