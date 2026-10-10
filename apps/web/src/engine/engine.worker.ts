@@ -9,6 +9,8 @@ import {
   type Shell,
 } from '@netsim/cli';
 import { EngineService5, type ViewModel } from '@netsim/engine';
+import { Persistence } from './persistGlue';
+import type { UndoInfo } from './undo';
 
 type Subscriber = (v: ViewModel) => void;
 
@@ -22,6 +24,10 @@ const MAX_TRANSCRIPT = 60_000;
 class WorkerService extends EngineService5 {
   private subscriber: Subscriber | undefined;
   private readonly terms = new Map<string, TermEntry>();
+  /** Persistenz: .nsim, Vorlagen, Copy/Paste, Undo/Redo (umhüllt alle ändernden Methoden). */
+  private readonly persist = new Persistence(this, (alive) => {
+    for (const k of [...this.terms.keys()]) if (!alive.has(k)) this.terms.delete(k);
+  });
 
   constructor() {
     super(1);
@@ -117,10 +123,72 @@ class WorkerService extends EngineService5 {
     const entry = this.terms.get(id);
     const dev = this.engine.getDevice(id);
     if (!entry || !dev?.powered) return '';
+    const enter = /[\r\n]/.test(data);
+    const pre = enter ? this.persist.cliBegin(id) : undefined;
     const out = entry.term.handle(data);
+    if (pre) this.persist.cliEnd(id, pre);
     entry.transcript = (entry.transcript + out).slice(-MAX_TRANSCRIPT);
     this.touch();
     return out;
+  }
+
+  // ---- Persistenz (Datei, Vorlagen, Einfügen, Undo/Redo)
+  saveNsim(extras?: Record<string, unknown>): Uint8Array {
+    return this.persist.save(extras);
+  }
+  openNsim(bytes: Uint8Array) {
+    const r = this.persist.open(bytes);
+    this.touch();
+    return r;
+  }
+  newTopology(): void {
+    this.persist.newTopology();
+    this.touch();
+  }
+  listTemplates() {
+    return this.persist.listTemplates();
+  }
+  loadTemplate(id: string) {
+    const r = this.persist.loadTemplate(id);
+    this.touch();
+    return r;
+  }
+  pasteDevices(ids: string[], dx: number, dy: number) {
+    return this.persist.paste(ids, { x: dx, y: dy });
+  }
+  undo(): { ok: boolean; extras: Record<string, unknown> } {
+    const ok = this.persist.undo();
+    this.touch();
+    return { ok, extras: this.persist.extras };
+  }
+  redo(): { ok: boolean; extras: Record<string, unknown> } {
+    const ok = this.persist.redo();
+    this.touch();
+    return { ok, extras: this.persist.extras };
+  }
+  setExtras(e: Record<string, unknown>): void {
+    this.persist.setExtras(e);
+  }
+  moveMany(moves: Record<string, { x: number; y: number }>): void {
+    this.persist.moveMany(moves);
+    this.touch();
+  }
+  removeMany(ids: string[]): void {
+    this.persist.removeMany(ids);
+    this.touch();
+  }
+  subscribeUndo(cb: (i: UndoInfo) => void): void {
+    this.persist.onUndoInfo(cb);
+  }
+  /** Zähler der Entwurfsänderungen (Autosave speichert nur bei Änderung). */
+  revision(): number {
+    return this.persist.revision;
+  }
+  fileName(): string {
+    return this.persist.name;
+  }
+  setFileName(name: string): void {
+    this.persist.name = name;
   }
 }
 

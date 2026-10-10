@@ -11,6 +11,8 @@ import deT from '../src/i18n/de.tcp.json';
 import enT from '../src/i18n/en.tcp.json';
 import deScript from '../src/i18n/de.script.json';
 import enScript from '../src/i18n/en.script.json';
+import dePersist from '../src/i18n/de.persist.json';
+import enPersist from '../src/i18n/en.persist.json';
 
 import deUx from '../src/i18n/de.ux.json';
 import enUx from '../src/i18n/en.ux.json';
@@ -24,6 +26,7 @@ const de: Record<string, string> = {
   ...deT,
   ...deProto,
   ...deScript,
+  ...dePersist,
   ...deUx,
   ...deCcna,
 };
@@ -33,6 +36,7 @@ const en: Record<string, string> = {
   ...enT,
   ...enProto,
   ...enScript,
+  ...enPersist,
   ...enUx,
   ...enCcna,
 };
