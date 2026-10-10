@@ -70,9 +70,10 @@ test('Vorlagen-Dialog: mindestens 10 Netze, Laden ersetzt das Netz, Undo stellt 
   await menu(page, 'Datei', /Vorlagen/);
   const dlg = page.getByRole('dialog', { name: /Vorlagen/ });
   await expect(dlg).toBeVisible();
-  expect(
-    await dlg.getByRole('list', { name: 'Verfügbare Vorlagen' }).getByRole('button').count(),
-  ).toBeGreaterThanOrEqual(10);
+  // die Liste kommt asynchron aus dem Worker: wiederholt prüfen statt einmal zu zählen
+  await expect
+    .poll(() => dlg.getByRole('list', { name: 'Verfügbare Vorlagen' }).getByRole('button').count())
+    .toBeGreaterThanOrEqual(10);
   await dlg.getByTestId('tpl-ospf-3-routers').click();
   await expect(dlg.getByRole('heading', { name: 'OSPF mit drei Routern' })).toBeVisible();
   await expect(dlg.getByText('Lernziele')).toBeVisible();
