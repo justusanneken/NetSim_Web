@@ -164,7 +164,7 @@ export function addWan(r: Registry<CliSession>): void {
     slots: [
       SHOW,
       K('controllers', 'Interface controller status'),
-      opt(K('serial', 'Serial interface')),
+      opt({ ...K('serial', 'Serial interface'), name: 'serial' }),
       opt(P('n', 'word', 'slot/subslot/port', 'Serial interface number')),
     ],
     run: (s, a) => {
@@ -172,7 +172,10 @@ export function addWan(r: Registry<CliSession>): void {
         s.outLines(showControllers(s.engine, s.device));
         return;
       }
-      const ref = resolveIface(s.device, `serial${a.n ?? ''}`);
+      // `serial 0/0/0`, aber auch zusammengeschrieben `serial0/0/0` / `s0/0/0` wie bei IOS
+      const ref =
+        (a.serial === undefined ? resolveIface(s.device, a.n) : undefined) ??
+        resolveIface(s.device, `serial${a.n}`);
       const p = ref ? s.device.ports.find((x) => x.id === ref.id) : undefined;
       if (!p || p.kind !== 'serial') throw new CliError('% Invalid interface');
       s.outLines(showControllerSerial(s.engine, s.device, p));
