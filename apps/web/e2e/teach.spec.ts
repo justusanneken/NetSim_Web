@@ -92,11 +92,17 @@ test('Aufgabe: Beispiel laden, teilweise lösen, Fortschritt sehen, vollständig
   await expect(page.locator('.canvas-wrap canvas').first()).toBeVisible();
 
   await page.getByText('Aufgabe', { exact: true }).click();
-  await page.getByLabel('Beispiel', { exact: true }).selectOption({ label: 'ACL sperrt HTTP aus dem Gastnetz' });
+  await page
+    .getByLabel('Beispiel', { exact: true })
+    .selectOption({ label: 'ACL sperrt HTTP aus dem Gastnetz' });
   await page.getByRole('button', { name: 'Beispiel laden' }).click();
-  await expect(page.getByRole('heading', { name: 'ACL sperrt HTTP aus dem Gastnetz' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'ACL sperrt HTTP aus dem Gastnetz' }),
+  ).toBeVisible();
   await expect(page.getByTestId('act-percent')).toHaveText('noch nicht geprüft');
-  await expect(page.getByRole('list', { name: 'Netzwerk-Info' }).getByRole('listitem')).toHaveCount(4);
+  await expect(page.getByRole('list', { name: 'Netzwerk-Info' }).getByRole('listitem')).toHaveCount(
+    4,
+  );
 
   // Startnetz: nur Ping und Staff-HTTP funktionieren (4 von 12 Gewichtspunkten)
   await page.getByRole('button', { name: 'Prüfen', exact: true }).click();

@@ -188,7 +188,7 @@ describe('Challenge ueber den Dienst', () => {
 
 describe('Aufgaben im Dienst', () => {
   it('laden, teilweise loesen, Fortschritt, Antwort, Neustart', () => {
-    const { s, a, b, r, e } = lab();
+    const { b, r, e } = lab();
     // Startnetz: Router-Schnittstelle zu PC1 aus, kein Hostname
     e.setPortAdmin(r, 'p1', false);
     const startState = structuredClone(e.state);
@@ -210,8 +210,6 @@ describe('Aufgaben im Dienst', () => {
       }),
       CheckSchema.parse({ id: 'ex', type: 'deviceExists', device: 'PC0' }),
     ];
-    const answerEngine = new TeachService(1);
-    void answerEngine;
     const bytes = encodeActivity({
       schema: 1,
       kind: 'netsim-activity',
