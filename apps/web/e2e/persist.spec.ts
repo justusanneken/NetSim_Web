@@ -107,10 +107,11 @@ test('Speichern und Öffnen (.nsim) ergibt dasselbe Netz', async ({ page }) => {
   await menu(page, 'Datei', 'Neu');
   await expect(devices(page)).toHaveCount(0);
 
-  // Öffnen per Menü
+  // Öffnen per Strg+O
+  await page.locator('.canvas-wrap').hover();
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
-    menu(page, 'Datei', /Öffnen/),
+    page.keyboard.press('Control+o'),
   ]);
   await chooser.setFiles(path);
   await expect(devices(page)).toHaveCount(6);
@@ -119,7 +120,7 @@ test('Speichern und Öffnen (.nsim) ergibt dasselbe Netz', async ({ page }) => {
   // kaputte Datei: klare Fehlermeldung, Netz bleibt
   const [chooser2] = await Promise.all([
     page.waitForEvent('filechooser'),
-    page.keyboard.press('Control+o'),
+    menu(page, 'Datei', /Öffnen/),
   ]);
   await chooser2.setFiles({
     name: 'kaputt.nsim',
