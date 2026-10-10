@@ -96,9 +96,15 @@ export function ntpServer(r: SvcRx): boolean {
   const st = ntpServerStratum(dev);
   if (st === undefined || r.msg.op !== 'request') return false;
   logRx(r, 'svc.ntp.request', { src: r.ip.src });
+  // Authentifizierte Anfrage (Key-ID + Digest): nur beantworten, wenn der Schlüssel lokal gleich konfiguriert ist
+  const c = dev.config;
+  const keys = c.kind === 'router' || c.kind === 'switch' ? mgmtOf(c.sys).ntp.keys : undefined;
+  const keyId = r.msg.args.keyId;
+  const authed = keyId !== undefined && keys?.[Number(keyId)] === r.msg.args.digest;
   udpReply(r.ctx, r.node, r.iface, r.ip, r.udp, r.msg, 'response', {
     epoch: deviceTimeMs(dev, r.ctx.now),
     stratum: st,
+    ...(authed ? { auth: 1, keyId: Number(keyId) } : {}),
   });
   return true;
 }
@@ -133,7 +139,19 @@ export function ntpPoll(ctx: DeviceCtx, dev: Device): void {
     }
   }
   if (clock) clock.lastPollUs = ctx.now;
-  for (const s of ntpServersOf(dev)) udpRequest(ctx, node, { dst: s, proto: 'ntp', op: 'request' });
+  const ntp =
+    dev.config.kind === 'router' || dev.config.kind === 'switch'
+      ? mgmtOf(dev.config.sys).ntp
+      : undefined;
+  for (const s of ntpServersOf(dev)) {
+    const key = ntp?.serverKeys?.[s];
+    udpRequest(ctx, node, {
+      dst: s,
+      proto: 'ntp',
+      op: 'request',
+      args: key !== undefined ? { keyId: key, digest: ntp?.keys?.[key] ?? '' } : undefined,
+    });
+  }
 }
 
 function ntpReply(ctx: DeviceCtx, dev: Device, server: string, msg: SvcPdu): void {
@@ -141,6 +159,27 @@ function ntpReply(ctx: DeviceCtx, dev: Device, server: string, msg: SvcPdu): voi
   const stratum = Number(msg.args.stratum);
   const clock = clockOf(dev);
   if (!clock || !Number.isFinite(epoch)) return;
+  // Authentifizierung: Ein Server mit `key N` wird nur mit gültigem, vertrauenswürdigem Schlüssel akzeptiert
+  if (dev.config.kind === 'router' || dev.config.kind === 'switch') {
+    const n = mgmtOf(dev.config.sys).ntp;
+    const key = n.serverKeys?.[server];
+    if (key !== undefined) {
+      const ok =
+        n.auth === true &&
+        n.trusted?.includes(key) === true &&
+        msg.args.auth === 1 &&
+        Number(msg.args.keyId) === key;
+      if (!ok) {
+        ctx.log({
+          kind: 'info',
+          proto: 'NTP',
+          status: 'drop',
+          msg: { key: 'svc.ntp.authFail', params: { server, key } },
+        });
+        return;
+      }
+    }
+  }
   // Stratum 16 = unsynchronisiert: ein Server mit Stratum ≥ 15 ist keine gültige Quelle. Mit `ntp master N`
   // bleibt die eigene Uhr maßgeblich, solange der Server kein besseres Stratum liefert (verhindert
   // Zählschleifen bei gegenseitig konfigurierten Servern).

@@ -187,3 +187,16 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Netzwerk-Info-Tabellen, Tooltips mit VLAN/IP/MAC, Attributes-Tab, Equivalent IOS Commands                                       | fertig | `web › ux.spec.ts`, `web › iosDiff.test.ts`        |
 | Tastaturbedienung, Fokusfalle, axe-core (hell/dunkel/farbenblind)                                                               | fertig | `web › a11y.spec.ts`, `web › ux.spec.ts`           |
 | i18n-Vollständigkeit und Scan auf feste Texte, Englisch im e2e                                                                  | fertig | `web › i18nComplete.test.ts`, `web › i18n.spec.ts` |
+
+## Realismus-Runde CCNA (Switching/Security/Services)
+
+| Feature                                                                                            | Phase | Status | Test                                         |
+| -------------------------------------------------------------------------------------------------- | ----- | ------ | -------------------------------------------- |
+| CDP/LLDP: Nachbarn, Timer, `no cdp run`, Hold-Time, Native-VLAN-Mismatch-Syslog                    | 6     | fertig | `engine › ccna_discovery`, `cli › ccna_disc` |
+| CDP/LLDP: `show`-Befehle, running-config-Replay                                                    | 6     | fertig | `cli › ccna_disc`                            |
+| DHCP Snooping (Trust, Bindungen, Option 82, Rate-Limit), DAI (Bindung, ARP-ACL, Rate-Limit)        | 6     | fertig | `engine › ccna_swsec`, `cli › ccna_swsec`    |
+| Storm Control, DTP `nonegotiate`, PortFast-/BPDU-Guard-Defaults, Voice-VLAN (Tagging)              | 6     | fertig | `engine › ccna_swsec`, `cli › ccna_swsec`    |
+| errdisable recovery (Ursachen, Syslog, Show), Port-Security Aging und `show port-security address` | 6     | fertig | `cli › ccna_swsec`                           |
+| IPv6-ACL, ACL-Remark, `ip access-list resequence`                                                  | 6     | fertig | `cli › ccna_acl`                             |
+| NTP-Authentifizierung, Logging-Level/-Puffer, SSH-Optionen (1.99), SNMPv3-Konfiguration            | 6     | fertig | `cli › ccna_mgmt`                            |
+| QoS: class-map/policy-map/service-policy, DSCP-Markierung, Zähler                                  | 6     | fertig | `cli › ccna_qos`                             |

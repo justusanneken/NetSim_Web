@@ -1,0 +1,9 @@
+/* CCNA-Erweiterungen: Protokollfarben für CDP und LLDP in der Ereignisliste. */
+.event.proto-CDP {
+  border-left-color: var(--c-gold);
+  background: color-mix(in srgb, var(--c-gold) 6%, transparent);
+}
+.event.proto-LLDP {
+  border-left-color: var(--c-amber);
+  background: color-mix(in srgb, var(--c-amber) 6%, transparent);
+}

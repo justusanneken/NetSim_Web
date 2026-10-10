@@ -310,3 +310,19 @@ supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolg
 - **Equivalent IOS Commands:** Diff-Heuristik der running-config; Ersetzungen bekannter Befehle (`ip address`, `hostname`, …) erzeugen kein `no`, bei Sonderfällen kann die Folge von der handgeschriebenen IOS-Reihenfolge abweichen.
 - **Touch:** Tippen, langer Druck (Kontextmenü), Pinch/Zwei-Finger-Pan; Rubberband per Ein-Finger-Ziehen im Auswahlwerkzeug.
 - **Axe-Prüfung** schließt `color-contrast` aus dem dynamischen Lauf aus (Canvas nicht prüfbar); Kontraste der Tokens sind in `theme.test.ts` abgesichert.
+
+## Realismus-Runde CCNA – Vereinfachungen
+
+- **CDP/LLDP:** nur Ethernet-Ports; keine CDPv1, keine TLVs für VTP-Domäne/PoE/Power; `no cdp run` leitet CDP-Frames nicht als Multicast weiter (echte Switches fluten sie). Duplex-Mismatch-Meldung (`%CDP-4-DUPLEX_MISMATCH`) entfällt, weil das Linkmodell ein gemeinsames Duplex ableitet. LLDP: Pflicht-TLVs plus Management-Adresse, kein LLDP-MED.
+- **DHCP Snooping:** keine Datenbank-Datei (`ip dhcp snooping database`), Bindungen gehen beim Reload verloren; Circuit-ID im Format `VLAN:Port` (IOS: Modul-/Port-Kodierung), `remote-id` ist die Basis-MAC; statische Bindungen per exec-Befehl, nicht in der running-config.
+- **DAI:** Validierung `ip` prüft nur ungültige Absender-/Zieladressen (0.0.0.0, 255.255.255.255, Multicast); Rate-Limit-Fenster 1 s unabhängig vom `burst interval`; Logging-Parameter (`ip arp inspection log-buffer`) fehlen; keine Wirkung auf Trunk-Port-Vertrauen außer `trust`.
+- **Storm Control:** 1-s-Fenster pro Port; Prozentwerte beziehen sich auf die ausgehandelte Geschwindigkeit; `falling`-Schwelle wird gespeichert, aber nicht ausgewertet; Unicast = unbekanntes Unicast.
+- **Voice VLAN:** keine CDP-/LLDP-MED-Aushandlung mit Telefonen, kein PoE; `dot1p`/`untagged` ohne Wirkung.
+- **Port Security Aging:** wirksam nur für dynamisch gelernte Adressen (absolute/inactivity), Zeitprüfung beim nächsten Frame; `aging static` fehlt.
+- **errdisable:** Wiederherstellung wird beim err-disable geplant; wird die Ursache erst danach in `errdisable recovery cause` aufgenommen, bleibt der Port bis `shutdown`/`no shutdown`.
+- **IPv6-ACL:** nur Durchgangsverkehr (nicht an das Gerät gerichtet); ICMPv6-Typen und `log` werden geparst, aber nicht unterschieden; kein `ipv6 access-class` für vty.
+- **QoS:** Klassifizierung und Markierung (`set dscp`) wirken; `bandwidth`, `priority`, `police`, `shape`, `queue-limit` werden gespeichert und angezeigt, haben aber keine Warteschlangen-/Policing-Wirkung. Zähler zählen Pakete/Bytes je Klasse (keine 5-Minuten-Raten). `match protocol` nutzt eine feste Liste (http, https, dns, telnet, ssh, ftp, smtp, tftp, ntp, snmp, syslog, icmp), kein NBAR.
+- **SNMPv3:** Benutzer/Gruppen werden konfiguriert und angezeigt; SNMP-Abfragen des Simulators nutzen weiterhin v2c-Communities. Benutzer erscheinen (anders als in IOS) in der running-config, damit Reload sie erhält; Passwörter im Klartext.
+- **NTP-Authentifizierung:** Digest wird als Zeichenkette verglichen (kein echtes MD5); `ntp authentication-key` wird als Typ 7 gerendert.
+- **SSH:** Standardversion nach Schlüsselerzeugung ist „1.99“, funktional wird immer SSHv2 gesprochen.
+- **Syslog:** Console-/Monitor-Level werden gespeichert und angezeigt, filtern die auf das Terminal ausgegebenen Meldungen aber nicht.

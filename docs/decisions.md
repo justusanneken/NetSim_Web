@@ -131,3 +131,14 @@ WLAN-Roaming im selben SSID behält das DHCP-Lease (INIT-REBOOT, Zustand `reboot
 40. **„Equivalent IOS Commands“ allgemein als Diff:** statt jedes GUI-Formular Befehle erzeugen zu lassen, vergleicht `EquivalentIos` die running-config (`runningConfig` im Worker) vor und nach einer Änderung (`ux/iosDiff.ts`). Das deckt GUI- und CLI-Änderungen gleichermaßen ab.
 41. **Tastatur-Alternative zur Arbeitsfläche ist die Geräteliste:** Aktivieren eines Eintrags verhält sich wie ein Klick auf das Gerät (Werkzeug-abhängig). Konva-Objekte selbst sind nicht fokussierbar.
 42. **Fokusfalle als Hook** (`ux/useFocusTrap.ts`) und gemeinsamer `Modal` für alle neuen Dialoge.
+
+## Realismus-Runde CCNA (Branch `wip/ccna`)
+
+43. **CDP/LLDP als eigene PDUs** (`cdp`, `lldp`) mit Ziel-MAC `01:00:0c:cc:cc:cc` bzw. `01:80:c2:00:00:0e`; sie werden in `Engine.onRx` vor der Gerätelogik verbraucht (`discRx`), also nie weitergeleitet (anders als echte Switches bei `no cdp run`). Timer laufen als `bg:`-Timer (zählen nicht als „Arbeit“ für `runAll`), erster Advertisement-Versand 2 s nach Start bzw. 1 s nach Link-Up. Nachbartabellen liegen im Konfigurationsbaum (`L3Cfg.disc`) und werden bei Hold-Time-Ablauf beim Lesen gefiltert.
+44. **Switch-Sicherheit in `devices/swsec.ts`:** ein Eingangs-Hook `securityIngress` (Storm Control → DHCP Snooping → DAI) nach der Port-Security-Prüfung und vor dem MAC-Lernen. DHCP-Snooping fügt Option 82 in einen geklonten Frame ein; der Original-Frame im Log bleibt unverändert.
+45. **Option-82-Verhalten wie IOS:** DHCP-Server/Relay (Router) verwirft Anfragen mit Option 82 und giaddr 0, solange `ip dhcp relay information trust-all` (global) bzw. `… trusted` (Schnittstelle) fehlt.
+46. **errdisable generalisiert:** `errdisableRecovery.causes` (neben dem alten Flag `psecure`), gemeinsame Funktion `errdisable()` schreibt `%PM-4-ERR_DISABLE` und plant die Wiederherstellung (`%PM-4-ERR_RECOVER`).
+47. **IPv6-ACLs** in `L3Cfg.acls6`, Auswertung in `forward6` (nur Durchgangsverkehr, wie die v4-ACLs); `deny` antwortet mit ICMPv6 Code 1.
+48. **QoS** in `L3Cfg.qos` (class-map/policy-map) mit Anwendung in `forward()` (Eingang nach der ACL, Ausgang vor der ACL); DSCP als optionales Feld `Ipv4Pdu.dscp`.
+49. **Neue CLI-Modi** `config-arp-nacl`, `config-ipv6-acl`, `config-cmap`, `config-pmap`, `config-pmap-c`; Klassen-/Policy-Namen laufen über die Sitzungsfelder `aclName`/`poolName`.
+50. **NTP-Authentifizierung** über die vorhandenen `svc`-Argumente (`keyId`, `digest`, Antwort `auth`); Der Server antwortet authentifiziert, wenn Key-ID und Schlüssel übereinstimmen; der Client akzeptiert Server mit `key N` nur bei `ntp authenticate`, `trusted-key N` und authentifizierter Antwort.

@@ -20,6 +20,7 @@ import {
   type ProtoTag,
 } from '@netsim/protocols';
 import { aclEval } from './acl';
+import { qosApply } from './qos';
 import type { DeviceCtx } from './ctx';
 import { onEchoReply, onIcmpError } from './diag';
 import { dhcpRx } from './svc/dhcp';
@@ -484,6 +485,7 @@ function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn:
   let ip = ipIn;
   // 1) Eingehende ACL
   if (!aclInPermits(ctx, node, ifaceIn, base, ip)) return;
+  if (l3 && ifaceIn.cfg.policyIn) ip = qosApply(l3, ifaceIn.id, 'in', ifaceIn.cfg.policyIn, ip);
   // 2) NAT outside → inside (vor dem Routing)
   if (
     l3 &&
@@ -575,6 +577,8 @@ function forward(ctx: DeviceCtx, node: IpNode, ifaceIn: Iface, base: Base, ipIn:
       out = r.pkt;
     }
   }
+  if (l3 && hop.iface.cfg.policyOut)
+    out = qosApply(l3, hop.iface.id, 'out', hop.iface.cfg.policyOut, out);
   // 4) Ausgehende ACL
   if (l3 && hop.iface.cfg.aclOut) {
     const r = aclEval(l3.acls[hop.iface.cfg.aclOut], out);

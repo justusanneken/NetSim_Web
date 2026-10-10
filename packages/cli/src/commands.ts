@@ -10,6 +10,11 @@ import { CliError, type CliSession } from './session';
 import { addPhase3 } from './commands3';
 import { addPhase4 } from './commands4';
 import { addGaps } from './commandsGaps';
+import { addDiscovery } from './cmdDisc';
+import { addSwitchSecurity } from './cmdSwSec';
+import { addAclExtras } from './cmdAcl';
+import { addMgmtExtras } from './cmdMgmt';
+import { addQos } from './cmdQos';
 import * as show from './show';
 import { addPhase5 } from './commands5';
 
@@ -359,6 +364,7 @@ export function buildRegistry(): Registry<CliSession> {
     slots: [K('exit', 'Exit from the EXEC / current mode')],
     run: (s) => {
       if (s.mode === 'config-bgp-af6') s.mode = 'config-bgp';
+      else if (s.mode === 'config-pmap-c') s.mode = 'config-pmap';
       else if (SUBMODES.includes(s.mode)) s.mode = 'config';
       else if (s.mode === 'config') s.mode = 'priv';
       else logout(s);
@@ -1070,5 +1076,10 @@ export function buildRegistry(): Registry<CliSession> {
   addPhase4(r);
   addPhase5(r);
   addGaps(r);
+  addDiscovery(r);
+  addSwitchSecurity(r);
+  addAclExtras(r);
+  addMgmtExtras(r);
+  addQos(r);
   return r;
 }
