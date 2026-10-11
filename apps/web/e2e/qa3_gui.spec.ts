@@ -1,6 +1,26 @@
 import { expect, test } from '@playwright/test';
 import { click, closeDialog, collectErrors, place } from './helpers';
 
+test('zwei Einzelklicks auf ein Gerät mit einem Menüklick dazwischen öffnen keinen Dialog', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('.canvas-wrap canvas').first()).toBeVisible();
+  await place(page, 'Endgeräte', 'PC', 160, 140);
+  await page.waitForTimeout(600);
+  for (let i = 0; i < 5; i++) {
+    await click(page, 160, 140);
+    await page.getByRole('button', { name: 'Optionen', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await click(page, 160, 140);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.waitForTimeout(450);
+  }
+  // ein echter Doppelklick öffnet ihn weiterhin
+  await click(page, 160, 140, 2);
+  await expect(page.getByRole('dialog')).toContainText('PC0');
+});
+
 test('Seitenleiste zeigt eine im Gerätedialog geänderte IP (kein veraltetes Formular)', async ({
   page,
 }) => {
