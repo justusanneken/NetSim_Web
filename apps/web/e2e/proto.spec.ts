@@ -159,6 +159,8 @@ test('Proto: WPA2-Enterprise – Access Point zeigt RADIUS-Felder, Wi-Fi-Profil 
   await page.goto('/');
   await place(page, 'Drahtlos', 'Access Point', 300, 220);
   await place(page, 'Endgeräte', 'Laptop', 480, 220);
+  // erst doppelklicken, wenn beide Geräte in der Engine angekommen sind
+  await expect(page.getByRole('button', { name: /^Laptop0 / })).toBeVisible();
   await click(page, 300, 220, 2);
   const dlg = page.getByRole('dialog');
   await page.getByRole('tab', { name: 'Konfiguration' }).click();

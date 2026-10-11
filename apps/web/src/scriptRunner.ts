@@ -12,10 +12,13 @@ export type ScriptOutcome =
   | { kind: 'crash'; message: string };
 
 let current: { worker: Worker; stop: () => void } | undefined;
+/** Stopp kam, bevor der Worker existierte (während `scriptBegin`); der Lauf bricht sofort danach ab. */
+let stopRequested = false;
 
 /** Bricht den laufenden Skriptlauf ab (Worker terminieren, Netz bleibt unverändert). */
 export function stopScript(): void {
-  current?.stop();
+  if (current) current.stop();
+  else stopRequested = true;
 }
 
 /**
@@ -23,7 +26,13 @@ export function stopScript(): void {
  * Haupt-Engine. Stop/Timeout verwerfen den Lauf.
  */
 export async function runUserScript(code: string): Promise<ScriptOutcome> {
+  stopRequested = false;
   const { snapshot, wasRunning } = await api.scriptBegin();
+  if (stopRequested) {
+    stopRequested = false;
+    await api.scriptEnd(null, wasRunning);
+    return { kind: 'stopped' };
+  }
   const worker = new Worker(new URL('./engine/script.worker.ts', import.meta.url), {
     type: 'module',
   });
