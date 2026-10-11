@@ -89,6 +89,8 @@ test('Phase 1: PC↔PC mit Straight-Kabel bleibt down', async ({ page }) => {
   await page.goto('/');
   await place(page, 'PC', 160, 140);
   await place(page, 'PC', 400, 140);
+  // erst weiter, wenn beide PCs in der Engine angekommen sind (Last auf dem Testrechner)
+  await expect(page.getByRole('button', { name: /^PC1 / })).toBeVisible();
   await page.getByRole('tab', { name: 'Kabel' }).click();
   await page.getByRole('button', { name: 'Straight' }).click();
   await clickDevice(page, 160, 140);
