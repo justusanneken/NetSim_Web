@@ -125,8 +125,8 @@ export function assertSafeJson(v: unknown, depth = 0): string | undefined {
   return undefined;
 }
 
-/** Validiert beliebige Daten als Aufgabe. */
-export function parseActivity(data: unknown): Result<Activity> {
+/** Validiert beliebige Daten als Aufgabe. `trusted`: selbst erzeugte Netze (Beispielaufgaben) ohne Probelauf. */
+export function parseActivity(data: unknown, opts: { trusted?: boolean } = {}): Result<Activity> {
   const unsafe = assertSafeJson(data);
   if (unsafe) return { ok: false, error: 'activity.err.unsafe', params: { detail: unsafe } };
   const r = ActivitySchema.safeParse(data);
@@ -143,7 +143,7 @@ export function parseActivity(data: unknown): Result<Activity> {
   if (ids.size !== checks.length) return { ok: false, error: 'activity.err.duplicateId' };
   const value = r.data as unknown as Activity;
   // Netze wie `.nsim` prüfen (Typabgleich, Integrität, Probelauf): das Zod-Schema oben prüft nur die Hülle
-  for (const k of ['start', 'answer'] as const) {
+  for (const k of opts.trusted ? [] : (['start', 'answer'] as const)) {
     const st = value[k];
     if (st === undefined) continue;
     const clean = sanitizeState(st);

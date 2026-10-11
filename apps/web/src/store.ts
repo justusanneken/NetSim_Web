@@ -270,8 +270,10 @@ export const useStore = create<UiState>((set, get) => ({
     // Platzieren sofort beenden: ein schneller Klick auf die Palette während der RPC würde sonst
     // den (noch aktiven) Modus abschalten bzw. danach vom späten `placing: null` überschrieben.
     set({ placing: null });
+    const before = get().selectedDevice;
     const id = await api.addDevice(type, { x, y });
-    set({ selectedDevice: id, selectedLink: null });
+    // Hat der Nutzer inzwischen etwas anderes angeklickt, gewinnt diese neuere Auswahl.
+    if (get().selectedDevice === before) set({ selectedDevice: id, selectedLink: null });
   },
 
   async deviceClicked(id, clientX, clientY) {
