@@ -316,6 +316,7 @@ supported`). Ohne Antwort nach 3 s: `failed (timeout)`; ein neuer Versuch erfolg
   **SSH** (Banner echt, Rest Zufallsbytes), **CAPWAP/IoT** (JSON-Text), **TACACS+** (Kopf echt, Rumpf nicht verschleiert), **VTP** (nur Subset-Advertisement), **BGP** ohne MP-BGP-IPv6-Felder und mit
   Seq/Ack = 1 in einem Einzelsegment ohne TCP-Handshake, **OSPFv3-LSAs** nur in Grundform (Router, Network, Inter-Area, AS-External; keine Link-/Intra-Area-Prefix-LSAs), **OSPF-MD5** mit
   Platzhalter-Digest, **IPv6-Erweiterungsheader** entfallen. Keine FCS in der Datei (wie bei den meisten Captures), Frames < 60 Byte werden aufgefüllt.
+- **PCAP – Serial-Links (QA3):** Die Datei hat nur LINKTYPE_ETHERNET; Pakete über Serial-Links (HDLC/PPP) erscheinen daher mit Ethernet-Kopf statt Cisco-HDLC/PPP-Rahmen (eigenes Linktype bräuchte pcapng mit mehreren Schnittstellen). CDP/LLDP (SNAP 0x2000 bzw. 0x88cc, TLV-Formate) und DSCP im ToS-Byte sind geprüft korrekt.
 - Die Datei enthält jede Frame-**Ankunft** (also ein Frame, der über mehrere Links läuft, mehrfach) – ein Capture „auf allen Leitungen“. Zeitstempel: Simulationszeit ab 2025-01-01 00:00:00 UTC.
   Frames, die ein Gerät still verwirft, ohne einen Log-Eintrag zu erzeugen, fehlen.
 - Multiuser (WebSocket-Relay, Link-Tunnel) ist **nicht** umgesetzt.
