@@ -268,6 +268,14 @@ export function addQos(r: Registry<CliSession>): void {
 
 // ---------------------------------------------------------------- Anzeigen
 
+/** IOS führt `class-default` immer als letzte Klasse einer Policy. */
+function defaultLast<T extends { class: string }>(cs: T[]): T[] {
+  return [
+    ...cs.filter((c) => c.class !== 'class-default'),
+    ...cs.filter((c) => c.class === 'class-default'),
+  ];
+}
+
 function matchLines(c: QosClass, indent: string): string[] {
   const L: string[] = [];
   if (c.any) L.push(`${indent}Match any `);
@@ -296,7 +304,7 @@ export function showPolicyMap(cfg: L3Cfg, name?: string): string[] {
   for (const p of Object.values(cfg.qos?.policies ?? {})) {
     if (name && p.name !== name) continue;
     L.push(`  Policy Map ${p.name}`);
-    for (const c of p.classes) {
+    for (const c of defaultLast(p.classes)) {
       L.push(`    Class ${c.class}`);
       if (c.setDscp !== undefined) L.push(`      set dscp ${dscpText(c.setDscp)}`);
       for (const a of c.actions) L.push(`      ${a}`);
@@ -323,14 +331,25 @@ function showPolicyInterface(s: CliSession, only?: string): string[] {
         `  Service-policy ${dir === 'in' ? 'input' : 'output'}: ${pol}`,
         '',
       );
-      for (const pc of def.classes) {
+      // class-default steht wie bei IOS immer am Ende und ist auch ohne Eintrag vorhanden
+      const classes = [
+        ...def.classes.filter((x) => x.class !== 'class-default'),
+        def.classes.find((x) => x.class === 'class-default') ?? {
+          class: 'class-default',
+          actions: [],
+        },
+      ];
+      for (const pc of classes) {
         const c = pc.class === 'class-default' ? undefined : q?.classes[pc.class];
         const ctr = q?.counters[`${p.id}|${dir}|${pc.class}`] ?? { pkts: 0, bytes: 0, marked: 0 };
         L.push(
           `    Class-map: ${pc.class} (${c ? (c.matchAll ? 'match-all' : 'match-any') : 'match-any'})`,
           `      ${ctr.pkts} packets, ${ctr.bytes} bytes`,
           '      5 minute offered rate 0000 bps, drop rate 0000 bps',
-          ...(c ? matchLines(c, '      ') : ['      Match: any']),
+          // `show policy-map interface` schreibt „Match: …“ (mit Doppelpunkt), `show class-map` nicht
+          ...(c
+            ? matchLines(c, '      ').map((l) => l.replace(/^(\s*)Match /, '$1Match: '))
+            : ['      Match: any ']),
         );
         if (pc.setDscp !== undefined)
           L.push(
@@ -361,7 +380,7 @@ export function qosGlobalLines(cfg: L3Cfg): string[] {
   }
   for (const p of Object.values(q.policies)) {
     L.push(`policy-map ${p.name}`);
-    for (const c of p.classes) {
+    for (const c of defaultLast(p.classes)) {
       L.push(` class ${c.class}`);
       if (c.setDscp !== undefined) L.push(`  set dscp ${dscpText(c.setDscp)}`);
       for (const a of c.actions) L.push(`  ${a}`);

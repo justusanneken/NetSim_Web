@@ -68,19 +68,22 @@ function make(
   checks: CheckInput[],
   timeLimitSec = 0,
 ): Activity {
-  const r = parseActivity({
-    schema: 1,
-    kind: 'netsim-activity',
-    meta: { id, title, description, author: 'NetSim Web', difficulty },
-    steps,
-    timeLimitSec,
-    passPercent: 100,
-    liveProgress: false,
-    locks: { hideCli: false, hideGui: false, noAddDevices: true },
-    start: start.state(),
-    answer: answer.state(),
-    checks: checks.map((c) => CheckSchema.parse(c)),
-  });
+  const r = parseActivity(
+    {
+      schema: 1,
+      kind: 'netsim-activity',
+      meta: { id, title, description, author: 'NetSim Web', difficulty },
+      steps,
+      timeLimitSec,
+      passPercent: 100,
+      liveProgress: false,
+      locks: { hideCli: false, hideGui: false, noAddDevices: true },
+      start: start.state(),
+      answer: answer.state(),
+      checks: checks.map((c) => CheckSchema.parse(c)),
+    },
+    { trusted: true },
+  );
   if (!r.ok) throw new Error(`${id}: ${r.error} ${JSON.stringify(r.params)}`);
   return r.value;
 }

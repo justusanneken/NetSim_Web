@@ -61,20 +61,29 @@ export function qosApply(
   const q = l3.qos;
   const pol = policyName ? q?.policies[policyName] : undefined;
   if (!q || !pol) return ip;
-  for (const pc of pol.classes) {
-    const cls = q.classes[pc.class];
-    const isDefault = pc.class === 'class-default';
-    if (!isDefault && (!cls || !classMatches(l3, cls, ip))) continue;
-    const key = `${ifaceId}|${dir}|${pc.class}`;
+  const hit = (name: string, setDscp: number | undefined): Ipv4Pdu => {
+    const key = `${ifaceId}|${dir}|${name}`;
     const ctr = (q.counters[key] ??= { pkts: 0, bytes: 0, marked: 0 });
     ctr.pkts++;
     ctr.bytes += pduSize(ip);
-    if (pc.setDscp !== undefined && pc.setDscp !== (ip.dscp ?? 0)) {
+    if (setDscp !== undefined && setDscp !== (ip.dscp ?? 0)) {
       ctr.marked++;
-      return { ...ip, dscp: pc.setDscp };
+      return { ...ip, dscp: setDscp };
     }
-    if (pc.setDscp !== undefined) ctr.marked++;
+    if (setDscp !== undefined) ctr.marked++;
     return ip;
+  };
+  // IOS: class-default wird immer zuletzt ausgewertet (auch wenn zuerst eingegeben) und existiert
+  // implizit in jeder Policy – nicht passende Pakete zählen dort.
+  let dflt: number | undefined;
+  for (const pc of pol.classes) {
+    if (pc.class === 'class-default') {
+      dflt = pc.setDscp;
+      continue;
+    }
+    const cls = q.classes[pc.class];
+    if (!cls || !classMatches(l3, cls, ip)) continue;
+    return hit(pc.class, pc.setDscp);
   }
-  return ip;
+  return hit('class-default', dflt);
 }

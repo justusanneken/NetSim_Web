@@ -151,7 +151,16 @@ export function DeviceConfig({ dev }: { dev: DeviceView }) {
 
 const isHost = isEndDevice;
 
+/**
+ * Formular neu aufbauen, sobald sich die Werte im Engine-Zustand ändern (Gerätedialog, CLI, DHCP);
+ * sonst zeigt die Seitenleiste veraltete Werte und „Übernehmen“ schreibt sie zurück.
+ */
 export function HostIpConfig({ dev }: { dev: DeviceView }) {
+  const k = [dev.ip, dev.mask, dev.gateway, (dev.dnsServers ?? []).join(' ')].join('|');
+  return <HostIpForm key={k} dev={dev} />;
+}
+
+function HostIpForm({ dev }: { dev: DeviceView }) {
   const { t } = useTranslation();
   const [ip, setIp] = useState(dev.ip ?? '');
   const [mask, setMask] = useState(dev.mask ?? '255.255.255.0');

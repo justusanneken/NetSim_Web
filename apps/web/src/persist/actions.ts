@@ -243,18 +243,18 @@ let lastRevision = -1;
 
 export async function autosaveNow(): Promise<boolean> {
   if (usePersist.getState().restore) return false;
-  const count = await deviceCount();
-  if (count === 0) return false;
-  const rev = await api.revision();
-  if (rev === lastRevision) return false;
-  const bytes = await api.saveNsim(collectExtras());
+  if ((await api.revision()) === lastRevision) return false;
+  // Revision, Anzahl und Bytes aus einem Worker-Aufruf: die Ansicht im Hauptthread kann hinterherhinken
+  // (sonst z. B. „1 Gerät“ in der Wiederherstellungs-Abfrage bei 2 gesicherten Geräten)
+  const snap = await api.saveNsimAutosave(collectExtras());
+  if (snap.devices === 0) return false;
   const ok = await kvSet('autosave', {
     name: usePersist.getState().fileName,
     savedAt: Date.now(),
-    devices: count,
-    bytes,
+    devices: snap.devices,
+    bytes: snap.bytes,
   });
-  if (ok) lastRevision = rev;
+  if (ok) lastRevision = snap.revision;
   return ok;
 }
 

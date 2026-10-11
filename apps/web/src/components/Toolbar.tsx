@@ -100,7 +100,7 @@ export function Toolbar() {
         <span className="tool-label">{t('ux.snap')}</span>
       </button>
       {hint && (
-        <span className="hint" role="status">
+        <span className="hint" role="status" title={hint}>
           {hint}
         </span>
       )}

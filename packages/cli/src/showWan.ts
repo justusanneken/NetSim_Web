@@ -82,7 +82,8 @@ export function showControllerSerial(e: Engine, d: Device, p: Port): string[] {
     'SDC=0x00002201, SDCM=0x00000080',
     'Rx ring:  rxr head 0, rxr tail 0, rxr count 0',
     'Tx ring:  txr head 0, txr tail 0, txr count 0',
-    `${p.counters.inPkts} input aborts on receiving flag sequence`,
+    // Abbrüche beim Flag-Empfang (Leitungsfehler) simuliert die Engine nicht: immer 0 wie „0 abort“ in show interfaces
+    '0 input aborts on receiving flag sequence',
     '0 throttles, 0 enables',
     '0 overruns',
     '0 transmitter underruns',

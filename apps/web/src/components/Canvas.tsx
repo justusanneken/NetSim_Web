@@ -557,7 +557,13 @@ export function Canvas() {
                   useUx.getState().setSelectedNote(null);
                   openCtx(e.evt.clientX, e.evt.clientY, { kind: 'device', id: d.id });
                 }}
-                onDblClick={() => useStore.getState().openDialog(d.id)}
+                // Doppelklick über den nativen Klickzähler (`detail`), nicht Konvas `dblclick`: Konva
+                // sieht DOM-Klicks dazwischen (Menü, Popup) nicht und wertete zwei Einzelklicks auf
+                // dasselbe Gerät innerhalb von 400 ms als Doppelklick (Dialog öffnete sich ungewollt).
+                onMouseUp={(e) => {
+                  if (e.evt.button === 0 && e.evt.detail === 2)
+                    useStore.getState().openDialog(d.id);
+                }}
                 onDblTap={() => useStore.getState().openDialog(d.id)}
                 onMouseEnter={(e) => setHover({ device: d, x: e.evt.clientX, y: e.evt.clientY })}
                 onMouseMove={(e) => setHover({ device: d, x: e.evt.clientX, y: e.evt.clientY })}

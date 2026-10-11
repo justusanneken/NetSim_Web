@@ -104,7 +104,8 @@ export function addWan(r: Registry<CliSession>): void {
       K('pap', 'PAP authentication'),
       K('sent-username', 'Set PAP username and password to send'),
       P('user', 'word', 'WORD', 'Username'),
-      K('password', 'Set PAP password'),
+      // optional (benannt), damit `no ppp pap sent-username` wie bei IOS gilt
+      opt({ ...K('password', 'Set PAP password'), name: 'pwkw' }),
       opt(P('lead', 'word', '0|7', 'Encryption type / password')),
       opt(P('pw', 'word', 'LINE', 'Password')),
     ],
@@ -116,7 +117,7 @@ export function addWan(r: Registry<CliSession>): void {
           return;
         }
         const pw = a.pw ?? a.lead;
-        if (pw === undefined) throw new CliError('% Incomplete command.');
+        if (pw === undefined || a.pwkw === undefined) throw new CliError('% Incomplete command.');
         sc.papUser = a.user as string;
         sc.papPass = pw;
       });
@@ -163,7 +164,7 @@ export function addWan(r: Registry<CliSession>): void {
     slots: [
       SHOW,
       K('controllers', 'Interface controller status'),
-      opt(K('serial', 'Serial interface')),
+      opt({ ...K('serial', 'Serial interface'), name: 'serial' }),
       opt(P('n', 'word', 'slot/subslot/port', 'Serial interface number')),
     ],
     run: (s, a) => {
@@ -171,7 +172,10 @@ export function addWan(r: Registry<CliSession>): void {
         s.outLines(showControllers(s.engine, s.device));
         return;
       }
-      const ref = resolveIface(s.device, `serial${a.n ?? ''}`);
+      // `serial 0/0/0`, aber auch zusammengeschrieben `serial0/0/0` / `s0/0/0` wie bei IOS
+      const ref =
+        (a.serial === undefined ? resolveIface(s.device, a.n) : undefined) ??
+        resolveIface(s.device, `serial${a.n}`);
       const p = ref ? s.device.ports.find((x) => x.id === ref.id) : undefined;
       if (!p || p.kind !== 'serial') throw new CliError('% Invalid interface');
       s.outLines(showControllerSerial(s.engine, s.device, p));

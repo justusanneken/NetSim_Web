@@ -151,11 +151,12 @@ export class Persistence {
   private restoreJson(json: string): boolean {
     const parsed = parseNsimJson(json);
     if (!parsed.ok) return false;
-    return this.load(parsed.value);
+    return this.load(parsed.value, true);
   }
 
-  private load(doc: NsimDoc): boolean {
-    const r = importNsim(this.svc.engine, doc);
+  /** `trusted`: eigener Undo-Schnappschuss (kein Probelauf nötig). */
+  private load(doc: NsimDoc, trusted = false): boolean {
+    const r = importNsim(this.svc.engine, doc, { trusted });
     if (!r.ok) return false;
     this.extras = doc.extras ?? {};
     this.svc.reset();
