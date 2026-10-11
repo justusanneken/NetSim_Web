@@ -40,7 +40,7 @@ test('Skript-Konsole: Fehler wird mit Zeilennummer gemeldet, Sandbox blockt eval
 test('Skript-Konsole: Stopp bricht eine Endlosschleife ab', async ({ page }) => {
   await openConsole(page);
   const dlg = page.getByRole('dialog', { name: 'Skript-Konsole' });
-  await dlg.getByLabel('Skript-Editor').fill('for (;;) { engine.runFor(1); }');
+  await dlg.getByLabel('Skript-Editor').fill("for (;;) { let s = 'x'.padStart(19000); }");
   await dlg.getByRole('button', { name: 'Ausführen' }).click();
   await expect(dlg.getByRole('button', { name: 'Stopp' })).toBeEnabled();
   await dlg.getByRole('button', { name: 'Stopp' }).click();
