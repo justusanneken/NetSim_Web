@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { DeviceView } from '@netsim/engine';
+import type { DeviceView, DhcpPool } from '@netsim/engine';
+import { formatIpv4, isValidIpv4, maskToPrefix, parseIpv4 } from '@netsim/protocols';
 import { api } from '../engine/client';
 import { useStore } from '../store';
 
@@ -88,7 +89,137 @@ export function ServicesConfig({ dev }: { dev: DeviceView }) {
         <span />
         <button onClick={addRecord}>{t('common.add')}</button>
       </div>
+      <DhcpServerConfig dev={dev} />
     </>
+  );
+}
+
+const EMPTY_POOL = {
+  name: '',
+  router: '',
+  dns: '',
+  start: '',
+  mask: '255.255.255.0',
+  max: '50',
+  days: '1',
+};
+
+/** DHCP-Dienst des Servers (wie Packet Tracer): Pools mit Startadresse, Maske und Anzahl. */
+function DhcpServerConfig({ dev }: { dev: DeviceView }) {
+  const { t } = useTranslation();
+  const showToast = useStore((s) => s.showToast);
+  const [f, setF] = useState(EMPTY_POOL);
+  const dh = dev.services?.dhcp;
+  if (!dh) return null;
+  const save = (patch: Partial<typeof dh>) =>
+    void api.setService(dev.id, { dhcp: patch }).then((r) => {
+      if (!r.ok) showToast(r.error, r.params);
+    });
+  const field = (k: keyof typeof EMPTY_POOL, label: string, ph = '') => (
+    <input
+      aria-label={label}
+      placeholder={ph || label}
+      value={f[k]}
+      onChange={(e) => setF({ ...f, [k]: e.target.value })}
+    />
+  );
+  const addPool = () => {
+    const plen = maskToPrefix(f.mask);
+    const start = parseIpv4(f.start);
+    const max = Number(f.max);
+    const days = Number(f.days);
+    const bad =
+      !f.name.trim() ||
+      plen === undefined ||
+      start === undefined ||
+      !Number.isInteger(max) ||
+      max < 1 ||
+      !(days > 0) ||
+      (f.router && !isValidIpv4(f.router)) ||
+      (f.dns && !isValidIpv4(f.dns));
+    if (bad) {
+      showToast('svc.dhcp.invalid');
+      return;
+    }
+    const m = plen === 0 ? 0 : (0xffffffff << (32 - plen)) >>> 0;
+    const net = (start & m) >>> 0;
+    const bcast = (net | (~m >>> 0)) >>> 0;
+    const end = Math.min(start + max - 1, bcast - 1);
+    const pool: DhcpPool = {
+      name: f.name.trim(),
+      network: formatIpv4(net),
+      mask: f.mask,
+      router: f.router || undefined,
+      dns: f.dns ? [f.dns] : [],
+      leaseSec: Math.round(days * 86400),
+      rangeStart: f.start,
+      rangeEnd: formatIpv4(end),
+    };
+    save({ pools: [...dh.pools.filter((p) => p.name !== pool.name), pool] });
+    setF(EMPTY_POOL);
+  };
+  const leases = Object.entries(dh.bindings).filter(([, b]) => !b.offered);
+  return (
+    <section aria-label={t('svc.dhcp.title')}>
+      <label className="inline-check">
+        <input
+          type="checkbox"
+          checked={dh.enabled}
+          onChange={(e) => save({ enabled: e.target.checked })}
+        />
+        DHCP
+      </label>
+      <table className="small">
+        <thead>
+          <tr>
+            <th>{t('svc.dhcp.pool')}</th>
+            <th>{t('svc.dhcp.gateway')}</th>
+            <th>DNS</th>
+            <th>{t('svc.dhcp.range')}</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {dh.pools.map((p) => (
+            <tr key={p.name}>
+              <td>{p.name}</td>
+              <td>{p.router ?? '–'}</td>
+              <td>{p.dns.join(', ') || '–'}</td>
+              <td>
+                {p.rangeStart ?? p.network} – {p.rangeEnd ?? ''} /{maskToPrefix(p.mask)}
+              </td>
+              <td>
+                <button
+                  aria-label={`${t('svc.dhcp.remove')} ${p.name}`}
+                  onClick={() => save({ pools: dh.pools.filter((x) => x.name !== p.name) })}
+                >
+                  ✕
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="form">
+        {field('name', t('svc.dhcp.pool'), 'serverPool')}
+        {field('router', t('svc.dhcp.gateway'), '10.0.0.1')}
+        {field('dns', t('svc.dhcp.dns'), '10.0.0.10')}
+        {field('start', t('svc.dhcp.start'), '10.0.0.100')}
+        {field('mask', t('ip.mask'), '255.255.255.0')}
+        {field('max', t('svc.dhcp.max'), '50')}
+        {field('days', t('svc.dhcp.days'), '1')}
+        <button onClick={addPool}>{t('svc.dhcp.save')}</button>
+      </div>
+      <h5>{t('svc.dhcp.leases')}</h5>
+      <ul className="ping-list">
+        {leases.length === 0 && <li className="muted">–</li>}
+        {leases.map(([ip, b]) => (
+          <li key={ip}>
+            {ip} → {b.mac}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

@@ -431,6 +431,9 @@ export interface DhcpPool {
   /** Optionaler Adressbereich (Server-Gerät); sonst das ganze Netz. */
   rangeStart?: Ipv4Addr;
   rangeEnd?: Ipv4Addr;
+  /** Manuelle Bindung (`host` + `hardware-address`/`client-identifier`): feste IP für genau eine MAC. */
+  host?: Ipv4Addr;
+  hwAddr?: Mac;
 }
 
 export interface DhcpBinding {
@@ -465,6 +468,29 @@ export interface DhcpServerCfg {
   conflicts: Ipv4Addr[];
   /** `ip dhcp relay information trust-all`: Option 82 ohne giaddr akzeptieren. */
   trustAll?: boolean;
+  /** Zähler für `show ip dhcp server statistics` (empfangen/gesendet je Nachrichtentyp). */
+  stats?: DhcpServerStats;
+}
+
+export interface DhcpServerStats {
+  discover: number;
+  request: number;
+  decline: number;
+  release: number;
+  offer: number;
+  ack: number;
+  nak: number;
+}
+
+/** Router-Schnittstelle als DHCP-Client (`ip address dhcp`); Laufzeitzustand. */
+export interface RouterDhcpClient {
+  state: 'selecting' | 'requesting' | 'bound' | 'renewing';
+  xid: number;
+  server?: Ipv4Addr;
+  leaseSec: number;
+  /** Vom Server gelieferter Gateway: Default-Route mit AD 254. */
+  router?: Ipv4Addr;
+  offered?: { ip: Ipv4Addr; mask: string; router?: Ipv4Addr; leaseSec: number };
 }
 
 // ---------------------------------------------------------------- Hosts
@@ -620,6 +646,8 @@ export interface IfaceCfg {
   aclOut?: string;
   natSide?: 'inside' | 'outside';
   helpers?: Ipv4Addr[];
+  /** `ip address dhcp`: Adresse per DHCP beziehen. */
+  dhcpc?: RouterDhcpClient;
   /** `ip dhcp relay information trusted`. */
   relayTrusted?: boolean;
   /** `service-policy input|output NAME`. */

@@ -4,6 +4,8 @@ import type { DeviceCtx } from '../ctx';
 import { diagTimer, startPing, startTrace, type PingOptions } from '../diag';
 import { listIfaces } from '../ifaces';
 import { ifaceFrameRx, ipTimer, type IpNode, type XmitIface } from '../l3';
+import { summarizeFrame } from '@netsim/protocols';
+import { routerDhcpRxNoIp, routerDhcpTimer } from '../svc/dhcprouter';
 import { buildRib, lookupRib, lookupRibPaths, pickPath } from '../rib';
 import { greXmit } from '../routing/gre';
 import { cryptoXmit } from '../routing/ipsec';
@@ -142,6 +144,12 @@ export function routerRx(
       (i.kind === 'sub' ? frame.vlan?.vid === i.vlan : !frame.vlan),
   );
   if (!iface) {
+    // `ip address dhcp`: Antwort des Servers an eine Schnittstelle ohne Adresse
+    if (Object.values(dev.config.ifaces).some((c) => c.dhcpc && c.portId === portId)) {
+      const { proto, info } = summarizeFrame(frame);
+      const base = { from: fromId, port: ctx.port(portId), frame, summary: info, proto };
+      if (routerDhcpRxNoIp(ctx, node, frame, base)) return;
+    }
     ctx.log({
       kind: 'drop',
       proto: frame.payload.kind === 'arp' ? 'ARP' : 'ETH',
@@ -162,6 +170,7 @@ export function l3Timer(ctx: DeviceCtx, dev: L3Dev, name: string): void {
     return;
   }
   const node = l3Node(ctx, dev);
+  if (routerDhcpTimer(ctx, node, name)) return;
   if (node.v6 && ip6Timer(ctx, { dev, cfg: node.cfg, v6: node.v6, xmit: node.xmit }, name)) return;
   if (!ipTimer(ctx, node, name)) diagTimer(ctx, node, name);
 }

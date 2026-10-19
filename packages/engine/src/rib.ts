@@ -54,6 +54,18 @@ export function buildRib(cfg: L3Cfg, ifaces: Iface[]): RibEntry[] {
       rib.push({ type: 'C', prefix: i.peerIp, plen: 32, ad: 0, metric: 0, ifaceId: i.id });
     if (i.kind === 'dialer' && i.cfg.dialer?.ipcpRoute)
       rib.push({ type: 'S', prefix: '0.0.0.0', plen: 0, ad: 1, metric: 0, ifaceId: i.id });
+    // `ip address dhcp`: Gateway des Servers als Default-Route (AD 254, wie IOS)
+    const gw = i.cfg.dhcpc?.router;
+    if (gw && (i.cfg.dhcpc?.state === 'bound' || i.cfg.dhcpc?.state === 'renewing'))
+      rib.push({
+        type: 'S',
+        prefix: '0.0.0.0',
+        plen: 0,
+        ad: 254,
+        metric: 0,
+        nextHop: gw,
+        ifaceId: i.id,
+      });
   }
   const connected = rib.filter((e) => e.type === 'C');
   for (const r of cfg.staticRoutes) {

@@ -1,4 +1,5 @@
 import type { Ipv4Pdu, Ipv6Pdu } from '@netsim/protocols';
+import { routerDhcpReset } from '../svc/dhcprouter';
 import type { DeviceCtx } from '../ctx';
 import type { L3Dev } from '../devices/l3dev';
 import type { Iface } from '../ifaces';
@@ -135,6 +136,7 @@ function hsrpResetCfg(cfg: L3Cfg): void {
 }
 
 export function routingResetRuntime(cfg: L3Cfg): void {
+  routerDhcpReset(cfg);
   cfg.dynRoutes = [];
   cfg.dynRoutes6 = [];
   pppoeReset(cfg);

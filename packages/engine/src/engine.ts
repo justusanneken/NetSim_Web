@@ -29,7 +29,8 @@ import {
   type PingOptions,
 } from './devices/host';
 import { discLinkDown, discLinkUp, discRx, discStart, discTimer } from './devices/discovery';
-import { l3Ping, l3Timer, l3Trace, routerRx, type L3Dev } from './devices/l3dev';
+import { l3Node, l3Ping, l3Timer, l3Trace, routerRx, type L3Dev } from './devices/l3dev';
+import { routerDhcpBoot, routerDhcpStart, routerDhcpStop } from './svc/dhcprouter';
 import { routingResetRuntime, routingSync } from './routing';
 import { pppoeClear } from './routing/pppoe';
 import { ipsecClear } from './routing/ipsec';
@@ -265,6 +266,9 @@ export class Engine {
     if ((dev.config.kind === 'router' || dev.config.kind === 'switch') && dev.powered) {
       this.withCtx(dev, (ctx) => routingSync(ctx, dev as L3Dev));
       this.withCtx(dev, (ctx) => discStart(ctx, dev));
+      this.withCtx(dev, (ctx) =>
+        routerDhcpBoot(ctx, l3Node(ctx, dev as L3Dev), (dev as L3Dev).config),
+      );
     }
     if (dev.config.kind === 'host' && dev.powered) {
       const h = dev.config;
@@ -672,6 +676,10 @@ export class Engine {
     if (!made.ok) return made;
     const ic = cfg.ifaces[ifaceId];
     if (!ic) return { ok: false, error: 'ip.notARouter' };
+    if (ic.dhcpc) {
+      const c = ic;
+      this.withCtx(dev, (ctx) => routerDhcpStop(ctx, l3Node(ctx, dev), ifaceId, c));
+    }
     if (ip === '') {
       ic.ip = undefined;
       ic.mask = undefined;
@@ -698,6 +706,25 @@ export class Engine {
     }
     ic.ip = ip;
     ic.mask = mask;
+    this.routingChanged(deviceId);
+    return { ok: true, value: true };
+  }
+
+  /** `ip address dhcp` an einer Router-Schnittstelle (physisch oder Subinterface). */
+  setInterfaceDhcp(deviceId: string, ifaceId: string): Result<true> {
+    const dev = this.l3(deviceId);
+    if (!dev) return { ok: false, error: 'ip.notARouter' };
+    const made = this.ensureIface(deviceId, ifaceId);
+    if (!made.ok) return made;
+    const ic = dev.config.ifaces[ifaceId];
+    if (!ic || (ic.kind !== 'phys' && ic.kind !== 'sub'))
+      return { ok: false, error: 'ip.dhcpIface' };
+    if (ic.dhcpc) return { ok: true, value: true };
+    ic.ip = undefined;
+    ic.mask = undefined;
+    ic.dhcpc = { state: 'selecting', xid: 0, leaseSec: 0 };
+    if (dev.powered)
+      this.withCtx(dev, (ctx) => routerDhcpStart(ctx, l3Node(ctx, dev), ifaceId, ic));
     this.routingChanged(deviceId);
     return { ok: true, value: true };
   }

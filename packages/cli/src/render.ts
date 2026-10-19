@@ -106,7 +106,13 @@ const sortedIfaceIds = (cfg: L3Cfg, kind: IfaceCfg['kind'], portId?: string): st
     .map(([id]) => id);
 
 function l3Lines(cfg: L3Cfg, c: IfaceCfg | undefined, out: string[]): void {
-  out.push(c?.ip && c.mask ? ` ip address ${c.ip} ${c.mask}` : ' no ip address');
+  out.push(
+    c?.dhcpc
+      ? ' ip address dhcp'
+      : c?.ip && c.mask
+        ? ` ip address ${c.ip} ${c.mask}`
+        : ' no ip address',
+  );
   for (const h of c?.helpers ?? []) out.push(` ip helper-address ${h}`);
   if (c?.aclIn) out.push(` ip access-group ${c.aclIn} in`);
   if (c?.aclOut) out.push(` ip access-group ${c.aclOut} out`);
@@ -354,7 +360,10 @@ export function renderRunningConfig(_e: Engine, d: Device & { config: CliConfig 
     L.push(`ip dhcp excluded-address ${ex.from}${ex.to !== ex.from ? ` ${ex.to}` : ''}`);
   }
   for (const p of cfg.dhcp.pools) {
-    L.push(`ip dhcp pool ${p.name}`, ` network ${p.network} ${p.mask}`);
+    L.push(`ip dhcp pool ${p.name}`);
+    if (p.host) L.push(` host ${p.host} ${p.mask}`);
+    else L.push(` network ${p.network} ${p.mask}`);
+    if (p.hwAddr) L.push(` hardware-address ${ciscoMac(p.hwAddr)}`);
     if (p.router) L.push(` default-router ${p.router}`);
     if (p.dns.length) L.push(` dns-server ${p.dns.join(' ')}`);
     if (p.domain) L.push(` domain-name ${p.domain}`);

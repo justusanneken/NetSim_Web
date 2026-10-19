@@ -48,7 +48,7 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Passwörter (enable secret/password, Typ 7, Console-Login), Banner, Setup-Dialog                                                      | 2     | teilweise (kein Telnet/SSH-Login)                    | `cli › Passwörter…`, `Banner…`                                        |
 | Terminal: Historie, Ctrl+A/E/U/W/C/Z, `--More--`, `terminal length`                                                                  | 2     | fertig                                               | `cli › shell › Terminal (Zeileneditor)`                               |
 | ping (inkl. erweiterter Dialog), traceroute (IOS)                                                                                    | 2     | fertig                                               | `cli › Ping-Dialog…`, Golden `router-session`                         |
-| Desktop: IP-Konfiguration, Command Prompt (`ping`, `tracert`, `ipconfig [/all]`, `arp -a`)                                           | 2     | teilweise (kein DHCP/DNS/Web)                        | `cli › shell › Host-Eingabeaufforderung`, `web e2e › phase2`          |
+| Desktop: IP-Konfiguration, Command Prompt (`ping`, `tracert`, `ipconfig [/all]`, `arp -a`)                                           | 2     | fertig (DHCP, DNS, Web siehe Phase 3/5)              | `cli › shell › Host-Eingabeaufforderung`, `web e2e › phase2`          |
 | Geräte-Dialog (Config / CLI / Desktop), xterm.js                                                                                     | 2     | teilweise (Physical/Attributes folgen)               | `web e2e › phase2`                                                    |
 | Simulationsmodus mit Animation (Umschläge), PDU-Inspektor (OSI-Schichten, Felder)                                                    | 2     | teilweise (Inbound-Ansicht, kein Outbound/Challenge) | `web e2e › phase2` (Inspektor), manuell (Animation)                   |
 | Debug-Befehle, `show ip protocols`                                                                                                   | 4     | fertig                                               | `cli › Phase 4 › *`                                                   |
@@ -75,7 +75,7 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | CLI: `interface range`, `vlan`, `switchport …`, `spanning-tree …`, `channel-group`, `ip dhcp …`, `access-list`, `ip nat …`, `show` für alles; running-config-Replay | 3         | fertig                                        | `cli › Phase 3 › *`                              |
 | Host-Shell: `nslookup`, Ping per Name, `ipconfig /renew                                                                                                             | /release` | 3                                             | fertig                                           | `cli › Phase 3 › Host-Shell…` |
 | GUI: VLAN-/Switchport-Panel, SVI/Subinterface, Server-Dienste, DHCP/DNS am Host, Browser, STP-Linklicht orange                                                      | 3         | fertig                                        | `web e2e › phase3`                               |
-| SPAN, Storm-Control, DHCP-Snooping, DAI, UDLD, MST                                                                                                                  | –         | nicht geplant                                 | –                                                |
+| SPAN, UDLD, MST (Storm-Control, DHCP-Snooping, DAI: Phase 6)                                                                                                        | –         | nicht geplant                                 | –                                                |
 
 ## Phase 4 – Routing-Protokolle und IPv6
 
@@ -248,3 +248,10 @@ Status: **offen** · **teilweise** · **fertig**. Tests: `engine` = `packages/en
 | Statische Routen: Null0, Interface+Next-Hop, name/tag/permanent, Floating Static, `show ip route <addr> [mask]`                      | fertig | `cli › wan_routes`            |
 | OSPF über Serial (p2p, Kosten 64), `show ip ospf interface`, Hello/Dead- und MTU-Mismatch, `mtu-ignore`, `no area N stub no-summary` | fertig | `cli › wan_ospf`              |
 | IPsec-VTI, SA-Lifetime/Rekey, DPD, TACACS+-Fallback, VRRP/GLBP, EIGRP-Named-Mode/Stub, BGP-Erweiterungen, `show tcp brief all`       | offen  | siehe `docs/realism-audit.md` |
+
+## DHCP-Nachtrag
+
+| Funktion                                                                                                                                                                                                                                    | Stand  | Tests                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | --------------------------------- |
+| Router als DHCP-Client (`ip address dhcp`, Default-Route AD 254, `Method DHCP`), manuelle Bindungen, `show ip dhcp server statistics`, `clear ip dhcp binding <IP>`/`conflict *`/`server statistics`, `debug ip dhcp server events\|packet` | fertig | `cli › dhcp_router`               |
+| Server-Gerät: DHCP-Dienst in der GUI (Ein/Aus, Pools, vergebene Adressen)                                                                                                                                                                   | fertig | – (Engine-Pfad über `wifi`-Tests) |

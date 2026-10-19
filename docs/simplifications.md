@@ -98,8 +98,11 @@
   Der Port-Channel-Hash nutzt Quell- und Ziel-MAC.
 - **VTP:** nur v1/v2-Verhalten (Revision, Domäne, Server/Client/Transparent), ohne Pruning und Passwort.
 - **Port-Security:** Verstöße zählen pro Frame; Sticky-Adressen erscheinen in der `running-config`.
-- **Nicht umgesetzt:** SPAN, Storm-Control, DHCP-Snooping, DAI, UDLD, Private VLANs.
-- **DHCP:** keine Option 82, kein BOOTP (DHCPv6 siehe Phase 4); Lease-Verlängerung bei T1 (50 %), Konflikterkennung per ARP-Probe.
+- **Nicht umgesetzt:** SPAN, UDLD, Private VLANs (Storm-Control, DHCP-Snooping und DAI siehe Phase 6).
+- **DHCP:** kein BOOTP; Lease-Verlängerung bei T1 (50 %), Konflikterkennung per ARP-Probe (Option 82 siehe DHCP Snooping).
+- **DHCP am Router als Client (`ip address dhcp`):** nur physische Schnittstellen und Subinterfaces; keine ARP-Probe, Verlängerung per Broadcast-REQUEST mit `ciaddr` (IOS: Unicast); Gateway aus dem Angebot wird als Default-Route mit AD 254 installiert. Keine Optionen `client-id`/`hostname` am Interface.
+- **DHCP-Server:** manuelle Bindungen (`host` + `hardware-address`/`client-identifier`) gelten unbegrenzt; `show ip dhcp server statistics` zählt nur DISCOVER/REQUEST/DECLINE/RELEASE bzw. OFFER/ACK/NAK (BOOTP/INFORM immer 0, „Memory usage“ fest). `ip dhcp ping packets`, `ip dhcp conflict logging` und DHCP-Datenbank-Agenten fehlen. `debug ip dhcp server events|packet` mit IOS-ähnlichen Zeilen.
+- **Server-Gerät (GUI):** Pools wie in Packet Tracer (Startadresse, Maske, maximale Anzahl, ein DNS-Server); Lease in ganzen bzw. Bruchteilen von Tagen.
 - **TCP/HTTP:** vereinfachtes TCP (SYN/SYN-ACK, ein Request, Antwort + FIN, RST); keine Retransmission-Fenster, kein TLS
   (HTTPS ist nur ein Port-/Schemaflag). Seiten sind kurze Texte.
 - **NAT:** Timeouts per `ip nat translation timeout` für UDP/TCP/IP gemeinsam (ICMP fest 60 s); ALG/FTP fehlt.

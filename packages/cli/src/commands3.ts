@@ -1,4 +1,5 @@
-import { maskToPrefix, isValidIpv4 } from '@netsim/protocols';
+import { maskToPrefix, isValidIpv4, prefixToMask } from '@netsim/protocols';
+import { networkOf } from '@netsim/engine';
 import type { Acl, HostConfig, SwitchPortCfg } from '@netsim/engine';
 import { AclParseError, addEntry, parseAclEntry } from './aclparse';
 import { targets } from './commands';
@@ -14,6 +15,10 @@ const IF = IFM;
 const SHOW = K('show', 'Show running system information');
 const IP = K('ip', 'Global IP configuration subcommands');
 
+const classfulMask = (ip: string): string => {
+  const a = Number(ip.split('.')[0]);
+  return a < 128 ? '255.0.0.0' : a < 192 ? '255.255.0.0' : '255.255.255.0';
+};
 const isStd = (name: string): boolean => /^(?:[1-9]\d?|1[3-9]\d{2})$/.test(name);
 const isExt = (name: string): boolean => /^(?:1\d\d|2[0-6]\d\d)$/.test(name) && !isStd(name);
 
@@ -279,18 +284,52 @@ export function addPhase3(r: Registry<CliSession>): void {
       s.device.config.nat.table = s.device.config.nat.table.filter((t) => t.kind === 'static');
     },
   });
+  const CLR_DHCP = [
+    K('clear', 'Reset functions'),
+    IP,
+    K('dhcp', 'Delete items from the DHCP database'),
+  ];
   r.add({
     modes: ['priv'],
     slots: [
-      K('clear', 'Reset functions'),
-      IP,
-      K('dhcp', 'Delete items from the DHCP database'),
+      ...CLR_DHCP,
       K('binding', 'Delete DHCP address bindings'),
-      K('*', 'Clear all bindings'),
+      choice('which', ['*', 'Clear all bindings'], ['A.B.C.D', 'Clear a specific binding']),
+    ],
+    run: (s, a) => {
+      const dh = s.device.config.dhcp;
+      if (a.which === '*') dh.bindings = {};
+      else delete dh.bindings[a.which as string];
+    },
+  });
+  r.add({
+    modes: ['priv'],
+    slots: [...CLR_DHCP, K('conflict', 'DHCP address conflicts'), K('*', 'Clear all conflicts')],
+    run: (s) => {
+      s.device.config.dhcp.conflicts = [];
+    },
+  });
+  r.add({
+    modes: ['priv'],
+    slots: [
+      ...CLR_DHCP,
+      K('server', 'Miscellaneous DHCP server information'),
+      K('statistics', 'DHCP server statistics'),
     ],
     run: (s) => {
-      s.device.config.dhcp.bindings = {};
+      s.device.config.dhcp.stats = undefined;
     },
+  });
+  r.add({
+    modes: U,
+    slots: [
+      SHOW,
+      IP,
+      K('dhcp', 'Show items in the DHCP database'),
+      K('server', 'Miscellaneous DHCP server information'),
+      K('statistics', 'DHCP server statistics'),
+    ],
+    run: (s) => showClamp(s, show.showDhcpServerStats(s.engine, s.device)),
   });
 
   // ------------------------------------------------------------ Switch: global
@@ -973,6 +1012,57 @@ export function addPhase3(r: Registry<CliSession>): void {
         : Number(a.d) * 86400 + Number(a.h ?? 0) * 3600 + Number(a.m ?? 0) * 60;
     },
   });
+  // Manuelle Bindung: `host A.B.C.D [mask | /len]` + `hardware-address` / `client-identifier`
+  r.add({
+    modes: D,
+    only: 'l3',
+    negatable: true,
+    slots: [
+      K('host', 'Client IP address and mask'),
+      P('ip', 'ip', 'A.B.C.D', 'IP address in dotted-decimal notation'),
+      opt(P('mask', 'word', 'A.B.C.D | /nn', 'IP subnet mask or prefix length')),
+    ],
+    run: (s, a) => {
+      const p = pool(s);
+      if (s.negated) {
+        p.host = undefined;
+        return;
+      }
+      const m = a.mask ?? '';
+      const mask = m.startsWith('/')
+        ? prefixToMask(Number(m.slice(1)))
+        : m || classfulMask(a.ip as string);
+      const plen = maskToPrefix(mask);
+      if (plen === undefined) throw new CliError('% Invalid mask');
+      p.host = a.ip as string;
+      p.mask = mask;
+      p.network = networkOf(a.ip as string, plen);
+    },
+  });
+  for (const [word, help] of [
+    ['hardware-address', 'Client hardware address'],
+    ['client-identifier', 'Client identifier'],
+  ] as const) {
+    r.add({
+      modes: D,
+      only: 'l3',
+      negatable: true,
+      slots: [K(word, help), P('id', 'word', 'H.H.H', 'Hexadecimal identifier')],
+      run: (s, a) => {
+        const p = pool(s);
+        if (s.negated) {
+          p.hwAddr = undefined;
+          return;
+        }
+        let hex = (a.id as string).replace(/\./g, '').toLowerCase();
+        // client-identifier: führendes `01` (Hardwaretyp Ethernet) entfernen
+        if (word === 'client-identifier' && hex.length === 14 && hex.startsWith('01'))
+          hex = hex.slice(2);
+        if (!/^[0-9a-f]{12}$/.test(hex)) throw new CliError('% Invalid hardware address');
+        p.hwAddr = (hex.match(/.{2}/g) ?? []).join(':');
+      },
+    });
+  }
   r.add({
     modes: D,
     only: 'l3',

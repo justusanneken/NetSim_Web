@@ -949,6 +949,23 @@ export function buildRegistry(): Registry<CliSession> {
     slots: [
       K('ip', 'Interface Internet Protocol config commands'),
       K('address', 'Set the IP address of an interface'),
+      K('dhcp', 'IP Address negotiated via DHCP'),
+    ],
+    run: (s) => {
+      for (const id of targets(s)) {
+        const res = s.negated
+          ? s.engine.setInterfaceIp(s.deviceId, id, '', '')
+          : s.engine.setInterfaceDhcp(s.deviceId, id);
+        if (!res.ok) throw engineError(res);
+      }
+    },
+  });
+  r.add({
+    modes: IF,
+    negatable: true,
+    slots: [
+      K('ip', 'Interface Internet Protocol config commands'),
+      K('address', 'Set the IP address of an interface'),
       opt(P('ip', 'ip', 'A.B.C.D', 'IP address')),
       opt(P('mask', 'mask', 'A.B.C.D', 'IP subnet mask')),
     ],

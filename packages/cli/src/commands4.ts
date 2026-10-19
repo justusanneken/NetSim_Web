@@ -1725,6 +1725,26 @@ export function addPhase4(r: Registry<CliSession>): void {
     { words: [['tunnel', 'Generic Tunnel Interface']], tags: ['gre'], label: 'Tunnel debugging' },
     {
       words: [
+        ['ip', 'IP information'],
+        ['dhcp', 'Dynamic Host Configuration Protocol'],
+        ['server', 'DHCP server activity'],
+        ['events', 'Report address assignments, lease expirations, etc.'],
+      ],
+      tags: ['dhcp.events'],
+      label: 'DHCP server event debugging',
+    },
+    {
+      words: [
+        ['ip', 'IP information'],
+        ['dhcp', 'Dynamic Host Configuration Protocol'],
+        ['server', 'DHCP server activity'],
+        ['packet', 'Decode message receptions and transmissions'],
+      ],
+      tags: ['dhcp.packet'],
+      label: 'DHCP server packet debugging',
+    },
+    {
+      words: [
         ['ppp', 'PPP (Point to Point Protocol) information'],
         ['negotiation', 'Protocol parameter negotiation'],
       ],

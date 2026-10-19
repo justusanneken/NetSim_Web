@@ -12,11 +12,30 @@ import {
 } from '@netsim/protocols';
 import type { DeviceCtx } from '../ctx';
 import { clientRx } from './dhcpclient';
-import type { Iface } from '../ifaces';
+import { routerClientRx } from './dhcprouter';
+import { ifaceName, type Iface } from '../ifaces';
 import { newIpPacket, sendBroadcast, sendUdp, type Base, type IpNode } from '../l3';
-import type { DhcpPool, DhcpServerCfg } from '../types';
+import type { DhcpPool, DhcpServerCfg, DhcpServerStats } from '../types';
 
 const OFFER_HOLD_US = 10_000_000;
+/** Ablaufzeit manueller Bindungen (IOS: „Infinite“). */
+export const DHCP_INFINITE = Number.MAX_SAFE_INTEGER;
+
+export const newDhcpStats = (): DhcpServerStats => ({
+  discover: 0,
+  request: 0,
+  decline: 0,
+  release: 0,
+  offer: 0,
+  ack: 0,
+  nak: 0,
+});
+
+/** IOS-Client-ID: `01` + MAC, in Vierergruppen (`0100.5079.6668.00`). */
+export function dhcpClientId(mac: string): string {
+  const hex = `01${mac.replace(/[^0-9a-f]/gi, '').toLowerCase()}`;
+  return hex.match(/.{1,4}/g)?.join('.') ?? hex;
+}
 
 const serverOf = (node: IpNode): DhcpServerCfg | undefined => {
   if (node.l3) return node.l3.dhcp.pools.length ? node.l3.dhcp : undefined;
@@ -29,7 +48,12 @@ function num(ip: Ipv4Addr): number {
 }
 
 function poolFor(srv: DhcpServerCfg, ref: Ipv4Addr): DhcpPool | undefined {
-  return srv.pools.find((p) => sameSubnet(p.network, ref, p.mask));
+  return srv.pools.find((p) => !p.host && sameSubnet(p.network, ref, p.mask));
+}
+
+/** Manueller Pool für genau diese MAC im Netz von `ref`. */
+function manualFor(srv: DhcpServerCfg, mac: string, ref: Ipv4Addr): DhcpPool | undefined {
+  return srv.pools.find((p) => p.host && p.hwAddr === mac && sameSubnet(p.host, ref, p.mask));
 }
 
 function purge(srv: DhcpServerCfg, now: number): void {
@@ -37,6 +61,14 @@ function purge(srv: DhcpServerCfg, now: number): void {
     if (b.expiresAt <= now) delete srv.bindings[ip];
   }
 }
+
+const ciscoDots = (mac: string): string =>
+  (
+    mac
+      .replace(/[^0-9a-f]/gi, '')
+      .toLowerCase()
+      .match(/.{4}/g) ?? []
+  ).join('.');
 
 function excluded(srv: DhcpServerCfg, ip: Ipv4Addr): boolean {
   const n = num(ip);
@@ -61,7 +93,13 @@ function allocate(
   const to = pool.rangeEnd ? num(pool.rangeEnd) : bcast - 1;
   for (let n = from; n <= to; n++) {
     const ip = formatIpv4(n >>> 0);
-    if (excluded(srv, ip) || srv.bindings[ip] || srv.conflicts.includes(ip) || ip === pool.router)
+    if (
+      excluded(srv, ip) ||
+      srv.bindings[ip] ||
+      srv.conflicts.includes(ip) ||
+      ip === pool.router ||
+      srv.pools.some((p) => p.host === ip)
+    )
       continue;
     return ip;
   }
@@ -124,8 +162,38 @@ function serve(
   req: DhcpPdu,
 ): void {
   const ref = req.giaddr !== '0.0.0.0' ? req.giaddr : iface.ip;
-  const pool = poolFor(srv, ref);
+  const manual = manualFor(srv, req.chaddr, ref);
+  const pool = manual ?? poolFor(srv, ref);
   const serverId = iface.ip;
+  const st = (srv.stats ??= newDhcpStats());
+  if (req.op in st) st[req.op as keyof DhcpServerStats]++;
+  const dbgOn = (tag: string): boolean => !!node.l3?.routing.debug.includes(tag);
+  const dbg = (tag: string, text: string): void => {
+    if (dbgOn(tag))
+      ctx.log({
+        kind: 'info',
+        proto: 'DHCP',
+        status: 'info',
+        msg: { key: 'rt.debug' },
+        debug: { tag, text },
+      });
+  };
+  const cid = dhcpClientId(req.chaddr);
+  const via = node.l3 ? ifaceName(node.dev, iface.id, iface.cfg) : iface.id;
+  dbg(
+    'dhcp.packet',
+    `DHCPD: DHCP${req.op.toUpperCase()} received from client ${cid} ${req.giaddr !== '0.0.0.0' ? `through relay ${req.giaddr}` : `on interface ${via}`}.`,
+  );
+  const sent = (op: 'offer' | 'ack' | 'nak', ip: Ipv4Addr): void => {
+    st[op]++;
+    dbg('dhcp.packet', `DHCPD: Sending DHCP${op.toUpperCase()} to client ${cid} (${ip}).`);
+    dbg(
+      'dhcp.packet',
+      req.giaddr !== '0.0.0.0'
+        ? `DHCPD: unicasting BOOTREPLY for client ${ciscoDots(req.chaddr)} to relay ${req.giaddr}.`
+        : `DHCPD: broadcasting BOOTREPLY to client ${ciscoDots(req.chaddr)}.`,
+    );
+  };
   const log = (
     key: string,
     params: Record<string, string | number>,
@@ -140,15 +208,17 @@ function serve(
     });
   if (!pool) return log('dhcp.noPool', { mac: req.chaddr }, 'drop');
   if (req.op === 'discover') {
-    const ip = allocate(srv, pool, req.chaddr, ctx.now);
+    const ip = manual ? manual.host : allocate(srv, pool, req.chaddr, ctx.now);
     if (!ip) return log('dhcp.exhausted', { pool: pool.name }, 'drop');
-    srv.bindings[ip] = {
-      mac: req.chaddr,
-      poolName: pool.name,
-      expiresAt: ctx.now + OFFER_HOLD_US,
-      offered: true,
-    };
+    if (!manual)
+      srv.bindings[ip] = {
+        mac: req.chaddr,
+        poolName: pool.name,
+        expiresAt: ctx.now + OFFER_HOLD_US,
+        offered: true,
+      };
     log('dhcp.offer', { ip, mac: req.chaddr });
+    sent('offer', ip);
     sendReply(ctx, node, iface, req, reply('offer', req, pool, ip, serverId));
   } else if (req.op === 'request') {
     const want = req.options.requestedIp ?? req.ciaddr;
@@ -160,7 +230,7 @@ function serve(
     purge(srv, ctx.now);
     const b = srv.bindings[want];
     const free =
-      !b &&
+      (manual ? want === manual.host : !b) &&
       sameSubnet(pool.network, want, pool.mask) &&
       !excluded(srv, want) &&
       !srv.conflicts.includes(want);
@@ -168,12 +238,15 @@ function serve(
       srv.bindings[want] = {
         mac: req.chaddr,
         poolName: pool.name,
-        expiresAt: ctx.now + pool.leaseSec * 1_000_000,
+        expiresAt: manual ? DHCP_INFINITE : ctx.now + pool.leaseSec * 1_000_000,
       };
       log('dhcp.ack', { ip: want, mac: req.chaddr });
+      sent('ack', want);
+      dbg('dhcp.events', `DHCPD: assigned IP address ${want} to client ${cid}.`);
       sendReply(ctx, node, iface, req, reply('ack', req, pool, want, serverId));
     } else {
       log('dhcp.nak', { ip: want, mac: req.chaddr }, 'drop');
+      sent('nak', want);
       sendReply(ctx, node, iface, req, reply('nak', req, pool, want, serverId));
     }
   } else if (req.op === 'decline') {
@@ -181,9 +254,11 @@ function serve(
     delete srv.bindings[ip];
     if (!srv.conflicts.includes(ip)) srv.conflicts.push(ip);
     log('dhcp.conflict', { ip });
+    dbg('dhcp.events', `DHCPD: Declined address ${ip} by client ${cid}.`);
   } else if (req.op === 'release') {
     delete srv.bindings[req.ciaddr];
     log('dhcp.release', { ip: req.ciaddr });
+    dbg('dhcp.events', `DHCPD: returned ${req.ciaddr} to address pool ${pool.name}.`);
   }
 }
 
@@ -270,6 +345,7 @@ export function dhcpRx(
     if (node.l3 && udp.dstPort === 67 && ip.dst !== '255.255.255.255')
       return relayDown(ctx, node, base, app);
     if (node.host && udp.dstPort === 68) return clientRx(ctx, node, node.host, base, app);
+    if (node.l3 && udp.dstPort === 68) return routerClientRx(ctx, node, iface, base, app);
   }
   return false;
 }

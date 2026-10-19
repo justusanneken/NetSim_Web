@@ -375,5 +375,18 @@
   "router.routes6": "IPv6 routes",
   "panel.tunnel": "Tunnel",
   "tool.debugHint": "Debug output appears in the CLI terminal (debug ip ospf adj …).",
-  "ipv6.set": "Set IPv6"
+  "ipv6.set": "Set IPv6",
+  "svc.dhcp.title": "DHCP server",
+  "svc.dhcp.pool": "Pool name",
+  "svc.dhcp.gateway": "Default gateway",
+  "svc.dhcp.dns": "DNS server",
+  "svc.dhcp.range": "Address range",
+  "svc.dhcp.start": "Start address",
+  "svc.dhcp.max": "Maximum clients",
+  "svc.dhcp.days": "Lease (days)",
+  "svc.dhcp.save": "Save pool",
+  "svc.dhcp.remove": "Delete pool",
+  "svc.dhcp.leases": "Leased addresses",
+  "svc.dhcp.invalid": "Invalid DHCP pool: check name, start address, mask, count and lease.",
+  "ip.dhcpIface": "\"ip address dhcp\" only works on physical interfaces and subinterfaces."
 }

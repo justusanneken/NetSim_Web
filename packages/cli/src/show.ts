@@ -2,7 +2,14 @@ import { pppBriefRows } from './showProto';
 import { maskToPrefix, parseIpv4, sameSubnet } from '@netsim/protocols';
 import type { Device, Engine, Port, RibEntry, SwitchConfig, SysConfig } from '@netsim/engine';
 import { formatClock } from './clock';
-import { ifaceUp, listIfaces, networkOf, prefixMask } from '@netsim/engine';
+import {
+  DHCP_INFINITE,
+  dhcpClientId,
+  ifaceUp,
+  listIfaces,
+  networkOf,
+  prefixMask,
+} from '@netsim/engine';
 import { ciscoMac, shortName } from './format';
 import { compressVlans, ifDisplay, ifShort } from './ifnames';
 import { aclEntryText, isCliDevice, renderRunningConfig } from './render';
@@ -38,14 +45,20 @@ const clock = (t: number): string => {
 export function showIpInterfaceBrief(_e: Engine, d: D): string[] {
   const cfg = l3(d);
   const out = ['Interface              IP-Address      OK? Method Status                Protocol'];
-  const row = (name: string, ip: string | undefined, status: string, proto: string): void => {
+  const row = (
+    name: string,
+    ip: string | undefined,
+    status: string,
+    proto: string,
+    dhcp = false,
+  ): void => {
     out.push(
-      `${name.padEnd(23)}${(ip ?? 'unassigned').padEnd(16)}${'YES'.padEnd(4)}${(ip ? 'manual' : 'unset').padEnd(7)}${status.padEnd(22)}${proto}`,
+      `${name.padEnd(23)}${(ip ?? 'unassigned').padEnd(16)}${'YES'.padEnd(4)}${(dhcp ? 'DHCP' : ip ? 'manual' : 'unset').padEnd(7)}${status.padEnd(22)}${proto}`,
     );
   };
   for (const p of d.ports) {
     const s = portStatus(p);
-    row(p.name, ifaceIp(d, p.id)?.ip, s.status, s.proto);
+    row(p.name, ifaceIp(d, p.id)?.ip, s.status, s.proto, !!cfg?.ifaces[p.id]?.dhcpc);
     for (const [id, c] of Object.entries(cfg?.ifaces ?? {})) {
       if (c.kind !== 'sub' || c.portId !== p.id) continue;
       const up = cfg ? ifaceUp(d, cfg, id, c) : false;
@@ -54,6 +67,7 @@ export function showIpInterfaceBrief(_e: Engine, d: D): string[] {
         c.ip,
         up ? 'up' : c.shutdown ? 'administratively down' : 'down',
         up ? 'up' : 'down',
+        !!c.dhcpc,
       );
     }
   }
@@ -775,8 +789,9 @@ export function showDhcpBinding(e: Engine, d: D): string[] {
     ([a], [c]) => (parseIpv4(a) ?? 0) - (parseIpv4(c) ?? 0),
   )) {
     if (b.offered || b.expiresAt <= e.state.now) continue;
+    const manual = b.expiresAt === DHCP_INFINITE;
     out.push(
-      `${ip.padEnd(16)}${ciscoMac(b.mac).padEnd(24)}${stamp(b.expiresAt).padEnd(24)}Automatic`,
+      `${ip.padEnd(16)}${dhcpClientId(b.mac).padEnd(24)}${(manual ? 'Infinite' : stamp(b.expiresAt)).padEnd(24)}${manual ? 'Manual' : 'Automatic'}`,
     );
   }
   return out;
@@ -805,6 +820,41 @@ export function showDhcpPool(e: Engine, d: D): string[] {
     );
   }
   return out;
+}
+
+export function showDhcpServerStats(e: Engine, d: D): string[] {
+  const srv = dhcpOf(d);
+  const st = srv?.stats;
+  const n = (k: keyof NonNullable<typeof st>): number => st?.[k] ?? 0;
+  const live = Object.values(srv?.bindings ?? {}).filter(
+    (b) => !b.offered && b.expiresAt > e.state.now,
+  );
+  const manual = live.filter((b) => b.expiresAt === DHCP_INFINITE).length;
+  const row = (k: string, v: number | string): string => `${k.padEnd(21)}${v}`;
+  return [
+    row('Memory usage', 42095),
+    row('Address pools', srv?.pools.length ?? 0),
+    row('Database agents', 0),
+    row('Automatic bindings', live.length - manual),
+    row('Manual bindings', manual),
+    row('Expired bindings', 0),
+    row('Malformed messages', 0),
+    row('Secure arp entries', 0),
+    '',
+    row('Message', 'Received'),
+    row('BOOTREQUEST', 0),
+    row('DHCPDISCOVER', n('discover')),
+    row('DHCPREQUEST', n('request')),
+    row('DHCPDECLINE', n('decline')),
+    row('DHCPRELEASE', n('release')),
+    row('DHCPINFORM', 0),
+    '',
+    row('Message', 'Sent'),
+    row('BOOTREPLY', 0),
+    row('DHCPOFFER', n('offer')),
+    row('DHCPACK', n('ack')),
+    row('DHCPNAK', n('nak')),
+  ];
 }
 
 export function showDhcpConflict(e: Engine, d: D): string[] {
