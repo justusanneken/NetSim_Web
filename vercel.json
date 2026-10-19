@@ -1,0 +1,5 @@
+{
+  "buildCommand": "pnpm build",
+  "outputDirectory": "apps/web/dist",
+  "nodeVersion": "20.x"
+}
